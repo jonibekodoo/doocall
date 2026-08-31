@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: "30 22 * * *" # nightly: full Playwright regression
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets-scan:
+    name: No secrets in repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Grep for committed secrets
+        run: |
+          # Fails when real-looking secrets appear outside .env.example.
+          ! grep -rInE \
+            "(AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY-----|xox[bap]-[0-9A-Za-z-]{10,})" \
+            --exclude-dir={.git,node_modules,.next,test-results} . \
+            || { echo '::error::possible secret committed'; exit 1; }
+          # .env files must never be committed (only .env.example).
+          if git ls-files | grep -E '(^|/)\.env(\..+)?$' | grep -v '\.env\.example$'; then
+            echo '::error::.env file committed'; exit 1
+          fi
+
+  backend:
+    name: Backend (lint + typecheck + tests ≥85% cov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: Build backend image
+        run: docker compose build backend
+      - name: Lint + typecheck (ruff + mypy)
+        run: docker compose run --rm backend sh -c "ruff check . && ruff format --check . && mypy ."
+      - name: Start infra
+        run: docker compose up -d db redis minio minio-setup
+      - name: Tests with enforced coverage gate
+        run: docker compose run --rm backend pytest --cov --cov-report=term --cov-fail-under=85
+      - name: Prove service connectivity
+        run: docker compose run --rm backend python manage.py check_services
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
+  frontend:
+    name: Frontend (lint + typecheck + tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: Build frontend image
+        run: docker compose build frontend
+      - name: Lint + format + typecheck
+        run: docker compose run --rm frontend sh -c "npm run lint && npm run format && npm run typecheck"
+      - name: Vitest
+        run: docker compose run --rm frontend npm run test
+
+  e2e:
+    name: Playwright regression (full suite nightly, smoke on PR)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare env
+        run: cp .env.example .env
+      - name: Bring up the stack
+        run: |
+          docker compose up -d --build
+          docker compose run --rm backend python manage.py migrate --noinput
+          docker compose run --rm backend python manage.py seed_demo --calls 2000
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run suite
+        working-directory: frontend
+        env:
+          CI: "1"
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            npx playwright test            # nightly: everything, all viewports
+          else
+            npx playwright test --project=desktop   # PR: fast smoke
+          fi
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

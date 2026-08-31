@@ -1,0 +1,28 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ title }} | dooCall Admin{% endblock %}
+
+{% block branding %}
+<div id="site-name">
+  <a href="{% url 'admin:index' %}">📞 dooCall <span style="opacity:.6">Admin</span></a>
+</div>
+{% endblock %}
+
+{% block extrastyle %}
+<style>
+  /* dooCall admin theme — dark indigo header, brand accents. */
+  :root {
+    --header-bg: #1e1b4b;
+    --header-color: #e0e7ff;
+    --header-link-color: #c7d2fe;
+    --breadcrumbs-bg: #312e81;
+    --breadcrumbs-fg: #e0e7ff;
+    --breadcrumbs-link-fg: #ffffff;
+    --primary: #4f46e5;
+    --secondary: #4338ca;
+    --link-fg: #4338ca;
+    --link-selected-fg: #4f46e5;
+  }
+  #site-name a { font-weight: 700; letter-spacing: .3px; }
+</style>
+{% endblock %}

@@ -1,0 +1,183 @@
+# dooCall — PRODUCTION stack (Phase 9 final).
+# Usage: cp .env.example .env (fill real secrets!) then
+#   docker compose -f docker-compose.prod.yml up -d --build
+# TLS terminates in nginx; see docs/deployment.md for certbot setup.
+name: doocall-prod
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-backend: &backend-base
+  build: ./backend
+  env_file: .env
+  <<: *restart
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    <<: *restart
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2g }
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    <<: *restart
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 384m }
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    <<: *restart
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1g }
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing local/${MINIO_BUCKET} && echo ready;
+      "
+    restart: "no"
+
+  backend:
+    <<: *backend-base
+    # NOTE: keep this on one logical line — a folded scalar with deeper-
+    # indented continuation lines preserves newlines and breaks the argv.
+    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && exec gunicorn doocall.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-4} --threads ${GUNICORN_THREADS:-2} --timeout 60 --access-logfile - --error-logfile -"]
+    volumes:
+      - staticfiles:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 1g }
+
+  celery-worker:
+    <<: *backend-base
+    command: celery -A doocall worker --loglevel=warning --concurrency=${CELERY_CONCURRENCY:-4}
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A doocall inspect ping -d celery@$$HOSTNAME | grep -q pong"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 768m }
+
+  celery-beat:
+    <<: *backend-base
+    command: celery -A doocall beat --loglevel=warning --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 256m }
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        DOMAIN_ROOT: ${DOMAIN_ROOT}
+    env_file: .env
+    <<: *restart
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512m }
+
+  nginx:
+    image: nginx:1.27-alpine
+    environment:
+      DOMAIN_ROOT: ${DOMAIN_ROOT}
+      DOMAIN_APP: ${DOMAIN_APP}
+      DOMAIN_ADMIN: ${DOMAIN_ADMIN}
+    volumes:
+      # Production templates: TLS-terminating blocks incl. *.DOMAIN_ROOT
+      - ./nginx/templates-prod:/etc/nginx/templates:ro
+      - staticfiles:/var/www/static:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    <<: *restart
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m }
+
+volumes:
+  pgdata:
+  miniodata:
+  staticfiles:
+  certbot-webroot:

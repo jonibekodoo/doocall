@@ -1,0 +1,18 @@
+# Override for hosts where a HOST nginx already owns 80/443:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.server.yml up -d
+# The container nginx listens only on 127.0.0.1:8090 (http); the host nginx
+# terminates TLS and proxies all doocall vhosts here with the Host header.
+services:
+  nginx:
+    ports: !override
+      - "127.0.0.1:8090:80"
+    volumes: !override
+      - ./nginx/templates-server:/etc/nginx/templates:ro
+      - staticfiles:/var/www/static:ro
+  minio:
+    ports:
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: https://console.doocall.uz

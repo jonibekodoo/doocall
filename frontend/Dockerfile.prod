@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Production frontend: standalone Next.js build, non-root runtime.
+FROM node:22-slim AS builder
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+# CSP media/connect hosts are baked into the build (next headers())
+ARG DOMAIN_ROOT=localhost
+ENV DOMAIN_ROOT=$DOMAIN_ROOT
+RUN npm run build
+
+FROM node:22-slim AS runner
+WORKDIR /app
+# HOSTNAME=0.0.0.0: Docker injects HOSTNAME=<container-id>, which Next's
+# standalone server would otherwise bind to (loopback then refuses).
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r nextjs && useradd -r -g nextjs nextjs
+COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nextjs /app/public ./public
+USER nextjs
+EXPOSE 3000
+CMD ["node", "server.js"]

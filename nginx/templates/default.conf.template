@@ -1,0 +1,2 @@
+# Intentionally empty: overrides the stock nginx default.conf so the
+# `localhost` host reaches the dooCall landing block, not the welcome page.

@@ -1,0 +1,188 @@
+# dooCall — SERVER mode: a HOST-level nginx owns 80/443 (TLS) and proxies
+# every doocall host to this container on an internal port. This config
+# only does host-routing over http and TRUSTS the forwarded proto header.
+# dooCall reverse proxy — DOMAIN-DRIVEN via env (nginx envsubst templates).
+#   ${DOMAIN_ROOT}   → public landing            (dev: localhost)
+#   ${DOMAIN_APP}    → frontend cabinet          (dev: app.localhost)
+#   ${DOMAIN_ADMIN}  → Django admin              (dev: app.admin.localhost)
+# Set the real domains in .env for production — nothing else changes.
+# *.localhost resolves to 127.0.0.1 automatically, no /etc/hosts needed.
+
+upstream doocall_backend {
+    server backend:8000;
+}
+
+upstream doocall_frontend {
+    server frontend:3000;
+}
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# ── Shared backend-proxy snippets (via named locations per block) ──────────
+
+# ── 1. Landing: ${DOMAIN_ROOT} ──────────────────────────────────────────────
+server {
+    listen 80;
+    server_name ${DOMAIN_ROOT} www.${DOMAIN_ROOT} doocall.local;
+
+    client_max_body_size 25m;
+
+    location /api/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+
+    location /healthz/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://doocall_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+}
+
+# ── 2. Cabinet: ${DOMAIN_APP} — the frontend admin panel ───────────────────
+server {
+    listen 80;
+    server_name ${DOMAIN_APP} app.doocall.local;
+
+    client_max_body_size 25m;  # Base64 audio uploads (AUDIO_MAX_MB)
+
+    # Root of the app host IS the cabinet.
+    absolute_redirect off;
+
+    location = / {
+        return 302 /cabinet;
+    }
+
+    location /api/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+
+    location /healthz/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://doocall_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+}
+
+# ── 3. Django admin: ${DOMAIN_ADMIN} — platform admin, ALL companies ───────
+server {
+    listen 80;
+    server_name ${DOMAIN_ADMIN} app.admin.doocall.local;
+
+    absolute_redirect off;
+
+    # The whole host is the Django admin.
+    location = / {
+        return 302 /admin/;
+    }
+
+    location /admin/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+
+    location /static/ {
+        alias /var/www/static/;
+        try_files $uri @static_backend;
+    }
+
+    location @static_backend {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+    }
+
+    location /healthz/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+    }
+
+    # Everything else on the admin host → the admin.
+    location / {
+        return 302 /admin/;
+    }
+}
+
+# ── 4. Company subdomains: *.${DOMAIN_ROOT} (MoiZvonki-style) ──────────────
+# Every company works on <slug>.${DOMAIN_ROOT} — cabinet UI + web API + the
+# mobile /api/call/v1 endpoint all answer here. Exact server_names above
+# (app/admin hosts) always win over this wildcard.
+server {
+    listen 80;
+    server_name *.${DOMAIN_ROOT} *.doocall.local;
+
+    client_max_body_size 25m;  # Base64 audio uploads (AUDIO_MAX_MB)
+
+    # Root of a company host IS its cabinet.
+    absolute_redirect off;
+
+    location = / {
+        return 302 /cabinet;
+    }
+
+    location /api/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+
+    location /healthz/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://doocall_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+}
+
+# ── 5. MinIO public host: files.${DOMAIN_ROOT} (presigned URLs) ────────────
+server {
+    listen 80;
+    server_name files.${DOMAIN_ROOT} files.doocall.local;
+
+    client_max_body_size 500m;
+
+    location / {
+        proxy_pass http://minio:9000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+}

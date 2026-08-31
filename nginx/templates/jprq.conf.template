@@ -1,0 +1,66 @@
+# Public demo over jprq tunnels (https://<name>.jprq.live → localhost:80).
+# Exact server_names below always win over the *.${DOMAIN_ROOT} wildcard.
+
+# Landing on the tunnel host
+server {
+    listen 80;
+    server_name ${JPRQ_LANDING_HOST};
+
+    client_max_body_size 25m;
+
+    location /api/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location /healthz/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://doocall_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+
+# All three portals (cabinet/admin/partner, path-routed) on the tunnel host
+server {
+    listen 80;
+    server_name ${JPRQ_APP_HOST};
+
+    client_max_body_size 25m;
+
+    location = / {
+        return 302 /cabinet;
+    }
+
+    location /api/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location /healthz/ {
+        proxy_pass http://doocall_backend;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://doocall_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}

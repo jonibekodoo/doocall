@@ -1,0 +1,174 @@
+# dooCall — development stack (master spec §10).
+# `make up` builds + starts every service; healthchecks gate readiness.
+name: doocall
+
+x-backend-env: &backend-env
+  env_file: .env
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-doocall}
+      POSTGRES_USER: ${POSTGRES_USER:-doocall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doocall}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Host bind is separate from the in-network port — many devs run a
+      # local Postgres on 5432 already.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-doocall} -d ${POSTGRES_DB:-doocall}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - miniodata:/data
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: create the recordings bucket once MinIO is live.
+  minio-setup:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
+      mc mb --ignore-existing local/${MINIO_BUCKET:-doocall-recordings} &&
+      echo 'bucket ready';
+      "
+    restart: "no"
+
+  backend:
+    build: ./backend
+    <<: *backend-env
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      # Host bind decoupled from in-network port (8000 often taken by other stacks).
+      - "${BACKEND_HOST_PORT:-8001}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  celery-worker:
+    build: ./backend
+    <<: *backend-env
+    command: celery -A doocall worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  celery-beat:
+    build: ./backend
+    <<: *backend-env
+    command: celery -A doocall beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    env_file: .env
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  nginx:
+    image: nginx:1.27-alpine
+    # Domain-driven config: envsubst renders templates/*.template → conf.d.
+    environment:
+      DOMAIN_ROOT: ${DOMAIN_ROOT:-localhost}
+      DOMAIN_APP: ${DOMAIN_APP:-app.localhost}
+      DOMAIN_ADMIN: ${DOMAIN_ADMIN:-app.admin.localhost}
+      JPRQ_LANDING_HOST: ${JPRQ_LANDING_HOST:-doocall.jprq.live}
+      JPRQ_APP_HOST: ${JPRQ_APP_HOST:-doocall-app.jprq.live}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+    healthcheck:
+      # 127.0.0.1, not localhost: alpine resolves localhost to ::1 but nginx
+      # listens on IPv4 only.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # web UI
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:8025 >/dev/null 2>&1 || nc -z localhost 1025"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  miniodata:
+  frontend_node_modules:
+  frontend_next:

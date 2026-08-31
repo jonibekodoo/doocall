@@ -1,0 +1,87 @@
+[project]
+name = "doocall-backend"
+version = "0.1.0"
+description = "dooCall (CallCloud) backend — Django 5 call-recording SaaS"
+requires-python = ">=3.11"
+
+# ── Ruff (lint + format) ───────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = ["migrations", "staticfiles"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ", "C4", "SIM"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/*" = ["S101"]
+# Contract §5.2: name fields MUST distinguish null ("not resolved") from "".
+"apps/calls/models.py" = ["DJ001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "doocall"]
+
+# ── mypy ───────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+plugins = ["mypy_django_plugin.main"]
+exclude = ['migrations/', 'staticfiles/']
+
+[[tool.mypy.overrides]]
+module = ["apps.*.tests.*", "conftest"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_any_generics = false
+disable_error_code = ["no-any-return", "var-annotated"]
+
+[[tool.mypy.overrides]]
+module = ["openpyxl", "openpyxl.*"]
+ignore_missing_imports = true
+
+# Admin/serializer classes: django/DRF stub generics (ModelAdmin[M],
+# Serializer[T]) are not subscriptable at runtime without django-stubs-ext;
+# skip the generic-arg requirement in these declarative modules.
+[[tool.mypy.overrides]]
+module = ["apps.*.admin", "apps.api.serializers", "apps.web.serializers"]
+disallow_any_generics = false
+
+# Celery @shared_task decorators are untyped.
+[[tool.mypy.overrides]]
+module = ["apps.billing.tasks", "apps.web.tasks"]
+disable_error_code = ["misc"]
+
+# Celery ships no type stubs.
+[[tool.mypy.overrides]]
+module = ["celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["doocall.celery"]
+disallow_untyped_defs = false
+disable_error_code = ["misc"]
+
+[tool.django-stubs]
+django_settings_module = "doocall.settings"
+
+# ── pytest ─────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "doocall.settings"
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: tests that require live infra (Postgres/Redis/MinIO)",
+    "perf: timing-sensitive performance guards (skipped when CI env var is set)",
+]
+
+# ── coverage ───────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["apps", "doocall"]
+omit = ["*/migrations/*", "*/tests/*", "manage.py", "*/wsgi.py", "*/asgi.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

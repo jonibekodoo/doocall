@@ -1,0 +1,262 @@
+"""Billing engine — seat counting, invoice math, subscription state machine.
+
+Pricing rules (master spec §4, executed from the Phase-4 task message):
+* seat count   = ACTIVE operators of the company, counted at invoice time;
+* period total = seats × price snapshot held on the Subscription;
+* price changes apply NEXT period only: invoices for a completed period use
+  the snapshot taken when that period started; the snapshot refreshes to the
+  current PricingSetting only when the period rolls over.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import cast
+
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
+
+from apps.accounts.models import OperatorProfile, User
+from apps.companies.models import Company
+from apps.core.models import AuditLog
+
+from .models import Invoice, InvoiceLine, Payment, PricingSetting, Subscription
+
+PERIOD_DAYS = 30
+
+
+class InvalidTransition(Exception):
+    """Raised on a disallowed subscription state change."""
+
+
+# trial → active → suspended ⇄ active; anything (except canceled) → canceled.
+_ALLOWED: dict[str, set[str]] = {
+    Subscription.Status.TRIAL: {
+        Subscription.Status.ACTIVE,
+        Subscription.Status.SUSPENDED,
+        Subscription.Status.CANCELED,
+    },
+    Subscription.Status.ACTIVE: {Subscription.Status.SUSPENDED, Subscription.Status.CANCELED},
+    Subscription.Status.SUSPENDED: {Subscription.Status.ACTIVE, Subscription.Status.CANCELED},
+    Subscription.Status.CANCELED: set(),
+}
+
+
+def _transition(subscription: Subscription, new_status: str) -> None:
+    if new_status not in _ALLOWED[subscription.status]:
+        raise InvalidTransition(f"{subscription.status} → {new_status} is not allowed")
+    subscription.status = new_status
+
+
+def effective_price(company: Company) -> int:
+    """Company-specific PricingSetting, else global row, else settings default."""
+    row = (
+        PricingSetting.objects.filter(company=company).first()
+        or PricingSetting.objects.filter(company=None).first()
+    )
+    if row is not None:
+        return row.price_per_operator_uzs
+    return int(settings.DEFAULT_PRICE_PER_OPERATOR_UZS)
+
+
+def effective_trial_days(company: Company | None = None) -> int:
+    row = PricingSetting.objects.filter(company=None).first()
+    if row is not None:
+        return row.trial_days
+    return int(settings.TRIAL_DAYS)
+
+
+def seat_count(company: Company) -> int:
+    count: int = OperatorProfile.all_objects.filter(company=company, is_active=True).count()
+    return count
+
+
+def monthly_total(company: Company, price: int | None = None) -> int:
+    return seat_count(company) * (price if price is not None else effective_price(company))
+
+
+def _audit(
+    company: Company | None, action: str, actor: User | None = None, **changes: object
+) -> None:
+    AuditLog.objects.create(
+        company=company,
+        actor=actor,
+        action=action,
+        target_model="billing.Subscription",
+        target_id=str(company.pk) if company else "",
+        changes=dict(changes),
+    )
+
+
+@transaction.atomic
+def activate(
+    subscription: Subscription,
+    *,
+    now: datetime | None = None,
+    actor: User | None = None,
+    period_days: int = PERIOD_DAYS,
+) -> Subscription:
+    """trial/suspended → active. Starts a fresh paid period at current pricing."""
+    now = now or timezone.now()
+    _transition(subscription, Subscription.Status.ACTIVE)
+    subscription.price_per_operator_uzs = effective_price(subscription.company)
+    subscription.current_period_start = now
+    subscription.current_period_end = now + timedelta(days=period_days)
+    subscription.save()
+
+    subscription.company.status = Company.Status.ACTIVE
+    subscription.company.save(update_fields=["status", "updated_at"])
+    _audit(subscription.company, "subscription.activated", actor)
+    return subscription
+
+
+@transaction.atomic
+def suspend(subscription: Subscription, *, reason: str, actor: User | None = None) -> Subscription:
+    _transition(subscription, Subscription.Status.SUSPENDED)
+    subscription.save(update_fields=["status", "updated_at"])
+    subscription.company.status = Company.Status.SUSPENDED
+    subscription.company.save(update_fields=["status", "updated_at"])
+    _audit(subscription.company, "subscription.suspended", actor, reason=reason)
+    return subscription
+
+
+@transaction.atomic
+def cancel(subscription: Subscription, *, actor: User | None = None) -> Subscription:
+    _transition(subscription, Subscription.Status.CANCELED)
+    subscription.save(update_fields=["status", "updated_at"])
+    subscription.company.status = Company.Status.SUSPENDED
+    subscription.company.save(update_fields=["status", "updated_at"])
+    _audit(subscription.company, "subscription.canceled", actor)
+    return subscription
+
+
+@transaction.atomic
+def generate_invoice(
+    subscription: Subscription,
+    *,
+    period_start: datetime,
+    period_end: datetime,
+    now: datetime | None = None,
+) -> Invoice:
+    """Invoice the COMPLETED period at the subscription's price snapshot."""
+    now = now or timezone.now()
+    company = subscription.company
+    seats = seat_count(company)
+    unit_price = subscription.price_per_operator_uzs  # snapshot — NOT current pricing
+    total = seats * unit_price
+
+    invoice = Invoice.all_objects.create(
+        company=company,
+        subscription=subscription,
+        status=Invoice.Status.PENDING,
+        period_start=period_start.date(),
+        period_end=period_end.date(),
+        total_uzs=total,
+        issued_at=now,
+        due_at=now + timedelta(days=7),
+    )
+    InvoiceLine.objects.create(
+        invoice=invoice,
+        description=(
+            f"dooCall subscription {period_start.date()} – {period_end.date()}: "
+            f"{seats} operator(s) × {unit_price} UZS"
+        ),
+        quantity=seats,
+        unit_price_uzs=unit_price,
+        amount_uzs=total,
+    )
+    _audit(company, "invoice.generated", total_uzs=total, seats=seats, number=invoice.number)
+    return cast(Invoice, invoice)
+
+
+@transaction.atomic
+def roll_period(
+    subscription: Subscription,
+    *,
+    now: datetime | None = None,
+    period_days: int = PERIOD_DAYS,
+) -> Invoice:
+    """At period end: invoice the finished period, then start the next one.
+
+    The NEW period picks up the CURRENT PricingSetting — this is exactly the
+    "price changes apply next period only" rule.
+    """
+    now = now or timezone.now()
+    if subscription.current_period_start is None or subscription.current_period_end is None:
+        raise InvalidTransition("subscription has no active period to invoice")
+
+    invoice = generate_invoice(
+        subscription,
+        period_start=subscription.current_period_start,
+        period_end=subscription.current_period_end,
+        now=now,
+    )
+    subscription.current_period_start = subscription.current_period_end
+    subscription.current_period_end = subscription.current_period_end + timedelta(days=period_days)
+    subscription.price_per_operator_uzs = effective_price(subscription.company)
+    subscription.save(
+        update_fields=[
+            "current_period_start",
+            "current_period_end",
+            "price_per_operator_uzs",
+            "updated_at",
+        ]
+    )
+    return invoice
+
+
+@transaction.atomic
+def apply_payment(
+    payment: Payment,
+    *,
+    actor: User | None = None,
+    now: datetime | None = None,
+) -> Payment:
+    """A successful payment: mark approved, settle invoice, (re)activate company.
+
+    Used by BOTH the admin manual-approval action and provider webhooks.
+    """
+    now = now or timezone.now()
+    if payment.status == Payment.Status.APPROVED:
+        return payment  # idempotent — webhook retries must not double-extend
+
+    payment.status = Payment.Status.APPROVED
+    payment.approved_by = actor
+    payment.approved_at = now
+    payment.save(update_fields=["status", "approved_by", "approved_at"])
+
+    if payment.invoice and payment.invoice.status != Invoice.Status.PAID:
+        payment.invoice.status = Invoice.Status.PAID
+        payment.invoice.save(update_fields=["status"])
+
+    subscription = Subscription.all_objects.filter(company=payment.company).first()
+    if subscription is not None:
+        if subscription.status in (
+            Subscription.Status.TRIAL,
+            Subscription.Status.SUSPENDED,
+        ):
+            activate(subscription, now=now, actor=actor)
+        else:
+            # Already active → extend the running period by one billing cycle.
+            base = subscription.current_period_end or now
+            subscription.current_period_end = max(base, now) + timedelta(days=PERIOD_DAYS)
+            subscription.save(update_fields=["current_period_end", "updated_at"])
+            subscription.company.status = Company.Status.ACTIVE
+            subscription.company.save(update_fields=["status", "updated_at"])
+
+    _audit(
+        payment.company,
+        "payment.applied",
+        actor,
+        provider=payment.provider,
+        amount_uzs=payment.amount_uzs,
+        payment_id=payment.pk,
+    )
+
+    # Cashback engine (A.5): one idempotent accrual per successful payment,
+    # regardless of provider (manual admin approval, Payme, Click).
+    from apps.partners.services import accrue_cashback
+
+    accrue_cashback(payment, now=now)
+    return payment

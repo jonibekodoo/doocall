@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/* ────────────────────────────────────────────────────────────────────────
+   dooCall design tokens — master spec §9 direction: modern, confident,
+   NOT a dated CRM clone. One distinctive accent (deep teal), a neutral
+   scale with genuine hierarchy, restrained radii and soft shadows.
+   Light theme on :root, dark theme via [data-theme="dark"].
+   ──────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Accent — deep teal family (NOT default blue-500) */
+  --accent-50: #effaf8;
+  --accent-100: #d7f2ee;
+  --accent-200: #b0e4de;
+  --accent-300: #7dcfc8;
+  --accent-400: #47b3ac;
+  --accent-500: #2a9691;
+  --accent-600: #1f7873;
+  --accent-700: #1c605d;
+  --accent-800: #1a4d4b;
+  --accent-900: #19403f;
+  --accent: var(--accent-600);
+  --accent-fg: #ffffff;
+
+  /* Warm red — missed calls / destructive */
+  --danger-500: #e05d47;
+  --danger-600: #c74a35;
+  --danger-fg: #ffffff;
+
+  /* Status extras */
+  --success: var(--accent-500);
+  --warning: #d99a2b;
+
+  /* Neutrals — slightly warm gray with real steps */
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #f1f1ee;
+  --surface-3: #e7e7e3;
+  --border: #dededa;
+  --border-strong: #c9c9c4;
+  --fg: #1c1c1a;
+  --fg-muted: #5c5c57;
+  --fg-faint: #8e8e88;
+
+  /* Radius scale */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* Shadows — soft, low-contrast */
+  --shadow-sm: 0 1px 2px rgb(23 23 21 / 0.05);
+  --shadow-md: 0 2px 8px rgb(23 23 21 / 0.07), 0 1px 2px rgb(23 23 21 / 0.05);
+  --shadow-lg: 0 8px 28px rgb(23 23 21 / 0.11), 0 2px 8px rgb(23 23 21 / 0.06);
+
+  /* Spacing base (4px grid) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* Shell */
+  --sidebar-w: 236px;
+  --sidebar-w-collapsed: 64px;
+  --topbar-h: 56px;
+}
+
+[data-theme="dark"] {
+  --bg: #131514;
+  --surface: #1b1e1d;
+  --surface-2: #222625;
+  --surface-3: #2b302e;
+  --border: #313634;
+  --border-strong: #434a47;
+  --fg: #edefee;
+  --fg-muted: #a5aba8;
+  --fg-faint: #757b78;
+
+  --accent: var(--accent-400);
+  --accent-fg: #0c2b29;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-md: 0 2px 10px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 32px rgb(0 0 0 / 0.5);
+}
+
+/* Map tokens into Tailwind v4 theme — usable as bg-surface, text-accent… */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-100);
+  --color-danger: var(--danger-500);
+  --color-danger-strong: var(--danger-600);
+  --color-warning: var(--warning);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-display), var(--font-inter), sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular numerals — durations, phone numbers, money */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Focus ring in accent, not browser default */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Thin scrollbars inside panels */
+.panel-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+}
