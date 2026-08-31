@@ -328,7 +328,11 @@
       "title": "Companies",
       "statusActive": "Active",
       "statusTrial": "Trial",
+      "statusExpired": "Trial expired",
       "statusSuspended": "Suspended",
+      "colEnds": "Ends",
+      "trialEndsAt": "trial ends {date}",
+      "trialExpiredAt": "trial expired {date}",
       "colSeats": "Operators",
       "colAcquired": "Acquisition",
       "colCreated": "Created"
@@ -419,6 +423,8 @@
     "companyDetail": {
       "back": "Companies",
       "subscription": "subscription",
+      "trialEndsAt": "trial ends {date}",
+      "trialExpiredAt": "trial expired {date}",
       "operatorsCount": "operators",
       "integrator": "Integrator",
       "edit": "Edit",

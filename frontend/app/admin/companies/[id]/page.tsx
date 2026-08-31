@@ -248,6 +248,21 @@ export default function AdminCompanyDetailPage() {
             {company.status} · {t("subscription")}:{" "}
             {company.subscription_status ?? "—"} · {t("operatorsCount")}:{" "}
             <b className="tnum">{company.seats}</b>
+            {company.status === "trial" && company.trial_ends_at && (
+              <span
+                className={
+                  company.trial_expired ? "ml-2 font-semibold text-danger" : "ml-2"
+                }
+              >
+                {company.trial_expired
+                  ? t("trialExpiredAt", {
+                      date: company.trial_ends_at.slice(0, 10),
+                    })
+                  : t("trialEndsAt", {
+                      date: company.trial_ends_at.slice(0, 10),
+                    })}
+              </span>
+            )}
             {company.integrator_id && (
               <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs font-semibold text-accent">
                 {t("integrator")} #{company.integrator_id} ·{" "}

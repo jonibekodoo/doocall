@@ -44,6 +44,7 @@ export default function AdminCompaniesPage() {
           <option value="">{t("common.allStatuses")}</option>
           <option value="active">{t("companies.statusActive")}</option>
           <option value="trial">{t("companies.statusTrial")}</option>
+          <option value="expired">{t("companies.statusExpired")}</option>
           <option value="suspended">{t("companies.statusSuspended")}</option>
         </select>
       </div>
@@ -54,6 +55,7 @@ export default function AdminCompaniesPage() {
             <tr>
               <th className="px-3 py-2 text-left">{t("common.company")}</th>
               <th className="px-3 py-2 text-left">{t("common.status")}</th>
+              <th className="px-3 py-2 text-left">{t("companies.colEnds")}</th>
               <th className="px-3 py-2 text-right">
                 {t("companies.colSeats")}
               </th>
@@ -69,7 +71,7 @@ export default function AdminCompaniesPage() {
             {isPending
               ? Array.from({ length: 8 }).map((_, index) => (
                   <tr key={index}>
-                    <td colSpan={5} className="px-3 py-2.5">
+                    <td colSpan={6} className="px-3 py-2.5">
                       <div className="h-3.5 animate-pulse rounded bg-surface-3" />
                     </td>
                   </tr>
@@ -91,11 +93,28 @@ export default function AdminCompaniesPage() {
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 text-xs font-medium",
-                          STATUS_TONES[company.status] ?? "bg-surface-3",
+                          company.trial_expired
+                            ? "bg-danger/10 text-danger"
+                            : (STATUS_TONES[company.status] ?? "bg-surface-3"),
                         )}
                       >
-                        {company.status}
+                        {company.trial_expired
+                          ? t("companies.statusExpired")
+                          : company.status}
                       </span>
+                    </td>
+                    <td
+                      className={cn(
+                        "tnum px-3 py-2.5 text-xs",
+                        company.trial_expired
+                          ? "font-medium text-danger"
+                          : "text-fg-muted",
+                      )}
+                    >
+                      {(company.status === "trial"
+                        ? company.trial_ends_at
+                        : company.period_end
+                      )?.slice(0, 10) ?? "—"}
                     </td>
                     <td className="tnum px-3 py-2.5 text-right">
                       {company.seats}

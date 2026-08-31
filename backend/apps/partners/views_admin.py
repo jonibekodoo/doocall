@@ -58,6 +58,11 @@ def _company_body(company: Company) -> dict[str, Any]:
         "slug": company.slug,
         "status": company.status,
         "trial_ends_at": company.trial_ends_at.isoformat() if company.trial_ends_at else None,
+        "trial_expired": (
+            company.status == Company.Status.TRIAL
+            and company.trial_ends_at is not None
+            and company.trial_ends_at < timezone.now()
+        ),
         "created_at": company.created_at.isoformat(),
         "acquired_via": company.acquired_via,
         "integrator_id": company.integrator_id,
@@ -135,11 +140,14 @@ class AdminDashboardView(StaffView):
 
 
 class AdminCompaniesView(StaffView):
-    @extend_schema(summary="Companies list (status/q filters)")
+    @extend_schema(summary="Companies list (status/q filters; status=expired → lapsed trials)")
     def get(self, request: Request) -> Response:
         qs = Company.objects.all().order_by("-created_at")
         if status_f := request.query_params.get("status"):
-            qs = qs.filter(status=status_f)
+            if status_f == "expired":
+                qs = qs.filter(status=Company.Status.TRIAL, trial_ends_at__lt=timezone.now())
+            else:
+                qs = qs.filter(status=status_f)
         if q := request.query_params.get("q", "").strip():
             qs = qs.filter(Q(name__icontains=q) | Q(slug__icontains=q))
         return Response({"success": True, "companies": [_company_body(c) for c in qs[:200]]})

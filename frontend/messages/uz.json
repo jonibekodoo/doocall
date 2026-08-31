@@ -328,7 +328,11 @@
       "title": "Kompaniyalar",
       "statusActive": "Faol",
       "statusTrial": "Trial",
+      "statusExpired": "Trial tugagan",
       "statusSuspended": "To'xtatilgan",
+      "colEnds": "Tugash sanasi",
+      "trialEndsAt": "trial {date} gacha",
+      "trialExpiredAt": "trial {date} da tugagan",
       "colSeats": "Operatorlar",
       "colAcquired": "Jalb qilish",
       "colCreated": "Yaratilgan"
@@ -419,6 +423,8 @@
     "companyDetail": {
       "back": "Kompaniyalar",
       "subscription": "obuna",
+      "trialEndsAt": "trial {date} gacha",
+      "trialExpiredAt": "trial {date} da tugagan",
       "operatorsCount": "operatorlar",
       "integrator": "Integrator",
       "edit": "Tahrirlash",

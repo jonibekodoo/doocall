@@ -34,6 +34,31 @@ class TestAdminPortalFlows:
         assert detail["slug"] == "bound-co"
         assert "operators" in detail and "payments" in detail
 
+    def test_companies_expired_filter(
+        self, platform_admin: User, bound_company: Company
+    ) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        lapsed = make_company("lapsed-co")
+        lapsed.status = Company.Status.TRIAL
+        lapsed.trial_ends_at = timezone.now() - timedelta(days=1)
+        lapsed.save(update_fields=["status", "trial_ends_at"])
+        fresh = make_company("fresh-co")
+        fresh.status = Company.Status.TRIAL
+        fresh.trial_ends_at = timezone.now() + timedelta(days=7)
+        fresh.save(update_fields=["status", "trial_ends_at"])
+
+        client = client_for(platform_admin)
+        listing = client.get("/api/admin/v1/companies?status=expired").json()
+        assert [c["slug"] for c in listing["companies"]] == ["lapsed-co"]
+        assert listing["companies"][0]["trial_expired"] is True
+
+        trials = client.get("/api/admin/v1/companies?status=trial").json()
+        by_slug = {c["slug"]: c["trial_expired"] for c in trials["companies"]}
+        assert by_slug == {"lapsed-co": True, "fresh-co": False}
+
     def test_company_lifecycle_actions(self, platform_admin: User, bound_company: Company) -> None:
         client = client_for(platform_admin)
         base = f"/api/admin/v1/companies/{bound_company.pk}"

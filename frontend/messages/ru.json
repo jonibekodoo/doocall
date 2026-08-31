@@ -328,7 +328,11 @@
       "title": "Компании",
       "statusActive": "Активные",
       "statusTrial": "Триал",
+      "statusExpired": "Триал истёк",
       "statusSuspended": "Приостановлены",
+      "colEnds": "Истекает",
+      "trialEndsAt": "триал до {date}",
+      "trialExpiredAt": "триал истёк {date}",
       "colSeats": "Операторов",
       "colAcquired": "Привлечение",
       "colCreated": "Создана"
@@ -419,6 +423,8 @@
     "companyDetail": {
       "back": "Компании",
       "subscription": "подписка",
+      "trialEndsAt": "триал до {date}",
+      "trialExpiredAt": "триал истёк {date}",
       "operatorsCount": "операторов",
       "integrator": "Интегратор",
       "edit": "Редактировать",

@@ -35,6 +35,7 @@ export interface AdminCompanyRow {
   slug: string;
   status: string;
   trial_ends_at: string | null;
+  trial_expired: boolean;
   created_at: string;
   acquired_via: string;
   integrator_id: number | null;
