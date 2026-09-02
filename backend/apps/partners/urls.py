@@ -8,6 +8,10 @@ admin_urlpatterns = [
     path("companies", A.AdminCompaniesView.as_view()),
     path("companies/<int:company_id>", A.AdminCompanyDetailView.as_view()),
     path("companies/<int:company_id>/reassign", A.AdminCompanyReassignView.as_view()),
+    path(
+        "companies/<int:company_id>/users/<int:user_id>/password",
+        A.AdminCompanyUserPasswordView.as_view(),
+    ),
     path("companies/<int:company_id>/<str:action>", A.AdminCompanyActionView.as_view()),
     path("payments", A.AdminPaymentsView.as_view()),
     path("payments/<int:payment_id>/approve", A.AdminPaymentApproveView.as_view()),

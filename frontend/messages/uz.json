@@ -451,7 +451,13 @@
       "impersonate": "Mijoz sifatida kirish",
       "operators": "Operatorlar",
       "payments": "To'lovlar",
-      "inactive": "o'chiq"
+      "inactive": "o'chiq",
+      "users": "Kabinet foydalanuvchilari",
+      "companyAdmin": "admin",
+      "resetPassword": "Parolni almashtirish",
+      "newPassword": "Yangi parol (kamida 8 belgi)",
+      "generatePassword": "Yaratish",
+      "passwordSaved": "Parol yangilandi"
     },
     "integratorDetail": {
       "back": "Integratorlar",

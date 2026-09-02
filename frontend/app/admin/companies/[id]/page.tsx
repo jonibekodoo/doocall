@@ -3,7 +3,7 @@
 /** Company detail: subscription, seats, payments, actions, edit, impersonation. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Eye, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, KeyRound, Pencil, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -15,6 +15,7 @@ import {
   deleteAdminCompany,
   fetchAdminCompany,
   impersonate,
+  resetCompanyUserPassword,
   updateAdminCompany,
 } from "@/lib/api/admin";
 import { setAccessToken } from "@/lib/api/client";
@@ -224,6 +225,77 @@ function DeleteCompanyDialog({
   );
 }
 
+function ResetPasswordDialog({
+  email,
+  onClose,
+  onSubmit,
+}: {
+  email: string;
+  onClose: () => void;
+  onSubmit: (password: string) => void;
+}) {
+  const t = useTranslations("admin.companyDetail");
+  const [password, setPassword] = useState("");
+  const generate = () => {
+    const alphabet =
+      "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    setPassword(
+      Array.from(bytes, (b) => alphabet[b % alphabet.length]).join(""),
+    );
+  };
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-4"
+      role="dialog"
+    >
+      <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-5 shadow-lg">
+        <h2 className="mb-1 text-base font-semibold">{t("resetPassword")}</h2>
+        <p className="mb-3 text-sm text-fg-muted">{email}</p>
+        <label className="mb-2 block text-sm">
+          <span className="mb-1 flex items-center justify-between text-xs text-fg-muted">
+            {t("newPassword")}
+            <button
+              type="button"
+              onClick={generate}
+              data-testid="password-generate"
+              className="font-semibold text-accent hover:underline"
+            >
+              {t("generatePassword")}
+            </button>
+          </span>
+          <input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            data-testid="password-input"
+            autoComplete="off"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono"
+          />
+        </label>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-sm"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            data-testid="password-submit"
+            disabled={password.length < 8}
+            onClick={() => onSubmit(password)}
+            className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
+          >
+            {t("save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminCompanyDetailPage() {
   const t = useTranslations("admin.companyDetail");
   const params = useParams<{ id: string }>();
@@ -235,6 +307,10 @@ export default function AdminCompanyDetailPage() {
   const [extendOpen, setExtendOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<{
+    id: number;
+    email: string;
+  } | null>(null);
 
   const { data, isPending } = useQuery({
     queryKey: ["a-company", companyId],
@@ -269,6 +345,18 @@ export default function AdminCompanyDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["a-companies"] });
       useToastStore.getState().push({ kind: "success", text: t("deleted") });
       router.push("/admin/companies");
+    },
+    onError: (error: Error) =>
+      useToastStore.getState().push({ kind: "error", text: error.message }),
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: ({ userId, password }: { userId: number; password: string }) =>
+      resetCompanyUserPassword(companyId, userId, password),
+    onSuccess: () => {
+      useToastStore
+        .getState()
+        .push({ kind: "success", text: t("passwordSaved") });
     },
     onError: (error: Error) =>
       useToastStore.getState().push({ kind: "error", text: error.message }),
@@ -400,6 +488,52 @@ export default function AdminCompanyDetailPage() {
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <section className="rounded-lg border border-border bg-surface">
           <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+            {t("users")}
+          </p>
+          <ul className="divide-y divide-border">
+            {company.users.map((cabinetUser) => (
+              <li
+                key={cabinetUser.id}
+                className="flex items-center gap-2 px-4 py-2 text-sm"
+              >
+                <span className="flex-1 truncate">{cabinetUser.email}</span>
+                {cabinetUser.is_company_admin && (
+                  <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">
+                    {t("companyAdmin")}
+                  </span>
+                )}
+                {!cabinetUser.is_active && (
+                  <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs">
+                    {t("inactive")}
+                  </span>
+                )}
+                {isSuper && (
+                  <button
+                    type="button"
+                    data-testid={`reset-password-${cabinetUser.id}`}
+                    onClick={() =>
+                      setPasswordUser({
+                        id: cabinetUser.id,
+                        email: cabinetUser.email,
+                      })
+                    }
+                    aria-label={t("resetPassword")}
+                    title={t("resetPassword")}
+                    className="grid size-7 place-items-center rounded-md text-fg-muted hover:bg-surface-2 hover:text-accent"
+                  >
+                    <KeyRound className="size-4" />
+                  </button>
+                )}
+              </li>
+            ))}
+            {company.users.length === 0 && (
+              <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
+            )}
+          </ul>
+        </section>
+
+        <section className="rounded-lg border border-border bg-surface">
+          <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
             {t("operators")}
           </p>
           <ul className="divide-y divide-border">
@@ -457,6 +591,16 @@ export default function AdminCompanyDetailPage() {
           onSubmit={(days, reason) => {
             act.mutate({ action: "extend-trial", body: { days, reason } });
             setExtendOpen(false);
+          }}
+        />
+      )}
+      {passwordUser && (
+        <ResetPasswordDialog
+          email={passwordUser.email}
+          onClose={() => setPasswordUser(null)}
+          onSubmit={(password) => {
+            resetPassword.mutate({ userId: passwordUser.id, password });
+            setPasswordUser(null);
           }}
         />
       )}

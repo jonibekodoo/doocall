@@ -120,8 +120,25 @@ export const fetchAdminCompany = (id: number) =>
         is_active: boolean;
       }>;
       payments: AdminPaymentRow[];
+      users: Array<{
+        id: number;
+        email: string;
+        is_company_admin: boolean;
+        is_active: boolean;
+        last_login: string | null;
+      }>;
     };
   }>(`/companies/${id}`);
+
+export const resetCompanyUserPassword = (
+  companyId: number,
+  userId: number,
+  password: string,
+) =>
+  post<{ success: boolean }>(
+    abs(`/companies/${companyId}/users/${userId}/password`),
+    { password },
+  );
 
 export const updateAdminCompany = (
   id: number,

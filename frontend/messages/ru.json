@@ -451,7 +451,13 @@
       "impersonate": "Войти как клиент",
       "operators": "Операторы",
       "payments": "Платежи",
-      "inactive": "откл."
+      "inactive": "откл.",
+      "users": "Пользователи кабинета",
+      "companyAdmin": "админ",
+      "resetPassword": "Сменить пароль",
+      "newPassword": "Новый пароль (мин. 8 символов)",
+      "generatePassword": "Сгенерировать",
+      "passwordSaved": "Пароль обновлён"
     },
     "integratorDetail": {
       "back": "Интеграторы",

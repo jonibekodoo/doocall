@@ -451,7 +451,13 @@
       "impersonate": "Log in as client",
       "operators": "Operators",
       "payments": "Payments",
-      "inactive": "off"
+      "inactive": "off",
+      "users": "Cabinet users",
+      "companyAdmin": "admin",
+      "resetPassword": "Change password",
+      "newPassword": "New password (min 8 characters)",
+      "generatePassword": "Generate",
+      "passwordSaved": "Password updated"
     },
     "integratorDetail": {
       "back": "Integrators",

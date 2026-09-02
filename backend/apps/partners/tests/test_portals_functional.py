@@ -95,6 +95,45 @@ class TestAdminPortalFlows:
         log = AuditLog.objects.filter(action="admin.company_deleted").first()
         assert log is not None and log.changes["slug"] == "doomed-co"
 
+    def test_company_user_password_reset(
+        self, superadmin: User, platform_admin: User, bound_company: Company
+    ) -> None:
+        from apps.core.models import AuditLog
+
+        target = User.objects.create_user(
+            username="owner@bound.uz",
+            email="owner@bound.uz",
+            password="old-password-1",
+            company=bound_company,
+            is_company_admin=True,
+        )
+        base = f"/api/admin/v1/companies/{bound_company.pk}/users/{target.pk}/password"
+
+        detail = (
+            client_for(superadmin).get(f"/api/admin/v1/companies/{bound_company.pk}").json()
+        )["company"]
+        assert any(u["id"] == target.pk and u["is_company_admin"] for u in detail["users"])
+
+        assert (
+            client_for(platform_admin)
+            .post(base, {"password": "new-password-1"}, format="json")
+            .status_code
+            == 403
+        )
+        assert (
+            client_for(superadmin).post(base, {"password": "short"}, format="json").status_code
+            == 400
+        )
+
+        response = client_for(superadmin).post(
+            base, {"password": "new-password-1"}, format="json"
+        )
+        assert response.status_code == 200
+        target.refresh_from_db()
+        assert target.check_password("new-password-1")
+        log = AuditLog.objects.filter(action="admin.user_password_reset").first()
+        assert log is not None and log.changes == {"email": "owner@bound.uz"}
+
     def test_payment_approve_fires_cashback(
         self, platform_admin: User, bound_company: Company, integrator: Integrator
     ) -> None:

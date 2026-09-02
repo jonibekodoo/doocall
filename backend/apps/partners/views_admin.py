@@ -175,6 +175,16 @@ class AdminCompanyDetailView(StaffView):
             }
             for p in Payment.all_objects.filter(company=company)[:20]
         ]
+        body["users"] = [
+            {
+                "id": u.pk,
+                "email": u.email or u.username,
+                "is_company_admin": u.is_company_admin,
+                "is_active": u.is_active,
+                "last_login": u.last_login.isoformat() if u.last_login else None,
+            }
+            for u in User.objects.filter(company=company).order_by("-is_company_admin", "id")
+        ]
         return Response({"success": True, "company": body})
 
     @extend_schema(summary="Edit company (name, trial end, retention)")
@@ -259,6 +269,32 @@ class AdminCompanyDetailView(StaffView):
         company.delete()
         purge_company_storage.delay(pk)
         return Response({"success": True, "deleted": stats})
+
+
+class AdminCompanyUserPasswordView(SuperadminView):
+    @extend_schema(summary="Set a new cabinet password for a company user (superadmin)")
+    def post(self, request: Request, company_id: int, user_id: int) -> Response:
+        company = Company.objects.filter(pk=company_id).first()
+        if company is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "company not found", 404)
+        user = User.objects.filter(pk=user_id, company=company).first()
+        if user is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "user not found", 404)
+        password = request.data.get("password") or ""
+        if len(password) < 8:
+            raise ApiError(ErrorCode.MISSING_FIELD, "password(≥8) required", 400)
+        user.set_password(password)
+        user.save(update_fields=["password"])
+        # Never write the password itself to the audit trail.
+        AuditLog.objects.create(
+            company=company,
+            actor=cast(User, request.user),
+            action="admin.user_password_reset",
+            target_model="accounts.User",
+            target_id=str(user.pk),
+            changes={"email": user.email or user.username},
+        )
+        return Response({"success": True})
 
 
 class AdminCompanyActionView(StaffView):
