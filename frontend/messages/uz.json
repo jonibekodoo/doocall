@@ -162,7 +162,51 @@
     "opPhone2": "Telefon (SIM 2)",
     "opGroup": "Guruh",
     "opNoGroup": "Guruhsiz",
-    "newOperatorTitle": "Yangi operator"
+    "newOperatorTitle": "Yangi operator",
+    "crmSystems": "CRM tizimlari",
+    "apiParams": "API parametrlari",
+    "apiAddress": "Sizning API manzilingiz",
+    "apiKeyLabel": "Sizning API kalitingiz",
+    "apiParamsNote": "API manzil va kalitni tashqi tizimlar sozlamalarida ko'rsating — ular DooCall bilan shu orqali integratsiya qilinadi. Diqqat: kalit almashtirilgach eski kalit ishlamay qoladi, uni ulangan tizimlarda ham yangilang.",
+    "apiDocsLink": "Dasturchilar uchun API hujjatlari"
+  },
+  "crm": {
+    "pageTitle": "Integratsiya",
+    "back": "Integratsiyalar ro'yxatiga qaytish",
+    "saved": "Saqlandi",
+    "testOk": "Ulanish ishlayapti",
+    "testFail": "Ulanishda xatolik",
+    "enabled": "Integratsiya yoqilgan — har bir qo'ng'iroq shu CRM'ga yuborilsin",
+    "connect": "Ulash",
+    "test": "Ulanishni tekshirish",
+    "statusOk": "ishlayapti",
+    "statusError": "xatolik",
+    "lastDelivery": "Oxirgi yuborish",
+    "amocrm": {
+      "info": "CRM'ga administrator sifatida kiring, uzoq muddatli token yarating (Sozlamalar → Integratsiyalar → API), so'ng quyida akkaunt manzili va tokenni kiritib, Ulash tugmasini bosing. Har bir tugagan qo'ng'iroq telefon raqami bo'yicha kontaktga biriktiriladi, audio yozuv havolasi bilan.",
+      "regionLabel": "Qaysi CRM ulanishini tanlang:",
+      "regionRu": "Rossiya versiyasi akkaunti — amocrm.ru",
+      "regionKommo": "Xalqaro versiya akkaunti — kommo.com",
+      "baseUrl": "Akkaunt manzili",
+      "accessToken": "Kirish tokeni (uzoq muddatli)"
+    },
+    "bitrix24": {
+      "info": "Bitrix24'da kiruvchi vebhuk yarating (Dasturchi resurslari → Boshqa → Kiruvchi vebhuk, «Telefoniya» huquqi bilan) va uni quyiga joylang. Qo'ng'iroqlar telephony.externalcall orqali, audio yozuv biriktirilgan holda ro'yxatga olinadi.",
+      "regionLabel": "Bitrix24 milliy versiyasiga qarab ulanish usulini tanlang.",
+      "regionRu": "Rossiya akkaunti — bitrix24.ru",
+      "regionByKz": "Belarus va Qozog'iston akkauntlari — bitrix24.by, bitrix24.kz",
+      "regionOther": "bitrix24.ua, bitrix24.com va boshqa regionlar",
+      "account": "Bitrix24 akkaunt manzili",
+      "webhookUrl": "Kiruvchi vebhuk URL",
+      "userId": "Qo'ng'iroqlar uchun Bitrix24 foydalanuvchi ID (odatda 1)"
+    },
+    "odoo": {
+      "info": "Odoo'da CRM'ga kirish huquqi bor foydalanuvchi uchun API kalit yarating (Sozlamalar → Akkaunt xavfsizligi → API kalitlari). Har bir tugagan qo'ng'iroq telefon raqami bo'yicha kontakt kartochkasiga yoziladi; kontakt topilmasa — CRM lid yaratiladi.",
+      "url": "Odoo server URL",
+      "db": "Ma'lumotlar bazasi nomi",
+      "login": "Foydalanuvchi logini (e-mail)",
+      "apiKey": "API kalit"
+    }
   },
   "myCalls": {
     "title": "Mening qo'ng'iroqlarim"
@@ -298,7 +342,8 @@
       "payouts": "To'lab berishlar",
       "admins": "Administratorlar",
       "profile": "Profil",
-      "app": "Ilova"
+      "app": "Ilova",
+      "crmCatalog": "CRM katalogi"
     },
     "logout": "Chiqish",
     "common": {
@@ -403,6 +448,21 @@
       "reject": "Rad etish",
       "markPaid": "To'landi",
       "empty": "To'lab berishlar yo'q"
+    },
+    "crmCatalog": {
+      "title": "CRM katalogi",
+      "subtitle": "Har bir kompaniya Sozlamalar → Integratsiya bo'limida ko'radigan logotip plitkalari; plitka CRM saytiga olib boradi.",
+      "name": "Nomi",
+      "siteUrl": "Sayt URL",
+      "logo": "Logotip (png/svg)",
+      "sortOrder": "Tartib",
+      "add": "Plitka qo'shish",
+      "added": "Plitka qo'shildi",
+      "site": "sayt",
+      "hide": "Yashirish",
+      "show": "Ko'rsatish",
+      "deleteConfirm": "\"{name}\" plitkasi o'chirilsinmi?",
+      "empty": "Hozircha plitka yo'q — birinchi CRM'ni qo'shing"
     },
     "admins": {
       "title": "Platforma administratorlari",

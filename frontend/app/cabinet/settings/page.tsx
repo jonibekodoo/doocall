@@ -6,6 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Power, Smartphone, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 import { useState } from "react";
 
 import { CredentialsDialog } from "@/components/CredentialsDialog";
@@ -17,8 +18,10 @@ import {
   deleteGroup,
   fetchAccountSettings,
   fetchApiKey,
+  fetchCrmCatalog,
   fetchDevices,
   fetchGroups,
+  fetchIntegrations,
   fetchLicense,
   fetchUsers,
   fetchWebhook,
@@ -442,7 +445,40 @@ function TogglesTab({ mode }: { mode: "callsSms" | "account" }) {
   );
 }
 
-// ── Tab 4: integration ─────────────────────────────────────────────────────
+// ── Tab 4: integration (moizvonki-style CRM grid + API params panel) ───────
+const SPECIAL_TILES = [
+  {
+    provider: "bitrix24",
+    label: "Bitrix24",
+    style: { color: "#0BA7EF" },
+    logo: (
+      <span className="text-lg font-extrabold" style={{ color: "#0BA7EF" }}>
+        Bitrix<span className="text-[#005893]">24</span>
+      </span>
+    ),
+  },
+  {
+    provider: "amocrm",
+    label: "amoCRM",
+    style: { color: "#339DC7" },
+    logo: (
+      <span className="text-lg font-bold italic" style={{ color: "#339DC7" }}>
+        amoCRM.
+      </span>
+    ),
+  },
+  {
+    provider: "odoo",
+    label: "Odoo",
+    style: { color: "#714B67" },
+    logo: (
+      <span className="text-lg font-extrabold" style={{ color: "#714B67" }}>
+        odoo
+      </span>
+    ),
+  },
+] as const;
+
 function IntegrationTab() {
   const t = useTranslations("settings");
   const queryClient = useQueryClient();
@@ -454,9 +490,19 @@ function IntegrationTab() {
     queryKey: ["s-webhook"],
     queryFn: fetchWebhook,
   });
+  const { data: integrations } = useQuery({
+    queryKey: ["s-integrations"],
+    queryFn: fetchIntegrations,
+  });
+  const { data: catalog } = useQuery({
+    queryKey: ["s-crm-catalog"],
+    queryFn: fetchCrmCatalog,
+  });
   const [freshKey, setFreshKey] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
+  const apiHost =
+    typeof window !== "undefined" ? window.location.hostname : "";
 
   const rotate = useMutation({
     mutationFn: rotateApiKey,
@@ -481,59 +527,149 @@ function IntegrationTab() {
       }),
   });
 
-  return (
-    <div className="max-w-lg space-y-5">
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <p className="flex items-center gap-2 text-sm font-semibold">
-          <KeyRound className="size-4" /> API key
-        </p>
-        <p className="tnum mt-1 font-mono text-xs text-fg-muted">
-          {freshKey ?? apiKey?.api_key_masked ?? "—"}
-        </p>
-        {freshKey && (
-          <p className="mt-1 text-xs text-warning">{t("credentialsOnce")}</p>
-        )}
-        <button
-          type="button"
-          onClick={() => rotate.mutate()}
-          className="mt-2 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg"
-        >
-          {t("rotateKey")}
-        </button>
-      </div>
+  const statusFor = (provider: string) => {
+    const row = integrations?.integrations.find(
+      (integration) => integration.provider === provider,
+    );
+    if (!row?.is_enabled) return null;
+    return row.last_status === "error" ? "error" : "ok";
+  };
 
-      <div className="rounded-lg border border-border bg-surface p-4">
-        <p className="text-sm font-semibold">{t("webhookUrl")}</p>
-        <input
-          value={url ?? webhook?.webhook_url ?? ""}
-          onChange={(event) => setUrl(event.target.value)}
-          placeholder="https://crm.example.uz/hook"
-          className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-        />
-        {secret && (
-          <p className="tnum mt-2 break-all rounded-md bg-warning/10 p-2 font-mono text-xs">
-            secret: {secret}
-          </p>
-        )}
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            disabled={url === null}
-            onClick={() => url !== null && saveHook.mutate(url)}
-            className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-50"
-          >
-            OK
-          </button>
-          <button
-            type="button"
-            disabled={!webhook?.webhook_url}
-            onClick={() => test.mutate()}
-            className="rounded-md border border-border px-3 py-1.5 text-xs disabled:opacity-50"
-          >
-            {t("testDelivery")}
-          </button>
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+      {/* ── CRM systems grid ── */}
+      <section className="rounded-lg border border-border bg-surface">
+        <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+          {t("crmSystems")}
+        </p>
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 xl:grid-cols-4">
+          {SPECIAL_TILES.map((tile) => {
+            const status = statusFor(tile.provider);
+            return (
+              <Link
+                key={tile.provider}
+                href={`/cabinet/settings/integrations/${tile.provider}`}
+                data-testid={`crm-tile-${tile.provider}`}
+                className="relative grid h-24 place-items-center rounded-lg border border-border bg-white transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-2"
+              >
+                {status && (
+                  <span
+                    className={cn(
+                      "absolute right-2 top-2 size-2.5 rounded-full",
+                      status === "ok" ? "bg-accent" : "bg-danger",
+                    )}
+                  />
+                )}
+                {tile.logo}
+              </Link>
+            );
+          })}
+          {(catalog?.entries ?? []).map((entry) => (
+            <a
+              key={entry.id}
+              href={entry.site_url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="grid h-24 place-items-center rounded-lg border border-border bg-white p-2 transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-2"
+            >
+              {entry.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={entry.logo_url}
+                  alt={entry.name}
+                  className="max-h-16 max-w-full object-contain"
+                />
+              ) : (
+                <span className="text-center text-sm font-semibold text-fg-muted">
+                  {entry.name}
+                </span>
+              )}
+            </a>
+          ))}
         </div>
-      </div>
+      </section>
+
+      {/* ── API parameters panel ── */}
+      <section className="h-fit rounded-lg border border-border bg-surface">
+        <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+          {t("apiParams")}
+        </p>
+        <div className="space-y-3 p-4">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-fg-muted">
+              {t("apiAddress")}
+            </span>
+            <input
+              readOnly
+              value={apiHost}
+              className="tnum w-full rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 flex items-center justify-between text-xs text-fg-muted">
+              {t("apiKeyLabel")}
+              <button
+                type="button"
+                onClick={() => rotate.mutate()}
+                className="inline-flex items-center gap-1 font-semibold text-accent hover:underline"
+              >
+                <KeyRound className="size-3" /> {t("rotateKey")}
+              </button>
+            </span>
+            <input
+              readOnly
+              value={freshKey ?? apiKey?.api_key_masked ?? "—"}
+              className="tnum w-full rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-xs"
+            />
+          </label>
+          {freshKey && (
+            <p className="text-xs text-warning">{t("credentialsOnce")}</p>
+          )}
+          <p className="text-xs leading-relaxed text-fg-muted">
+            {t("apiParamsNote")}
+          </p>
+          <a
+            href="/docs/api"
+            target="_blank"
+            className="inline-block text-xs font-semibold text-accent hover:underline"
+          >
+            {t("apiDocsLink")}
+          </a>
+
+          <div className="border-t border-border pt-3">
+            <p className="text-sm font-semibold">{t("webhookUrl")}</p>
+            <input
+              value={url ?? webhook?.webhook_url ?? ""}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="https://crm.example.uz/hook"
+              className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            />
+            {secret && (
+              <p className="tnum mt-2 break-all rounded-md bg-warning/10 p-2 font-mono text-xs">
+                secret: {secret}
+              </p>
+            )}
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                disabled={url === null}
+                onClick={() => url !== null && saveHook.mutate(url)}
+                className="rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-50"
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                disabled={!webhook?.webhook_url}
+                onClick={() => test.mutate()}
+                className="rounded-md border border-border px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                {t("testDelivery")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

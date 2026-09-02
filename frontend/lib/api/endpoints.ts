@@ -302,6 +302,47 @@ export const testWebhook = () =>
     "/settings/webhook/test",
   );
 
+export interface CrmIntegrationRow {
+  provider: "amocrm" | "bitrix24" | "odoo";
+  is_enabled: boolean;
+  configured: boolean;
+  config: Record<string, string>;
+  last_status: "" | "ok" | "error";
+  last_error: string;
+  last_delivery_at: string | null;
+}
+
+export const fetchIntegrations = () =>
+  get<{ success: boolean; integrations: CrmIntegrationRow[] }>(
+    "/settings/integrations",
+  );
+
+export const saveIntegration = (
+  provider: string,
+  body: { is_enabled: boolean; config: Record<string, string> },
+) =>
+  put<{ success: boolean; integration: CrmIntegrationRow }>(
+    `/settings/integrations/${provider}`,
+    body,
+  );
+
+export const testIntegration = (provider: string) =>
+  post<{ success: boolean; detail?: string; error?: string }>(
+    `/settings/integrations/${provider}/test`,
+  );
+
+export interface CrmCatalogTile {
+  id: number;
+  name: string;
+  site_url: string;
+  logo_url: string | null;
+}
+
+export const fetchCrmCatalog = () =>
+  get<{ success: boolean; entries: CrmCatalogTile[] }>(
+    "/settings/integrations/catalog",
+  );
+
 export interface LicenseInfo extends ApiEnvelope {
   status: string;
   trial_ends_at: string | null;

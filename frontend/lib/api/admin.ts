@@ -322,3 +322,57 @@ export const uploadAppRelease = (
 
 export const deleteAppRelease = (id: number) =>
   del<ApiEnvelope>(abs(`/app-releases/${id}`));
+
+export interface CrmCatalogRow {
+  id: number;
+  name: string;
+  site_url: string;
+  logo_url: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export const fetchCrmCatalogAdmin = () =>
+  g<{ success: boolean; entries: CrmCatalogRow[] }>("/crm-catalog");
+
+export const createCrmCatalogEntry = (body: {
+  name: string;
+  site_url: string;
+  sort_order?: number;
+  logo?: File | null;
+}) => {
+  const form = new FormData();
+  form.append("name", body.name);
+  form.append("site_url", body.site_url);
+  if (body.sort_order != null) form.append("sort_order", String(body.sort_order));
+  if (body.logo) form.append("logo", body.logo);
+  return api<{ success: boolean; entry: CrmCatalogRow }>(abs("/crm-catalog"), {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const updateCrmCatalogEntry = (
+  id: number,
+  body: Partial<{
+    name: string;
+    site_url: string;
+    sort_order: number;
+    is_active: boolean;
+    logo: File | null;
+  }>,
+) => {
+  const form = new FormData();
+  if (body.name != null) form.append("name", body.name);
+  if (body.site_url != null) form.append("site_url", body.site_url);
+  if (body.sort_order != null) form.append("sort_order", String(body.sort_order));
+  if (body.is_active != null) form.append("is_active", String(body.is_active));
+  if (body.logo) form.append("logo", body.logo);
+  return api<{ success: boolean; entry: CrmCatalogRow }>(
+    abs(`/crm-catalog/${id}`),
+    { method: "POST", body: form },
+  );
+};
+
+export const deleteCrmCatalogEntry = (id: number) =>
+  del<ApiEnvelope>(abs(`/crm-catalog/${id}`));

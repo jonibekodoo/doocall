@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.integrations import views as integration_views
+
 from . import (
     views,
     views_calls,
@@ -78,6 +80,26 @@ urlpatterns = [
         name="webhook-test",
     ),
     path("settings/license", views_settings.LicenseView.as_view(), name="license"),
+    path(
+        "settings/integrations",
+        integration_views.IntegrationsView.as_view(),
+        name="integrations",
+    ),
+    path(
+        "settings/integrations/catalog",
+        integration_views.CrmCatalogListView.as_view(),
+        name="integrations-catalog",
+    ),
+    path(
+        "settings/integrations/<str:provider>",
+        integration_views.IntegrationDetailView.as_view(),
+        name="integration-detail",
+    ),
+    path(
+        "settings/integrations/<str:provider>/test",
+        integration_views.IntegrationTestView.as_view(),
+        name="integration-test",
+    ),
     path("auth/register", views.RegisterView.as_view(), name="register"),
     path("auth/login", views.LoginView.as_view(), name="login"),
     path("auth/refresh", views.RefreshView.as_view(), name="refresh"),

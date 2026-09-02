@@ -162,7 +162,51 @@
     "opPhone2": "Phone (SIM 2)",
     "opGroup": "Group",
     "opNoGroup": "No group",
-    "newOperatorTitle": "New operator"
+    "newOperatorTitle": "New operator",
+    "crmSystems": "CRM systems",
+    "apiParams": "API parameters",
+    "apiAddress": "Your API address",
+    "apiKeyLabel": "Your API key",
+    "apiParamsNote": "Use this address and API key in the settings of third-party systems to integrate them with DooCall. After changing the key, update it in the connected systems too — the old key stops working.",
+    "apiDocsLink": "API documentation for developers"
+  },
+  "crm": {
+    "pageTitle": "Integration",
+    "back": "Back to the integration list",
+    "saved": "Saved",
+    "testOk": "Connection OK",
+    "testFail": "Connection failed",
+    "enabled": "Integration enabled — send every call to this CRM",
+    "connect": "Connect",
+    "test": "Test connection",
+    "statusOk": "working",
+    "statusError": "error",
+    "lastDelivery": "Last delivery",
+    "amocrm": {
+      "info": "Log into your CRM as an administrator, create a long-lived access token (Settings → Integrations → API), then paste your account address and the token below and press Connect. Every finished call will be attached to the matching contact by phone number, with a recording link.",
+      "regionLabel": "Choose which CRM to connect:",
+      "regionRu": "Russian version account — amocrm.ru",
+      "regionKommo": "International version account — kommo.com",
+      "baseUrl": "Account address",
+      "accessToken": "Access token (long-lived)"
+    },
+    "bitrix24": {
+      "info": "Create an inbound webhook in your Bitrix24 (Developer resources → Other → Inbound webhook) with the 'telephony' permission, then paste it below. Calls are registered via telephony.externalcall with the recording attached.",
+      "regionLabel": "Choose the connection type, depending on your Bitrix24 national version.",
+      "regionRu": "Russian Bitrix24 account — bitrix24.ru",
+      "regionByKz": "Belarusian and Kazakhstani accounts — bitrix24.by, bitrix24.kz",
+      "regionOther": "bitrix24.com, bitrix24.ua and other regions",
+      "account": "Bitrix24 account address",
+      "webhookUrl": "Inbound webhook URL",
+      "userId": "Bitrix24 user ID for calls (default 1)"
+    },
+    "odoo": {
+      "info": "Create an API key in Odoo (Preferences → Account Security → API Keys) for a user with CRM access. Every finished call is logged on the matching contact (by phone number); if no contact matches, a CRM lead is created.",
+      "url": "Odoo server URL",
+      "db": "Database name",
+      "login": "User login (e-mail)",
+      "apiKey": "API key"
+    }
   },
   "myCalls": {
     "title": "My calls"
@@ -298,7 +342,8 @@
       "payouts": "Payouts",
       "admins": "Admins",
       "profile": "Profile",
-      "app": "Mobile app"
+      "app": "Mobile app",
+      "crmCatalog": "CRM catalog"
     },
     "logout": "Sign out",
     "common": {
@@ -376,6 +421,21 @@
       "fromDate": "From date",
       "system": "system",
       "empty": "Empty"
+    },
+    "crmCatalog": {
+      "title": "CRM catalog",
+      "subtitle": "Logo tiles shown to every company in Settings → Integration; a tile links to the CRM's website.",
+      "name": "Name",
+      "siteUrl": "Website URL",
+      "logo": "Logo (png/svg)",
+      "sortOrder": "Order",
+      "add": "Add tile",
+      "added": "Tile added",
+      "site": "site",
+      "hide": "Hide",
+      "show": "Show",
+      "deleteConfirm": "Delete the \"{name}\" tile?",
+      "empty": "No tiles yet — add the first CRM"
     },
     "pricing": {
       "title": "Pricing",

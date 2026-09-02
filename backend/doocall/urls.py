@@ -4,6 +4,11 @@ from django.contrib import admin
 from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.integrations.views_public import (
+    CrmLogoView,
+    CustomApiView,
+    RecordRedirectView,
+)
 from apps.web.views_public import (
     PublicAppDownloadView,
     PublicAppLatestView,
@@ -21,6 +26,11 @@ urlpatterns = [
     path("api/admin/v1/", include(("apps.partners.urls_admin", "padmin"))),
     # Partner portal API (integrators).
     path("api/partner/v1/", include(("apps.partners.urls_partner", "partner"))),
+    # Company public API (moizvonki-style single action endpoint).
+    re_path(r"^api/v1/?$", CustomApiView.as_view(), name="public-api"),
+    # Permanent recording link for CRMs (302 → presigned MinIO URL).
+    path("api/public/rec/<str:rec_id>", RecordRedirectView.as_view(), name="public-rec"),
+    path("api/public/crm-logo/<int:entry_id>", CrmLogoView.as_view(), name="public-crm-logo"),
     # Public landing endpoints (no auth).
     # Slash-optional: the Next dev proxy strips trailing slashes.
     re_path(r"^api/public/pricing/?$", PublicPricingView.as_view(), name="public-pricing"),

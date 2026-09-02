@@ -49,6 +49,12 @@ def _enqueue_webhook(record_id: int) -> None:
     deliver_call_webhook.delay(record_id)
 
 
+def _enqueue_crm_dispatch(record_id: int) -> None:
+    from apps.integrations.tasks import dispatch_call
+
+    dispatch_call.delay(record_id)
+
+
 def _server_id(record: CallRecord) -> str:
     return f"srv_{record.server_id.hex}"
 
@@ -264,6 +270,12 @@ class UploadView(BaseApiView):
             if company.webhook_url:
                 record_id = record.pk
                 transaction.on_commit(partial(_enqueue_webhook, record_id))
+
+            # CRM connectors (amoCRM/Bitrix24/Odoo) — same after-commit rule.
+            from apps.integrations.models import CrmIntegration
+
+            if CrmIntegration.all_objects.filter(company=company, is_enabled=True).exists():
+                transaction.on_commit(partial(_enqueue_crm_dispatch, record.pk))
 
         # ── §5.4 success envelope, byte-compatible field set ────────────────
         return Response(

@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     "apps.api",
     "apps.web",
     "apps.partners",
+    "apps.integrations",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -181,6 +182,7 @@ REST_FRAMEWORK: dict[str, object] = {
         "calls_list": env("THROTTLE_CALLS_LIST", "60/min"),
         "stats": env("THROTTLE_STATS", "60/min"),
         "log": env("THROTTLE_LOG", "10/min"),
+        "public_api": env("THROTTLE_PUBLIC_API", "120/min"),
     },
 }
 

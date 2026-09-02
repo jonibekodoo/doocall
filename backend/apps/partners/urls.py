@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.integrations import views_catalog as C
+
 from . import views_admin as A
 from . import views_partner as P
 
@@ -24,6 +26,8 @@ admin_urlpatterns = [
     path("admins/<int:user_id>", A.AdminPlatformAdminDetailView.as_view()),
     path("payouts", A.AdminPayoutsView.as_view()),
     path("payouts/<int:payout_id>/<str:action>", A.AdminPayoutActionView.as_view()),
+    path("crm-catalog", C.AdminCrmCatalogView.as_view()),
+    path("crm-catalog/<int:entry_id>", C.AdminCrmCatalogDetailView.as_view()),
     path("app-releases", A.AdminAppReleasesView.as_view()),
     path("app-releases/<int:release_id>", A.AdminAppReleaseDeleteView.as_view()),
     path("audit", A.AdminAuditView.as_view()),
