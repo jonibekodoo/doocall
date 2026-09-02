@@ -132,6 +132,11 @@ export const updateAdminCompany = (
     body,
   );
 
+export const deleteAdminCompany = (id: number, confirm: string) =>
+  del<{ success: boolean }>(
+    abs(`/companies/${id}?confirm=${encodeURIComponent(confirm)}`),
+  );
+
 export const companyAction = (id: number, action: string, body?: unknown) =>
   post<{ success: boolean; company: AdminCompanyRow }>(
     abs(`/companies/${id}/${action}`),

@@ -70,6 +70,31 @@ class TestAdminPortalFlows:
         assert extended["company"]["trial_ends_at"] is not None
         assert client.post(f"{base}/explode").status_code == 400
 
+    def test_company_delete_superadmin_only_with_confirm(
+        self, superadmin: User, platform_admin: User, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import apps.billing.tasks as billing_tasks
+        from apps.core.models import AuditLog
+
+        purged: list[int] = []
+        monkeypatch.setattr(
+            billing_tasks.purge_company_storage, "delay", lambda pk: purged.append(pk)
+        )
+        company = make_company("doomed-co")
+        base = f"/api/admin/v1/companies/{company.pk}"
+
+        assert client_for(platform_admin).delete(f"{base}?confirm=doomed-co").status_code == 403
+        assert client_for(superadmin).delete(base).status_code == 400
+        assert client_for(superadmin).delete(f"{base}?confirm=wrong").status_code == 400
+
+        response = client_for(superadmin).delete(f"{base}?confirm=doomed-co")
+        assert response.status_code == 200
+        assert response.json()["deleted"]["slug"] == "doomed-co"
+        assert not Company.objects.filter(pk=company.pk).exists()
+        assert purged == [company.pk]
+        log = AuditLog.objects.filter(action="admin.company_deleted").first()
+        assert log is not None and log.changes["slug"] == "doomed-co"
+
     def test_payment_approve_fires_cashback(
         self, platform_admin: User, bound_company: Company, integrator: Integrator
     ) -> None:

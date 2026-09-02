@@ -221,6 +221,45 @@ class AdminCompanyDetailView(StaffView):
         )
         return Response({"success": True, "company": _company_body(company)})
 
+    @extend_schema(summary="Delete company PERMANENTLY (superadmin; ?confirm=<slug>)")
+    def delete(self, request: Request, company_id: int) -> Response:
+        if not IsSuperadmin().has_permission(request, self):
+            raise ApiError(ErrorCode.MISSING_FIELD, "superadmin role required", 403)
+        company = Company.objects.filter(pk=company_id).first()
+        if company is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "company not found", 404)
+        confirm = request.query_params.get("confirm") or request.data.get("confirm")
+        if confirm != company.slug:
+            raise ApiError(
+                ErrorCode.MISSING_FIELD,
+                "confirm must match the company slug",
+                400,
+            )
+
+        from apps.billing.tasks import purge_company_storage
+        from apps.calls.models import CallRecord
+
+        pk = company.pk
+        stats = {
+            "name": company.name,
+            "slug": company.slug,
+            "operators": OperatorProfile.all_objects.filter(company=company).count(),
+            "calls": CallRecord.all_objects.filter(company=company).count(),
+        }
+        # Log first: AuditLog.company is SET_NULL, so the row survives the
+        # cascade with the identifying details preserved in ``changes``.
+        AuditLog.objects.create(
+            company=company,
+            actor=cast(User, request.user),
+            action="admin.company_deleted",
+            target_model="companies.Company",
+            target_id=str(pk),
+            changes=stats,
+        )
+        company.delete()
+        purge_company_storage.delay(pk)
+        return Response({"success": True, "deleted": stats})
+
 
 class AdminCompanyActionView(StaffView):
     @extend_schema(summary="suspend | activate | extend-trial")

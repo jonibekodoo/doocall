@@ -3,7 +3,7 @@
 /** Company detail: subscription, seats, payments, actions, edit, impersonation. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Eye, Pencil } from "lucide-react";
+import { ArrowLeft, Eye, Pencil, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   companyAction,
+  deleteAdminCompany,
   fetchAdminCompany,
   impersonate,
   updateAdminCompany,
@@ -163,6 +164,66 @@ function EditCompanyDialog({
   );
 }
 
+function DeleteCompanyDialog({
+  name,
+  slug,
+  onClose,
+  onSubmit,
+}: {
+  name: string;
+  slug: string;
+  onClose: () => void;
+  onSubmit: (confirm: string) => void;
+}) {
+  const t = useTranslations("admin.companyDetail");
+  const [confirm, setConfirm] = useState("");
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-4"
+      role="dialog"
+    >
+      <div className="w-full max-w-sm rounded-lg border border-danger/40 bg-surface p-5 shadow-lg">
+        <h2 className="mb-2 text-base font-semibold text-danger">
+          {t("deleteCompany")}
+        </h2>
+        <p className="mb-3 text-sm text-fg-muted">
+          {t("deleteWarning", { name })}
+        </p>
+        <label className="mb-2 block text-sm">
+          <span className="mb-1 block text-xs text-fg-muted">
+            {t("deleteConfirmLabel", { slug })}
+          </span>
+          <input
+            value={confirm}
+            onChange={(event) => setConfirm(event.target.value)}
+            data-testid="delete-confirm"
+            autoComplete="off"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2"
+          />
+        </label>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-sm"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            data-testid="delete-submit"
+            disabled={confirm !== slug}
+            onClick={() => onSubmit(confirm)}
+            className="rounded-md bg-danger px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            {t("deleteForever")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminCompanyDetailPage() {
   const t = useTranslations("admin.companyDetail");
   const params = useParams<{ id: string }>();
@@ -173,6 +234,7 @@ export default function AdminCompanyDetailPage() {
   const isSuper = user?.role === "superadmin";
   const [extendOpen, setExtendOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const { data, isPending } = useQuery({
     queryKey: ["a-company", companyId],
@@ -196,6 +258,17 @@ export default function AdminCompanyDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["a-company", companyId] });
       queryClient.invalidateQueries({ queryKey: ["a-companies"] });
       useToastStore.getState().push({ kind: "success", text: t("saved") });
+    },
+    onError: (error: Error) =>
+      useToastStore.getState().push({ kind: "error", text: error.message }),
+  });
+
+  const destroy = useMutation({
+    mutationFn: (confirm: string) => deleteAdminCompany(companyId, confirm),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["a-companies"] });
+      useToastStore.getState().push({ kind: "success", text: t("deleted") });
+      router.push("/admin/companies");
     },
     onError: (error: Error) =>
       useToastStore.getState().push({ kind: "error", text: error.message }),
@@ -311,6 +384,16 @@ export default function AdminCompanyDetailPage() {
               <Eye className="size-4" /> {t("impersonate")}
             </button>
           )}
+          {isSuper && (
+            <button
+              type="button"
+              data-testid="delete-btn"
+              onClick={() => setDeleteOpen(true)}
+              className="flex items-center gap-1.5 rounded-md border border-danger/40 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/5"
+            >
+              <Trash2 className="size-4" /> {t("deleteCompany")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -374,6 +457,17 @@ export default function AdminCompanyDetailPage() {
           onSubmit={(days, reason) => {
             act.mutate({ action: "extend-trial", body: { days, reason } });
             setExtendOpen(false);
+          }}
+        />
+      )}
+      {deleteOpen && (
+        <DeleteCompanyDialog
+          name={company.name}
+          slug={company.slug}
+          onClose={() => setDeleteOpen(false)}
+          onSubmit={(confirm) => {
+            destroy.mutate(confirm);
+            setDeleteOpen(false);
           }}
         />
       )}

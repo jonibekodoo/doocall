@@ -116,3 +116,25 @@ def cleanup_expired_audio(now_iso: str | None = None) -> int:
     count = run_audio_retention(_resolve_now(now_iso))
     logger.info("audio retention: deleted %d object(s)", count)
     return count
+
+
+@shared_task(name="apps.billing.tasks.purge_company_storage")
+def purge_company_storage(company_pk: int) -> int:
+    """Remove every MinIO object of a deleted company (keys are ``<pk>/…``).
+
+    Fired AFTER the DB cascade, so it works purely off the key prefix.
+    """
+    from django.conf import settings as dj_settings
+
+    from apps.api import storage
+
+    minio = storage.client()
+    removed = 0
+    for obj in minio.list_objects(dj_settings.MINIO_BUCKET, prefix=f"{company_pk}/", recursive=True):
+        try:
+            minio.remove_object(dj_settings.MINIO_BUCKET, obj.object_name)
+            removed += 1
+        except Exception:  # noqa: BLE001 - object may already be gone
+            logger.warning("purge: could not remove %s", obj.object_name)
+    logger.info("purge company %d storage: removed %d object(s)", company_pk, removed)
+    return removed
