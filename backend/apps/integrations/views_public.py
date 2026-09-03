@@ -219,12 +219,38 @@ class RecordRedirectView(View):
         return HttpResponseRedirect(storage.presigned_url(audio.object_key))
 
 
+LOGO_TYPES = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "svg": "image/svg+xml",
+    "webp": "image/webp",
+}
+
+
 class CrmLogoView(View):
+    """Streams the logo bytes directly (no presigned redirect): browser
+    privacy extensions were blocking the signed files.* redirect hop."""
+
     def get(self, request: HttpRequest, entry_id: int) -> HttpResponse:
+        from django.conf import settings as dj_settings
+
         entry = CrmCatalogEntry.objects.filter(pk=entry_id, is_active=True).first()
         if entry is None or not entry.logo_key:
             return HttpResponse(status=404)
-        return HttpResponseRedirect(storage.presigned_url(entry.logo_key))
+        try:
+            obj = storage.client().get_object(dj_settings.MINIO_BUCKET, entry.logo_key)
+            payload = obj.read()
+            obj.close()
+            obj.release_conn()
+        except Exception:  # noqa: BLE001 - missing object → plain 404
+            return HttpResponse(status=404)
+        ext = entry.logo_key.rsplit(".", 1)[-1].lower()
+        response = HttpResponse(
+            payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream")
+        )
+        response["Cache-Control"] = "public, max-age=86400"
+        return response
 
 
 class PublicCrmCatalogView(View):

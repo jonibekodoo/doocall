@@ -26,11 +26,14 @@ ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
 
 
 def logo_public_url(entry: CrmCatalogEntry) -> str | None:
-    """Absolute URL on DOMAIN_APP — the admin vhost does not proxy
-    /api/public/*, so a relative path breaks <img> on the admin portal."""
+    """RELATIVE path on purpose: every page that renders the grid (landing,
+    cabinet subdomains, app.doocall.uz admin portal) proxies /api/public/*
+    to this backend, and same-origin <img> loads are the only ones that
+    survive users' ad-block/privacy extensions (cross-origin image loads —
+    including the old presigned files.* redirect — get blocked)."""
     if not entry.logo_key:
         return None
-    return f"{settings.URL_SCHEME}://{settings.DOMAIN_APP}/api/public/crm-logo/{entry.pk}"
+    return f"/api/public/crm-logo/{entry.pk}"
 
 
 def _entry_body(entry: CrmCatalogEntry) -> dict[str, Any]:
