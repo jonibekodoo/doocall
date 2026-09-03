@@ -5,7 +5,8 @@
     "contacts": "Contacts",
     "reports": "Reports",
     "settings": "Settings",
-    "myCalls": "My calls"
+    "myCalls": "My calls",
+    "aiAnalysis": "AI Analysis"
   },
   "topbar": {
     "profile": "Profile",
@@ -192,6 +193,15 @@
     "payCancel": "Cancel",
     "payRequested": "Request sent — wait for the administrator's confirmation",
     "timezoneNote": "Call times, date filters, reports and the \"today\" boundary are computed in this time zone. Device-local timestamps from the mobile app are interpreted in it too."
+  },
+  "ai": {
+    "badge": "Artificial intelligence",
+    "title": "AI Analysis",
+    "text": "AI will analyse your calls: transcribe conversations to text, detect the client's sentiment and prepare a short summary of every conversation.",
+    "fTranscribe": "Call transcription",
+    "fSentiment": "Client sentiment detection",
+    "fSummary": "Automatic summary and recommendations",
+    "soon": "Coming soon"
   },
   "notifications": {
     "title": "Notifications",

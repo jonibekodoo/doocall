@@ -5,7 +5,8 @@
     "contacts": "Kontaktlar",
     "reports": "Hisobotlar",
     "settings": "Sozlamalar",
-    "myCalls": "Mening qo'ng'iroqlarim"
+    "myCalls": "Mening qo'ng'iroqlarim",
+    "aiAnalysis": "AI Tahlil"
   },
   "topbar": {
     "profile": "Profil",
@@ -192,6 +193,15 @@
     "payCancel": "Bekor qilish",
     "payRequested": "So'rov yuborildi — administrator tasdiqlashini kuting",
     "timezoneNote": "Qo'ng'iroq vaqtlari, sana filtrlari, hisobotlar va «bugun» chegarasi shu vaqt mintaqasida hisoblanadi. Mobil ilovadan kelgan lokal vaqt ham shu mintaqada talqin qilinadi."
+  },
+  "ai": {
+    "badge": "Sun'iy intellekt",
+    "title": "AI Tahlil",
+    "text": "Qo'ng'iroqlaringizni sun'iy intellekt tahlil qiladi: suhbatlar matnga o'giriladi, mijoz kayfiyati aniqlanadi va har bir suhbat bo'yicha qisqa xulosa tayyorlanadi.",
+    "fTranscribe": "Suhbatni matnga o'girish",
+    "fSentiment": "Mijoz kayfiyatini aniqlash",
+    "fSummary": "Avtomatik xulosa va tavsiyalar",
+    "soon": "Tez orada"
   },
   "notifications": {
     "title": "Bildirishnomalar",

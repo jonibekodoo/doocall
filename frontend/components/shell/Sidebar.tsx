@@ -8,6 +8,7 @@ import {
   Phone,
   PhoneCall,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -20,6 +21,7 @@ const NAV = [
   { key: "calls", href: "/cabinet/calls", icon: Phone },
   { key: "contacts", href: "/cabinet/contacts", icon: Contact2 },
   { key: "reports", href: "/cabinet/reports", icon: BarChart3 },
+  { key: "aiAnalysis", href: "/cabinet/ai", icon: Sparkles },
   { key: "settings", href: "/cabinet/settings", icon: Settings },
 ] as const;
 
