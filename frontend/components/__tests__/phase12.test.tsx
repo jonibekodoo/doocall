@@ -44,16 +44,18 @@ describe("payout dialog validation", () => {
 });
 
 describe("referral link builder", () => {
-  it("builds the canonical link", () => {
-    expect(referralLink("DEMOINT1")).toBe("https://doocall.uz/?ref=DEMOINT1");
+  it("builds the canonical link (straight to registration)", () => {
+    expect(referralLink("DEMOINT1")).toBe(
+      "https://doocall.uz/register?ref=DEMOINT1",
+    );
   });
   it("accepts a custom base and strips trailing slashes", () => {
     expect(referralLink("K7KJ2M9Q", "http://localhost:3000/")).toBe(
-      "http://localhost:3000/?ref=K7KJ2M9Q",
+      "http://localhost:3000/register?ref=K7KJ2M9Q",
     );
   });
   it("URL-encodes the code defensively", () => {
-    expect(referralLink("A B")).toBe("https://doocall.uz/?ref=A%20B");
+    expect(referralLink("A B")).toBe("https://doocall.uz/register?ref=A%20B");
   });
 });
 

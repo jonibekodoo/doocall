@@ -1,13 +1,16 @@
 "use client";
 
+import { Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AuthCard, Field, SubmitButton } from "@/components/AuthCard";
+import { REF_COOKIE, readRefCookie } from "@/components/landing/RefCapture";
 import { useAuth } from "@/lib/auth";
-import { readRefCookie } from "@/components/landing/RefCapture";
+
+const REF_RE = /^[A-Za-z0-9]{4,12}$/;
 
 export default function RegisterPage() {
   const t = useTranslations("auth");
@@ -15,10 +18,25 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [promo, setPromo] = useState("");
+  // Arriving via a partner link/QR (?ref=…) locks the promo field.
+  const [promoLocked, setPromoLocked] = useState(false);
+
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("ref");
+    const code =
+      fromUrl && REF_RE.test(fromUrl) ? fromUrl.toUpperCase() : readRefCookie();
+    if (code) {
+      setPromo(code);
+      setPromoLocked(true);
+      document.cookie = `${REF_COOKIE}=${code};path=/;max-age=${30 * 86400};samesite=lax`;
+    }
+  }, []);
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const ref = promo.trim().toUpperCase();
     setLoading(true);
     setError(null);
     try {
@@ -27,7 +45,7 @@ export default function RegisterPage() {
         admin_email: String(form.get("admin_email")),
         phone: String(form.get("phone")),
         password: String(form.get("password")),
-        ...(readRefCookie() ? { ref: readRefCookie() } : {}),
+        ...(ref ? { ref } : {}),
       });
       router.replace("/cabinet/onboarding");
     } catch (err) {
@@ -70,6 +88,34 @@ export default function RegisterPage() {
           minLength={8}
           autoComplete="new-password"
         />
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 flex items-center gap-1.5 text-xs text-fg-muted">
+            {t("promoCode")}
+            {promoLocked && <Lock className="size-3 text-accent" />}
+          </span>
+          <input
+            name="promo"
+            value={promo}
+            onChange={(event) =>
+              !promoLocked && setPromo(event.target.value.toUpperCase())
+            }
+            readOnly={promoLocked}
+            maxLength={12}
+            autoComplete="off"
+            data-testid="register-promo"
+            className={
+              "tnum w-full rounded-md border border-border px-3 py-2 font-mono uppercase " +
+              (promoLocked
+                ? "bg-surface-2 text-accent"
+                : "bg-surface")
+            }
+          />
+          {promoLocked && (
+            <span className="mt-1 block text-xs text-fg-faint">
+              {t("promoLockedNote")}
+            </span>
+          )}
+        </label>
         {error && (
           <p role="alert" className="mb-2 text-sm text-danger">
             {error}

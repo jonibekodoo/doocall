@@ -108,10 +108,11 @@ export const savePartnerProfile = (body: {
   payout_details?: Record<string, string>;
 }) => put<ApiEnvelope>(`${P}/profile`, body);
 
-/** Referral link builder — used by the UI and unit-tested. */
+/** Referral link builder — used by the UI and unit-tested.
+ * Lands straight on the registration form with the promo code locked in. */
 export function referralLink(
   code: string,
   base = "https://doocall.uz",
 ): string {
-  return `${base.replace(/\/+$/, "")}/?ref=${encodeURIComponent(code)}`;
+  return `${base.replace(/\/+$/, "")}/register?ref=${encodeURIComponent(code)}`;
 }

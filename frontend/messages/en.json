@@ -35,7 +35,9 @@
     "resetConfirm": "Save password",
     "noAccount": "No account?",
     "haveAccount": "Already have an account?",
-    "trialNote": "14 days free, no card required"
+    "trialNote": "14 days free, no card required",
+    "promoCode": "Promo code (optional)",
+    "promoLockedNote": "You arrived via a partner link — the promo code was applied automatically"
   },
   "paywall": {
     "title": "Subscription inactive",

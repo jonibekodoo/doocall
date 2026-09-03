@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   TempPasswordReveal,
@@ -22,7 +22,20 @@ function ReferralTab({ code }: { code: string }) {
   const t = useTranslations("partner");
   const link = referralLink(code, window.location.origin);
   const [copied, setCopied] = useState(false);
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(link)}`;
+  // QR is generated locally (the external qrserver image was unreliable).
+  const [qr, setQr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("qrcode")
+      .then((qrcode) =>
+        qrcode.toDataURL(link, { width: 360, margin: 1, errorCorrectionLevel: "M" }),
+      )
+      .then((dataUrl) => !cancelled && setQr(dataUrl))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [link]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2" data-testid="referral-tab">
@@ -70,14 +83,19 @@ function ReferralTab({ code }: { code: string }) {
         <p className="mt-1 text-sm text-fg-muted">{t("howText")}</p>
       </div>
       <div className="grid place-items-center rounded-lg border border-border bg-surface p-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={qrUrl}
-          alt="QR"
-          width={180}
-          height={180}
-          className="rounded-md"
-        />
+        {qr ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={qr}
+            alt="QR"
+            width={180}
+            height={180}
+            data-testid="ref-qr"
+            className="rounded-md"
+          />
+        ) : (
+          <div className="size-[180px] animate-pulse rounded-md bg-surface-2" />
+        )}
       </div>
     </div>
   );

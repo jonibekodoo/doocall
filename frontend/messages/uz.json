@@ -35,7 +35,9 @@
     "resetConfirm": "Parolni saqlash",
     "noAccount": "Hisobingiz yo'qmi?",
     "haveAccount": "Hisobingiz bormi?",
-    "trialNote": "14 kun bepul, kartasiz"
+    "trialNote": "14 kun bepul, kartasiz",
+    "promoCode": "Promokod (ixtiyoriy)",
+    "promoLockedNote": "Hamkor havolasi orqali keldingiz — promokod avtomatik qo'llandi"
   },
   "paywall": {
     "title": "Obuna faol emas",
