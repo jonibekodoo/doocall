@@ -185,6 +185,12 @@
     "stmt_pending": "kutilmoqda",
     "stmt_overdue": "kechikkan",
     "unpaidWarning": "{month} oyi uchun {amount} UZS to'lov qilinmagan. 2 kun ichida to'lanmasa tizim bloklanadi.",
+    "payBankTitle": "Bank/Naqd to'lov so'rovi",
+    "payBankNote": "Summani kiriting — administrator to'lovni tasdiqlagach balansingizga tushadi.",
+    "payAmount": "Summa (UZS)",
+    "paySubmit": "So'rov yuborish",
+    "payCancel": "Bekor qilish",
+    "payRequested": "So'rov yuborildi — administrator tasdiqlashini kuting",
     "timezoneNote": "Qo'ng'iroq vaqtlari, sana filtrlari, hisobotlar va «bugun» chegarasi shu vaqt mintaqasida hisoblanadi. Mobil ilovadan kelgan lokal vaqt ham shu mintaqada talqin qilinadi."
   },
   "notifications": {
@@ -392,6 +398,7 @@
       "callsToday": "Bugungi qo'ng'iroqlar",
       "integrators": "Integratorlar",
       "payoutsQueue": "Navbatdagi to'lab berishlar",
+      "pendingPayments": "Kutilayotgan to'lovlar",
       "paymentsChart": "To'lovlar, 30 kun",
       "callsChart": "Qo'ng'iroqlar, 30 kun"
     },

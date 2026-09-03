@@ -246,6 +246,7 @@ class BillingNotification(TenantModel):
     class Kind(models.TextChoices):
         CHARGE_SETTLED = "charge_settled", "Monthly charge deducted"
         PAYMENT_DUE = "payment_due", "Payment due"
+        PAYMENT_REQUESTED = "payment_requested", "Payment request submitted"
         PAYMENT_RECEIVED = "payment_received", "Payment received"
         TARIFF_CHANGED = "tariff_changed", "Tariff changed"
         BLOCKED = "blocked", "Access blocked"
@@ -268,7 +269,7 @@ class Payment(TenantModel):
     class Provider(models.TextChoices):
         PAYME = "payme", "Payme"
         CLICK = "click", "Click"
-        MANUAL = "manual", "Manual (bank transfer)"
+        MANUAL = "manual", "Bank / Naqd"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

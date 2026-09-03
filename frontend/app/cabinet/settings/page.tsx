@@ -33,10 +33,11 @@ import {
   rotateApiKey,
   saveAccountSettings,
   saveWebhook,
+  submitManualPayment,
   testWebhook,
   type NewOperatorResponse,
 } from "@/lib/api/endpoints";
-import { formatPhone, formatUzs } from "@/lib/format";
+import { formatPhone, formatUzs, providerLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -924,14 +925,105 @@ function BillingSection() {
   );
 }
 
+function PayRequestDialog({
+  initialAmount,
+  onClose,
+  onSubmit,
+}: {
+  initialAmount: number;
+  onClose: () => void;
+  onSubmit: (amount: number) => void;
+}) {
+  const t = useTranslations("settings");
+  const [amount, setAmount] = useState(
+    initialAmount > 0 ? String(initialAmount) : "",
+  );
+  const valid = Number(amount) >= 1000;
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-4"
+      role="dialog"
+    >
+      <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-5 shadow-lg">
+        <h2 className="mb-1 text-base font-semibold">{t("payBankTitle")}</h2>
+        <p className="mb-3 text-xs text-fg-muted">{t("payBankNote")}</p>
+        <label className="mb-2 block text-sm">
+          <span className="mb-1 block text-xs text-fg-muted">
+            {t("payAmount")}
+          </span>
+          <input
+            type="number"
+            min={1000}
+            step={1000}
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            data-testid="pay-amount"
+            className="tnum w-full rounded-md border border-border bg-surface px-3 py-2"
+          />
+        </label>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-sm"
+          >
+            {t("payCancel")}
+          </button>
+          <button
+            type="button"
+            data-testid="pay-submit"
+            disabled={!valid}
+            onClick={() => onSubmit(Number(amount))}
+            className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
+          >
+            {t("paySubmit")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LicenseTab() {
   const t = useTranslations("settings");
+  const queryClient = useQueryClient();
+  const [payOpen, setPayOpen] = useState(false);
   const { data } = useQuery({ queryKey: ["s-license"], queryFn: fetchLicense });
+  const { data: overview } = useQuery({
+    queryKey: ["b-overview"],
+    queryFn: fetchBillingOverview,
+  });
+  const payRequest = useMutation({
+    mutationFn: (amount: number) => submitManualPayment(amount),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["s-license"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      useToastStore
+        .getState()
+        .push({ kind: "success", text: t("payRequested") });
+    },
+    onError: (error: Error) =>
+      useToastStore.getState().push({ kind: "error", text: error.message }),
+  });
   if (!data)
     return <div className="h-40 animate-pulse rounded-lg bg-surface-2" />;
 
   return (
     <div className="max-w-lg space-y-4" data-testid="license-tab">
+      {payOpen && (
+        <PayRequestDialog
+          initialAmount={
+            overview?.unpaid_statement?.total_uzs ??
+            overview?.month_accrued_uzs ??
+            0
+          }
+          onClose={() => setPayOpen(false)}
+          onSubmit={(amount) => {
+            payRequest.mutate(amount);
+            setPayOpen(false);
+          }}
+        />
+      )}
       <BillingSection />
       <div className="rounded-lg border border-border bg-surface p-4">
         {data.status === "trial" && data.trial_days_left !== null ? (
@@ -959,7 +1051,7 @@ function LicenseTab() {
           </div>
         </dl>
         <div className="mt-3 flex gap-2">
-          {["payme", "click", "manual"].map((provider) => (
+          {["payme", "click"].map((provider) => (
             <button
               key={provider}
               type="button"
@@ -968,11 +1060,19 @@ function LicenseTab() {
                   .getState()
                   .push({ kind: "info", text: `${t("pay")}: ${provider}` })
               }
-              className="flex-1 rounded-md bg-accent px-3 py-2 text-xs font-semibold capitalize text-accent-fg hover:opacity-90"
+              className="flex-1 rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-fg hover:opacity-90"
             >
-              {provider}
+              {providerLabel(provider)}
             </button>
           ))}
+          <button
+            type="button"
+            data-testid="pay-bank-btn"
+            onClick={() => setPayOpen(true)}
+            className="flex-1 rounded-md border border-accent px-3 py-2 text-xs font-semibold text-accent hover:bg-accent-soft"
+          >
+            Bank/Naqd
+          </button>
         </div>
       </div>
 
@@ -989,7 +1089,7 @@ function LicenseTab() {
               key={payment.id}
               className="flex items-center gap-2 px-4 py-2 text-sm"
             >
-              <span className="flex-1 capitalize">{payment.provider}</span>
+              <span className="flex-1">{providerLabel(payment.provider)}</span>
               <span className="tnum">{formatUzs(payment.amount_uzs)} UZS</span>
               <span
                 className={cn(

@@ -121,6 +121,7 @@ urlpatterns = [
     path("auth/verify-email", views.EmailVerifyView.as_view(), name="verify-email"),
     path("billing/status", views.BillingStatusView.as_view(), name="billing-status"),
     path("billing/overview", views_billing.BillingOverviewView.as_view(), name="b-overview"),
+    path("billing/pay", views_billing.BillingPayView.as_view(), name="b-pay"),
     path("billing/charges", views_billing.BillingChargesView.as_view(), name="b-charges"),
     path(
         "billing/statements",

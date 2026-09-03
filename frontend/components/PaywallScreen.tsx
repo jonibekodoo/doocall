@@ -1,14 +1,24 @@
 "use client";
 
-import { CreditCard, PhoneCall } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Banknote, CreditCard, PhoneCall } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 
+import { submitManualPayment } from "@/lib/api/endpoints";
 import type { PaywallPayload } from "@/lib/api/types";
 import { formatUzs } from "@/lib/format";
 
 /** Full-screen paywall consuming the 402 SUBSCRIPTION_INACTIVE payload. */
 export function PaywallScreen({ paywall }: { paywall: PaywallPayload }) {
   const t = useTranslations("paywall");
+  const [requested, setRequested] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const request = useMutation({
+    mutationFn: () => submitManualPayment(paywall.amount_due_uzs),
+    onSuccess: () => setRequested(true),
+    onError: (err: Error) => setError(err.message),
+  });
 
   return (
     <div
@@ -58,7 +68,22 @@ export function PaywallScreen({ paywall }: { paywall: PaywallPayload }) {
                 <CreditCard className="size-4" /> {provider}
               </button>
             ))}
+          <button
+            type="button"
+            data-testid="paywall-bank-btn"
+            disabled={requested || request.isPending}
+            onClick={() => request.mutate()}
+            className="flex flex-1 items-center justify-center gap-2 rounded-md border border-accent px-4 py-2.5 text-sm font-semibold text-accent hover:bg-accent-soft disabled:opacity-50"
+          >
+            <Banknote className="size-4" /> Bank/Naqd
+          </button>
         </div>
+        {requested && (
+          <p className="mt-3 rounded-md bg-accent-soft/60 p-2 text-xs text-accent">
+            {t("bankRequested")}
+          </p>
+        )}
+        {error && <p className="mt-3 text-xs text-danger">{error}</p>}
         <p className="mt-3 text-xs text-fg-faint">{t("manualNote")}</p>
       </div>
     </div>

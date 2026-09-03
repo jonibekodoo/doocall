@@ -130,6 +130,9 @@ class AdminDashboardView(StaffView):
                 "payments_30d_uzs": int(payments_30d),
                 "calls_today": calls_today,
                 "integrators": Integrator.objects.filter(status=Integrator.Status.ACTIVE).count(),
+                "pending_payments": Payment.all_objects.filter(
+                    status=Payment.Status.PENDING
+                ).count(),
                 "pending_payouts": PayoutRequest.objects.filter(
                     status=PayoutRequest.Status.PENDING
                 ).count(),

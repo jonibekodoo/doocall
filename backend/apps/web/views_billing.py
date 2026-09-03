@@ -13,7 +13,13 @@ from rest_framework.response import Response
 
 from apps.api.errors import ApiError, ErrorCode
 from apps.billing import services as billing
-from apps.billing.models import BillingNotification, DailyCharge, MonthlyStatement
+from apps.billing.models import (
+    BillingNotification,
+    DailyCharge,
+    MonthlyStatement,
+    Payment,
+)
+from apps.core.models import AuditLog
 
 from .permissions import CabinetView
 
@@ -119,6 +125,63 @@ class BillingStatementsView(CabinetView):
             for s in MonthlyStatement.objects.all()[:36]
         ]
         return Response({"success": True, "statements": rows})
+
+
+class BillingPayView(CabinetView):
+    allow_when_suspended = True  # blocked clients must be able to request payment
+
+    @extend_schema(summary="Submit a bank/cash payment request (platform admin approves)")
+    def post(self, request: Request) -> Response:
+        provider = str(request.data.get("provider") or "manual")
+        if provider != Payment.Provider.MANUAL:
+            raise ApiError(
+                ErrorCode.MISSING_FIELD, "only bank/cash requests are accepted here", 400
+            )
+        try:
+            amount = int(request.data.get("amount_uzs") or 0)
+        except (TypeError, ValueError):
+            raise ApiError(ErrorCode.MISSING_FIELD, "amount_uzs invalid", 400) from None
+        if amount < 1000:
+            raise ApiError(ErrorCode.MISSING_FIELD, "amount_uzs invalid", 400)
+        # One open request at a time keeps the admin queue clean.
+        existing = Payment.objects.filter(
+            provider=Payment.Provider.MANUAL, status=Payment.Status.PENDING
+        ).first()
+        if existing is not None:
+            raise ApiError(
+                ErrorCode.MISSING_FIELD,
+                f"pending request already exists ({existing.amount_uzs} UZS)",
+                400,
+            )
+        payment = Payment.all_objects.create(
+            company=self.company, provider=Payment.Provider.MANUAL, amount_uzs=amount
+        )
+        billing.notify(
+            self.company,
+            BillingNotification.Kind.PAYMENT_REQUESTED,
+            f"Bank/Naqd to'lov so'rovi yuborildi: {amount:,} UZS. "
+            "Administrator tasdiqlagach balansingizga tushadi.".replace(",", " "),
+            amount,
+        )
+        AuditLog.objects.create(
+            company=self.company,
+            actor=request.user,
+            action="billing.payment_requested",
+            target_model="billing.Payment",
+            target_id=str(payment.pk),
+            changes={"amount_uzs": amount, "provider": "manual"},
+        )
+        return Response(
+            {
+                "success": True,
+                "payment": {
+                    "id": payment.pk,
+                    "amount_uzs": payment.amount_uzs,
+                    "status": payment.status,
+                },
+            },
+            status=201,
+        )
 
 
 class NotificationsView(CabinetView):

@@ -67,6 +67,60 @@ class TestBillingEndpoints:
         assert client.get(f"{BASE}/notifications").json()["unread"] == 0
 
 
+class TestManualPayRequest:
+    def test_submit_creates_pending_payment_for_admin(
+        self, client: APIClient, company: Company
+    ) -> None:
+        from apps.billing.models import Payment
+
+        response = client.post(
+            f"{BASE}/billing/pay",
+            {"provider": "manual", "amount_uzs": 250000},
+            format="json",
+        )
+        assert response.status_code == 201
+        payment = Payment.all_objects.get(company=company)
+        assert payment.provider == Payment.Provider.MANUAL
+        assert payment.status == Payment.Status.PENDING
+        assert payment.amount_uzs == 250000
+        assert BillingNotification.all_objects.filter(
+            company=company, kind=BillingNotification.Kind.PAYMENT_REQUESTED
+        ).exists()
+
+        # A second open request is rejected until the first is processed.
+        assert (
+            client.post(
+                f"{BASE}/billing/pay",
+                {"provider": "manual", "amount_uzs": 100000},
+                format="json",
+            ).status_code
+            == 400
+        )
+
+    def test_invalid_amounts_rejected(self, client: APIClient, company: Company) -> None:
+        for bad in (0, -5, "abc", 500):
+            assert (
+                client.post(
+                    f"{BASE}/billing/pay",
+                    {"provider": "manual", "amount_uzs": bad},
+                    format="json",
+                ).status_code
+                == 400
+            )
+
+    def test_works_while_suspended(self, client: APIClient, company: Company) -> None:
+        company.status = Company.Status.SUSPENDED
+        company.save(update_fields=["status"])
+        assert (
+            client.post(
+                f"{BASE}/billing/pay",
+                {"provider": "manual", "amount_uzs": 100000},
+                format="json",
+            ).status_code
+            == 201
+        )
+
+
 class TestSuspensionLock:
     def test_suspended_company_keeps_only_billing_surface(
         self, client: APIClient, company: Company

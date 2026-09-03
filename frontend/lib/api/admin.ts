@@ -24,6 +24,7 @@ export interface AdminKpis extends ApiEnvelope {
   payments_30d_uzs: number;
   calls_today: number;
   integrators: number;
+  pending_payments: number;
   pending_payouts: number;
   payments_series: number[];
   calls_series: number[];

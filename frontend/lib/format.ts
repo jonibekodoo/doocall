@@ -25,6 +25,13 @@ export function formatUzs(amount: number): string {
   return new Intl.NumberFormat("ru-RU").format(amount).replace(/ /g, " ");
 }
 
+/** Payment provider display names ("manual" is shown as Bank/Naqd). */
+export function providerLabel(provider: string): string {
+  return (
+    { payme: "Payme", click: "Click", manual: "Bank/Naqd" }[provider] ?? provider
+  );
+}
+
 /** "how long ago" humanizer for the unanswered report (ru units). */
 export function humanizeAgo(iso: string, now = new Date()): string {
   const diffMs = now.getTime() - new Date(iso).getTime();

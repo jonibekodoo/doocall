@@ -10,7 +10,7 @@ import {
   fetchAdminPayments,
   refundPayment,
 } from "@/lib/api/admin";
-import { formatUzs } from "@/lib/format";
+import { formatUzs, providerLabel } from "@/lib/format";
 
 export default function AdminPaymentsPage() {
   const t = useTranslations("admin");
@@ -101,7 +101,7 @@ export default function AdminPaymentsPage() {
               : (data?.payments ?? []).map((p) => (
                   <tr key={p.id} className="border-t border-border">
                     <td className="px-3 py-2.5">{p.company}</td>
-                    <td className="px-3 py-2.5 capitalize">{p.provider}</td>
+                    <td className="px-3 py-2.5">{providerLabel(p.provider)}</td>
                     <td className="tnum px-3 py-2.5 text-right">
                       {formatUzs(p.amount_uzs)}
                     </td>

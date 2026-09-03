@@ -46,6 +46,12 @@ export function kpiCards(kpis: AdminKpis, t: Translator) {
       hint: null,
     },
     {
+      key: "pendingPayments",
+      label: t("dashboard.pendingPayments"),
+      value: kpis.pending_payments ?? 0,
+      hint: null,
+    },
+    {
       key: "payouts",
       label: t("dashboard.payoutsQueue"),
       value: kpis.pending_payouts,

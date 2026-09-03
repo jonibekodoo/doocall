@@ -346,6 +346,12 @@ export const fetchNotifications = () =>
 export const markNotificationsRead = () =>
   post<{ success: boolean; marked: number }>("/notifications/read");
 
+export const submitManualPayment = (amount_uzs: number) =>
+  post<{
+    success: boolean;
+    payment: { id: number; amount_uzs: number; status: string };
+  }>("/billing/pay", { provider: "manual", amount_uzs });
+
 export const fetchApiKey = () =>
   get<{ success: boolean; api_key_masked: string | null }>("/settings/api-key");
 export const rotateApiKey = () =>
