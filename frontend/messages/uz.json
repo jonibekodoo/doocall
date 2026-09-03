@@ -168,7 +168,10 @@
     "apiAddress": "Sizning API manzilingiz",
     "apiKeyLabel": "Sizning API kalitingiz",
     "apiParamsNote": "API manzil va kalitni tashqi tizimlar sozlamalarida ko'rsating — ular DooCall bilan shu orqali integratsiya qilinadi. Diqqat: kalit almashtirilgach eski kalit ishlamay qoladi, uni ulangan tizimlarda ham yangilang.",
-    "apiDocsLink": "Dasturchilar uchun API hujjatlari"
+    "apiDocsLink": "Dasturchilar uchun API hujjatlari",
+    "country": "Davlat",
+    "timezone": "Vaqt mintaqasi",
+    "timezoneNote": "Qo'ng'iroq vaqtlari, sana filtrlari, hisobotlar va «bugun» chegarasi shu vaqt mintaqasida hisoblanadi. Mobil ilovadan kelgan lokal vaqt ham shu mintaqada talqin qilinadi."
   },
   "crm": {
     "pageTitle": "Integratsiya",

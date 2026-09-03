@@ -16,6 +16,8 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from apps.core.tz import company_tz
+
 from . import queries
 from .permissions import CabinetView
 from .views_calls import filtered_calls
@@ -41,7 +43,7 @@ class WeekdayMatrixView(CabinetView):
     def get(self, request: Request) -> Response:
         rows = list(
             base_qs(request)
-            .annotate(weekday=ExtractIsoWeekDay("start_time"))
+            .annotate(weekday=ExtractIsoWeekDay("start_time", tzinfo=company_tz()))
             .values("weekday")
             .annotate(
                 total=Count("id"),
@@ -64,7 +66,7 @@ class PeriodCountsView(CabinetView):
 
         qs = (
             base_qs(request)
-            .annotate(bucket=trunc("start_time"))
+            .annotate(bucket=trunc("start_time", tzinfo=company_tz()))
             .values("bucket")
             .annotate(
                 total=Count("counterparty_number", distinct=True) if unique else Count("id"),

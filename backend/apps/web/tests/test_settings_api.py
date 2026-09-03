@@ -130,6 +130,8 @@ class TestAccountToggles:
             "contact_import_enabled": True,
             "recording_enabled": True,
             "pin_enabled": False,
+            "country": "UZ",
+            "timezone": "Asia/Tashkent",
         }
         updated = client.put(
             f"{BASE}/account", {"pin_enabled": True, "recording_enabled": False}, format="json"

@@ -24,6 +24,12 @@ class Company(models.Model):
     api_key = models.CharField(max_length=64, blank=True, default="")
     # Audio retention override (days); NULL → global AUDIO_RETENTION_DAYS.
     audio_retention_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Locale: device-local timestamps are parsed and reports/day-boundaries
+    # computed in THIS zone (multi-country tenants).
+    country = models.CharField(
+        max_length=2, blank=True, default="UZ", help_text="ISO 3166-1 alpha-2"
+    )
+    timezone = models.CharField(max_length=64, blank=True, default="Asia/Tashkent")
 
     # ── Integrator binding (Addendum A.2) ──────────────────────────────────
     class AcquiredVia(models.TextChoices):

@@ -168,7 +168,10 @@
     "apiAddress": "Your API address",
     "apiKeyLabel": "Your API key",
     "apiParamsNote": "Use this address and API key in the settings of third-party systems to integrate them with DooCall. After changing the key, update it in the connected systems too — the old key stops working.",
-    "apiDocsLink": "API documentation for developers"
+    "apiDocsLink": "API documentation for developers",
+    "country": "Country",
+    "timezone": "Time zone",
+    "timezoneNote": "Call times, date filters, reports and the \"today\" boundary are computed in this time zone. Device-local timestamps from the mobile app are interpreted in it too."
   },
   "crm": {
     "pageTitle": "Integration",

@@ -13,6 +13,7 @@ from django.db.models import Count, Max, Q, QuerySet, Sum
 from django.utils import timezone
 
 from apps.calls.models import CallRecord
+from apps.core.tz import company_tz
 
 ANSWERED = Q(call_status=CallRecord.CallStatus.ANSWERED)
 MISSED = Q(call_status=CallRecord.CallStatus.NO_ANSWER)
@@ -29,7 +30,8 @@ def period_start(period: str, now: datetime | None = None) -> datetime:
     now = now or timezone.now()
     days = PERIODS.get(period, 0)
     if days == 0:
-        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # "Today" begins at midnight in the COMPANY's zone, not UTC.
+        return now.astimezone(company_tz()).replace(hour=0, minute=0, second=0, microsecond=0)
     return now - timedelta(days=days)
 
 

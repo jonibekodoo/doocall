@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, time
 from typing import Any
-from zoneinfo import ZoneInfo
 
-from django.conf import settings
 from django.db.models import Q, QuerySet
 from drf_spectacular.utils import extend_schema
 from rest_framework import status as http
@@ -41,8 +39,11 @@ def parse_date(value: str | None, *, end: bool = False) -> datetime | None:
         raise ApiError(
             ErrorCode.MISSING_FIELD, f"invalid date {value!r} (YYYY-MM-DD)", 400
         ) from None
-    tz = ZoneInfo(settings.TIME_ZONE)
-    return datetime.combine(day, time.max if end else time.min, tzinfo=tz)
+    from apps.core.tz import company_tz
+
+    # Day boundaries in the COMPANY's zone (tenant context is active both in
+    # cabinet requests and inside export jobs).
+    return datetime.combine(day, time.max if end else time.min, tzinfo=company_tz())
 
 
 def filtered_calls(params: Any) -> QuerySet[CallRecord]:

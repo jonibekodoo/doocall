@@ -387,6 +387,49 @@ function DevicesTab() {
 }
 
 // ── Tab 3 + 5: toggles (calls&SMS + account share the settings API) ────────
+const COUNTRIES: Array<{ code: string; name: string; tz: string }> = [
+  { code: "UZ", name: "Uzbekistan", tz: "Asia/Tashkent" },
+  { code: "KZ", name: "Kazakhstan", tz: "Asia/Almaty" },
+  { code: "KG", name: "Kyrgyzstan", tz: "Asia/Bishkek" },
+  { code: "TJ", name: "Tajikistan", tz: "Asia/Dushanbe" },
+  { code: "TM", name: "Turkmenistan", tz: "Asia/Ashgabat" },
+  { code: "RU", name: "Russia", tz: "Europe/Moscow" },
+  { code: "AZ", name: "Azerbaijan", tz: "Asia/Baku" },
+  { code: "TR", name: "Türkiye", tz: "Europe/Istanbul" },
+  { code: "AE", name: "UAE", tz: "Asia/Dubai" },
+  { code: "SA", name: "Saudi Arabia", tz: "Asia/Riyadh" },
+  { code: "GB", name: "United Kingdom", tz: "Europe/London" },
+  { code: "DE", name: "Germany", tz: "Europe/Berlin" },
+  { code: "US", name: "USA", tz: "America/New_York" },
+  { code: "IN", name: "India", tz: "Asia/Kolkata" },
+  { code: "CN", name: "China", tz: "Asia/Shanghai" },
+];
+
+const TIMEZONES = [
+  "Asia/Tashkent",
+  "Asia/Almaty",
+  "Asia/Aqtobe",
+  "Asia/Bishkek",
+  "Asia/Dushanbe",
+  "Asia/Ashgabat",
+  "Europe/Moscow",
+  "Europe/Samara",
+  "Asia/Yekaterinburg",
+  "Asia/Novosibirsk",
+  "Asia/Baku",
+  "Europe/Istanbul",
+  "Asia/Dubai",
+  "Asia/Riyadh",
+  "Europe/Kyiv",
+  "Europe/London",
+  "Europe/Berlin",
+  "America/New_York",
+  "America/Chicago",
+  "America/Los_Angeles",
+  "Asia/Kolkata",
+  "Asia/Shanghai",
+];
+
 function TogglesTab({ mode }: { mode: "callsSms" | "account" }) {
   const t = useTranslations("settings");
   const queryClient = useQueryClient();
@@ -423,6 +466,66 @@ function TogglesTab({ mode }: { mode: "callsSms" | "account" }) {
             />
           </label>
         ))}
+      {mode === "account" && settings && (
+        <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-fg-muted">
+              {t("country")}
+            </span>
+            <select
+              value={settings.country}
+              data-testid="account-country"
+              onChange={(event) => {
+                const picked = COUNTRIES.find(
+                  (item) => item.code === event.target.value,
+                );
+                save.mutate({
+                  country: event.target.value,
+                  // Picking a country pre-sets its default zone (still editable).
+                  ...(picked ? { timezone: picked.tz } : {}),
+                });
+              }}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            >
+              {!COUNTRIES.some((item) => item.code === settings.country) && (
+                <option value={settings.country}>
+                  {settings.country || "—"}
+                </option>
+              )}
+              {COUNTRIES.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-fg-muted">
+              {t("timezone")}
+            </span>
+            <select
+              value={settings.timezone}
+              data-testid="account-timezone"
+              onChange={(event) => save.mutate({ timezone: event.target.value })}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            >
+              {!TIMEZONES.includes(settings.timezone) && (
+                <option value={settings.timezone}>
+                  {settings.timezone || "—"}
+                </option>
+              )}
+              {TIMEZONES.map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-xs leading-relaxed text-fg-faint">
+            {t("timezoneNote")}
+          </p>
+        </div>
+      )}
       {mode === "callsSms" && (
         <>
           <button

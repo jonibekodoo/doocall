@@ -40,7 +40,7 @@ from .serializers import (
     UploadRequestSerializer,
 )
 
-DEVICE_TZ = ZoneInfo(settings.TIME_ZONE)  # device-local == server TZ assumption (§1)
+DEVICE_TZ = ZoneInfo(settings.TIME_ZONE)  # fallback when the company has no zone set
 
 
 def _enqueue_webhook(record_id: int) -> None:
@@ -59,8 +59,12 @@ def _server_id(record: CallRecord) -> str:
     return f"srv_{record.server_id.hex}"
 
 
-def _parse_local(value: str) -> datetime | None:
-    """Parse the §1 'yyyy-MM-dd HH:mm:ss' device-local string to aware UTC."""
+def _parse_local(value: str, tz: ZoneInfo = DEVICE_TZ) -> datetime | None:
+    """Parse the §1 'yyyy-MM-dd HH:mm:ss' device-local string to aware UTC.
+
+    Device-local == the COMPANY's configured timezone (multi-country
+    tenants), falling back to the server default.
+    """
     if not value:
         return None
     try:
@@ -71,7 +75,7 @@ def _parse_local(value: str) -> datetime | None:
             f"Invalid datetime format: {value!r} (expected 'yyyy-MM-dd HH:mm:ss')",
             http.HTTP_400_BAD_REQUEST,
         ) from None
-    return naive.replace(tzinfo=DEVICE_TZ).astimezone(ZoneInfo("UTC"))
+    return naive.replace(tzinfo=tz).astimezone(ZoneInfo("UTC"))
 
 
 class BaseApiView(APIView):
@@ -218,7 +222,10 @@ class UploadView(BaseApiView):
         )
         resolved_name = contact_phone.contact.name if contact_phone else None
 
-        start_utc = _parse_local(data["start_time"])
+        from apps.core.tz import company_tz
+
+        device_tz = company_tz(company)
+        start_utc = _parse_local(data["start_time"], device_tz)
         if start_utc is None:
             raise ApiError(
                 ErrorCode.MISSING_FIELD, "start_time is required", http.HTTP_400_BAD_REQUEST
@@ -244,7 +251,7 @@ class UploadView(BaseApiView):
                 sim_slot=data["sim_slot"],
                 duration=data["duration"],
                 start_time=start_utc,
-                end_time=_parse_local(data["end_time"]),
+                end_time=_parse_local(data["end_time"], device_tz),
                 start_time_local=data["start_time"],
                 end_time_local=data["end_time"],
                 latitude=data.get("latitude"),

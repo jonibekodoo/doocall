@@ -302,14 +302,22 @@ class DeviceDeleteView(AdminCabinetView):
         return Response({"success": True})
 
 
-# ── Account-wide toggles ───────────────────────────────────────────────────
-class AccountSettingsView(AdminCabinetView):
-    @extend_schema(summary="Account-wide toggles (contact import / recording / PIN)")
-    def get(self, request: Request) -> Response:
-        flags = {**ACCOUNT_FLAG_DEFAULTS, **(self.company.feature_flags or {})}
-        return Response({"success": True, "settings": {k: flags[k] for k in ACCOUNT_FLAGS}})
+# ── Account-wide toggles + locale ──────────────────────────────────────────
+def _account_body(company: Any) -> dict[str, Any]:
+    flags = {**ACCOUNT_FLAG_DEFAULTS, **(company.feature_flags or {})}
+    return {
+        **{k: flags[k] for k in ACCOUNT_FLAGS},
+        "country": company.country,
+        "timezone": company.timezone,
+    }
 
-    @extend_schema(summary="Update account-wide toggles")
+
+class AccountSettingsView(AdminCabinetView):
+    @extend_schema(summary="Account-wide toggles + country/timezone")
+    def get(self, request: Request) -> Response:
+        return Response({"success": True, "settings": _account_body(self.company)})
+
+    @extend_schema(summary="Update account toggles / country / timezone")
     def put(self, request: Request) -> Response:
         company = self.company
         flags = {**ACCOUNT_FLAG_DEFAULTS, **(company.feature_flags or {})}
@@ -317,8 +325,23 @@ class AccountSettingsView(AdminCabinetView):
             if key in request.data:
                 flags[key] = bool(request.data[key])
         company.feature_flags = flags
-        company.save(update_fields=["feature_flags", "updated_at"])
-        return Response({"success": True, "settings": {k: flags[k] for k in ACCOUNT_FLAGS}})
+        update_fields = ["feature_flags", "updated_at"]
+        if "country" in request.data:
+            country = str(request.data["country"] or "").strip().upper()
+            if country and len(country) != 2:
+                raise ApiError(ErrorCode.MISSING_FIELD, "country must be ISO alpha-2", 400)
+            company.country = country
+            update_fields.append("country")
+        if "timezone" in request.data:
+            from apps.core.tz import is_valid_zone
+
+            tz_name = str(request.data["timezone"] or "").strip()
+            if tz_name and not is_valid_zone(tz_name):
+                raise ApiError(ErrorCode.MISSING_FIELD, f"unknown timezone {tz_name!r}", 400)
+            company.timezone = tz_name
+            update_fields.append("timezone")
+        company.save(update_fields=update_fields)
+        return Response({"success": True, "settings": _account_body(company)})
 
 
 # ── Company API key ────────────────────────────────────────────────────────

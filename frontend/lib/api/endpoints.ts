@@ -274,6 +274,8 @@ export interface AccountSettings {
   contact_import_enabled: boolean;
   recording_enabled: boolean;
   pin_enabled: boolean;
+  country: string;
+  timezone: string;
 }
 export const fetchAccountSettings = () =>
   get<{ success: boolean; settings: AccountSettings }>("/settings/account");
