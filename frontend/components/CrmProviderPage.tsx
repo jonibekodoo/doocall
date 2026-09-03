@@ -35,12 +35,14 @@ export function CrmProviderPage({
   info,
   regions,
   fields,
+  guideHref,
 }: {
   provider: "amocrm" | "bitrix24" | "odoo";
   title: string;
   info: string;
   regions?: { label: string; options: CrmRegion[] };
   fields: CrmField[];
+  guideHref?: string;
 }) {
   const t = useTranslations("crm");
   const queryClient = useQueryClient();
@@ -101,6 +103,21 @@ export function CrmProviderPage({
       >
         <ArrowLeft className="size-4" /> {t("back")}
       </Link>
+
+      {guideHref && (
+        <p className="mt-3 text-sm">
+          {t("guideNote")}{" "}
+          <a
+            href={guideHref}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="font-semibold text-accent hover:underline"
+          >
+            {t("guideLink")}
+          </a>
+          .
+        </p>
+      )}
 
       <div className="mt-4 rounded-md border-l-4 border-accent bg-accent-soft/40 p-4 text-sm leading-relaxed text-fg">
         {info}

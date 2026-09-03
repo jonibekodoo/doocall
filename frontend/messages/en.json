@@ -185,6 +185,8 @@
     "statusOk": "working",
     "statusError": "error",
     "lastDelivery": "Last delivery",
+    "guideNote": "Detailed instructions:",
+    "guideLink": "setup guide",
     "amocrm": {
       "info": "Log into your CRM as an administrator, create a long-lived access token (Settings → Integrations → API), then paste your account address and the token below and press Connect. Every finished call will be attached to the matching contact by phone number, with a recording link.",
       "regionLabel": "Choose which CRM to connect:",

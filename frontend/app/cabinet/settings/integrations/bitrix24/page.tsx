@@ -11,6 +11,7 @@ export default function Bitrix24IntegrationPage() {
       provider="bitrix24"
       title="Bitrix24"
       info={t("info")}
+      guideHref="/docs/bitrix24"
       regions={{
         label: t("regionLabel"),
         options: [

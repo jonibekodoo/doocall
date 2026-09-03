@@ -11,6 +11,7 @@ export default function AmoCrmIntegrationPage() {
       provider="amocrm"
       title="amoCRM / kommoCRM"
       info={t("info")}
+      guideHref="/docs/amocrm"
       regions={{
         label: t("regionLabel"),
         options: [

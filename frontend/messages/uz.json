@@ -185,6 +185,8 @@
     "statusOk": "ishlayapti",
     "statusError": "xatolik",
     "lastDelivery": "Oxirgi yuborish",
+    "guideNote": "Batafsil ko'rsatmalar:",
+    "guideLink": "sozlash qo'llanmasi",
     "amocrm": {
       "info": "CRM'ga administrator sifatida kiring, uzoq muddatli token yarating (Sozlamalar → Integratsiyalar → API), so'ng quyida akkaunt manzili va tokenni kiritib, Ulash tugmasini bosing. Har bir tugagan qo'ng'iroq telefon raqami bo'yicha kontaktga biriktiriladi, audio yozuv havolasi bilan.",
       "regionLabel": "Qaysi CRM ulanishini tanlang:",
