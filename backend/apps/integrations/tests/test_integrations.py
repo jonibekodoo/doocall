@@ -203,7 +203,10 @@ class TestAmoCrmAdapter:
 
         def fake_http(url: str, payload: Any = None, *, headers: Any = None, method: Any = None):
             seen.append((url, payload))
-            return responses[len(seen) - 1]
+            result = responses[len(seen) - 1]
+            if isinstance(result, Exception):
+                raise result
+            return result
 
         monkeypatch.setattr(providers, "_http_json", fake_http)
         providers.send_call("amocrm", AMO_CONFIG, call, "https://rec.example/1")
@@ -243,6 +246,24 @@ class TestAmoCrmAdapter:
             contact["custom_fields_values"][0]["values"][0]["value"] == "+998901112233"
         )
         assert contact["responsible_user_id"] == 504141
+
+    def test_entity_not_found_as_http_400_triggers_fallback(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Live behaviour: amoCRM returns HTTP 400 + status 263 for unknown phones.
+        http_400 = providers.ProviderError(
+            'HTTP 400: {"_total_items":0,"errors":[{"title":"Entity not found","status":263}]}'
+        )
+        contact_created = {"_embedded": {"contacts": [{"id": 9}]}}
+        landed = {"errors": [], "_embedded": {"calls": [{"id": 3, "entity_id": 9}]}}
+        seen = self._run(monkeypatch, call, [http_400, contact_created, landed])
+        assert [u.rsplit("/", 1)[-1] for u, _ in seen] == ["calls", "contacts", "calls"]
+
+    def test_other_http_400_is_raised(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with pytest.raises(providers.ProviderError, match="401"):
+            self._run(monkeypatch, call, [providers.ProviderError("HTTP 401: bad token")])
 
     def test_raises_when_retry_also_fails(
         self, call: CallRecord, monkeypatch: pytest.MonkeyPatch

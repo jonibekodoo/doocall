@@ -154,12 +154,18 @@ def _amocrm_create_contact(config: dict[str, Any], record: CallRecord) -> None:
 def _amocrm_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
     base = _clean_base(config["base_url"])
     payload = [_amo_call_payload(config, record, record_url)]
-    body = _http_json(f"{base}/api/v4/calls", payload, headers=_amo_headers(config))
-    if _amo_call_landed(body):
-        return
+    url = f"{base}/api/v4/calls"
+    # "Entity not found" (status 263) arrives as HTTP 400 — treat it as
+    # "phone unknown", not as a hard failure.
+    try:
+        if _amo_call_landed(_http_json(url, payload, headers=_amo_headers(config))):
+            return
+    except ProviderError as exc:
+        if "Entity not found" not in str(exc):
+            raise
     # Phone unknown to this amoCRM account → create the contact, retry once.
     _amocrm_create_contact(config, record)
-    body = _http_json(f"{base}/api/v4/calls", payload, headers=_amo_headers(config))
+    body = _http_json(url, payload, headers=_amo_headers(config))
     if not _amo_call_landed(body):
         errors = (body or {}).get("errors") or body
         raise ProviderError(f"amoCRM rejected the call: {json.dumps(errors)[:300]}")
