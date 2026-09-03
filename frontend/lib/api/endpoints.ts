@@ -346,6 +346,9 @@ export const fetchNotifications = () =>
 export const markNotificationsRead = () =>
   post<{ success: boolean; marked: number }>("/notifications/read");
 
+export const markNotificationRead = (id: number) =>
+  post<{ success: boolean }>(`/notifications/${id}/read`);
+
 export const submitManualPayment = (amount_uzs: number) =>
   post<{
     success: boolean;

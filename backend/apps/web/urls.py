@@ -135,6 +135,11 @@ urlpatterns = [
         name="notifications-read",
     ),
     path(
+        "notifications/<int:note_id>/read",
+        views_billing.NotificationReadOneView.as_view(),
+        name="notification-read-one",
+    ),
+    path(
         "billing/webhooks/<str:provider_name>",
         views.ProviderWebhookView.as_view(),
         name="billing-webhook",

@@ -1,23 +1,25 @@
 "use client";
 
-/** Cabinet bell: billing notifications (charge deducted, tariff change,
- * payment due, blocked). Polls each minute; opening marks all read. */
+/** Cabinet bell: shows ONLY unread billing notifications. Clicking one
+ * marks it read; the footer links to the full notifications page. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import {
   fetchNotifications,
-  markNotificationsRead,
+  markNotificationRead,
 } from "@/lib/api/endpoints";
 import { formatUzs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const KIND_COLOR: Record<string, string> = {
+export const KIND_COLOR: Record<string, string> = {
   charge_settled: "bg-accent",
   payment_received: "bg-accent",
+  payment_requested: "bg-accent",
   tariff_changed: "bg-warning",
   payment_due: "bg-warning",
   blocked: "bg-danger",
@@ -34,8 +36,8 @@ export function NotificationsBell() {
     queryFn: fetchNotifications,
     refetchInterval: 60_000,
   });
-  const markRead = useMutation({
-    mutationFn: markNotificationsRead,
+  const readOne = useMutation({
+    mutationFn: (id: number) => markNotificationRead(id),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
@@ -48,6 +50,9 @@ export function NotificationsBell() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
+  const unreadRows = (data?.notifications ?? []).filter(
+    (note) => !note.is_read,
+  );
   const unread = data?.unread ?? 0;
 
   return (
@@ -56,11 +61,7 @@ export function NotificationsBell() {
         type="button"
         data-testid="bell-btn"
         aria-label={t("title")}
-        onClick={() => {
-          const next = !open;
-          setOpen(next);
-          if (next && unread > 0) markRead.mutate();
-        }}
+        onClick={() => setOpen((value) => !value)}
         className="relative grid size-8 place-items-center rounded-md text-fg-muted hover:bg-surface-2"
       >
         <Bell className="size-4" />
@@ -80,33 +81,47 @@ export function NotificationsBell() {
             {t("title")}
           </p>
           <ul className="max-h-96 divide-y divide-border overflow-y-auto">
-            {(data?.notifications ?? []).map((note) => (
-              <li key={note.id} className="px-3 py-2.5">
-                <div className="flex items-start gap-2">
+            {unreadRows.map((note) => (
+              <li key={note.id}>
+                <button
+                  type="button"
+                  data-testid={`note-${note.id}`}
+                  onClick={() => readOne.mutate(note.id)}
+                  className="flex w-full items-start gap-2 px-3 py-2.5 text-left hover:bg-surface-2"
+                >
                   <span
                     className={cn(
                       "mt-1.5 size-2 shrink-0 rounded-full",
                       KIND_COLOR[note.kind] ?? "bg-fg-faint",
-                      note.is_read && "opacity-30",
                     )}
                   />
-                  <div className="min-w-0">
-                    <p className="text-sm leading-snug">{note.message}</p>
-                    <p className="tnum mt-0.5 text-xs text-fg-faint">
+                  <span className="min-w-0">
+                    <span className="block text-sm leading-snug">
+                      {note.message}
+                    </span>
+                    <span className="tnum mt-0.5 block text-xs text-fg-faint">
                       {note.created_at.slice(0, 16).replace("T", " ")}
                       {note.amount_uzs != null &&
                         ` · ${formatUzs(note.amount_uzs)} UZS`}
-                    </p>
-                  </div>
-                </div>
+                    </span>
+                  </span>
+                </button>
               </li>
             ))}
-            {(data?.notifications ?? []).length === 0 && (
+            {unreadRows.length === 0 && (
               <li className="px-3 py-8 text-center text-xs text-fg-faint">
-                {t("empty")}
+                {t("noUnread")}
               </li>
             )}
           </ul>
+          <Link
+            href="/cabinet/notifications"
+            onClick={() => setOpen(false)}
+            data-testid="bell-view-all"
+            className="block border-t border-border px-3 py-2 text-center text-sm font-semibold text-accent hover:bg-surface-2"
+          >
+            {t("viewAll")}
+          </Link>
         </div>
       )}
     </div>

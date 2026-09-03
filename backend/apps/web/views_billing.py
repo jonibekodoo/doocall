@@ -212,3 +212,14 @@ class NotificationsReadView(CabinetView):
     def post(self, request: Request) -> Response:
         updated = BillingNotification.objects.filter(is_read=False).update(is_read=True)
         return Response({"success": True, "marked": updated})
+
+
+class NotificationReadOneView(CabinetView):
+    allow_when_suspended = True
+
+    @extend_schema(summary="Mark ONE notification read (click-to-open)")
+    def post(self, request: Request, note_id: int) -> Response:
+        updated = BillingNotification.objects.filter(pk=note_id).update(is_read=True)
+        if not updated:
+            raise ApiError(ErrorCode.MISSING_FIELD, "notification not found", 404)
+        return Response({"success": True})

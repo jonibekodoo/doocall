@@ -53,15 +53,24 @@ class TestBillingEndpoints:
         assert body["statements"][0]["total_uzs"] == 250000
 
     def test_notifications_flow(self, client: APIClient, company: Company) -> None:
-        BillingNotification.all_objects.create(
+        first = BillingNotification.all_objects.create(
             company=company,
             kind=BillingNotification.Kind.PAYMENT_DUE,
             message="To'lov qilish kerak",
             amount_uzs=300000,
         )
+        BillingNotification.all_objects.create(
+            company=company,
+            kind=BillingNotification.Kind.TARIFF_CHANGED,
+            message="Tarif o'zgardi",
+        )
         listing = client.get(f"{BASE}/notifications").json()
-        assert listing["unread"] == 1
-        assert listing["notifications"][0]["kind"] == "payment_due"
+        assert listing["unread"] == 2
+
+        # Click-to-open: one notification at a time.
+        assert client.post(f"{BASE}/notifications/{first.pk}/read").json()["success"]
+        assert client.get(f"{BASE}/notifications").json()["unread"] == 1
+        assert client.post(f"{BASE}/notifications/999999/read").status_code == 404
 
         assert client.post(f"{BASE}/notifications/read").json()["marked"] == 1
         assert client.get(f"{BASE}/notifications").json()["unread"] == 0

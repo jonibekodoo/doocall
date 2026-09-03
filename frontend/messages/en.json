@@ -195,7 +195,11 @@
   },
   "notifications": {
     "title": "Notifications",
-    "empty": "No notifications yet"
+    "empty": "No notifications yet",
+    "noUnread": "No unread notifications",
+    "viewAll": "View all",
+    "markAll": "Mark all as read",
+    "newBadge": "new"
   },
   "crm": {
     "pageTitle": "Integration",

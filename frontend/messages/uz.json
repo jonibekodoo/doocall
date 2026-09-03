@@ -195,7 +195,11 @@
   },
   "notifications": {
     "title": "Bildirishnomalar",
-    "empty": "Hozircha bildirishnoma yo'q"
+    "empty": "Hozircha bildirishnoma yo'q",
+    "noUnread": "O'qilmagan bildirishnoma yo'q",
+    "viewAll": "Barchasini ko'rish",
+    "markAll": "Hammasini o'qilgan qilish",
+    "newBadge": "yangi"
   },
   "crm": {
     "pageTitle": "Integratsiya",

@@ -788,140 +788,109 @@ const STATUS_BADGE: Record<string, string> = {
   overdue: "bg-danger/10 text-danger",
 };
 
-function BillingSection() {
+const CHARGES_PAGE_SIZE = 10;
+
+function DailyChargesCard() {
   const t = useTranslations("settings");
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(currentMonth);
-  const { data: overview } = useQuery({
-    queryKey: ["b-overview"],
-    queryFn: fetchBillingOverview,
-  });
+  const [page, setPage] = useState(0);
   const { data: charges } = useQuery({
     queryKey: ["b-charges", month],
     queryFn: () => fetchBillingCharges(month),
   });
-  const { data: statements } = useQuery({
-    queryKey: ["b-statements"],
-    queryFn: fetchBillingStatements,
-  });
+
+  const rows = charges?.charges ?? [];
+  const pageCount = Math.max(1, Math.ceil(rows.length / CHARGES_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const slice = rows.slice(
+    safePage * CHARGES_PAGE_SIZE,
+    safePage * CHARGES_PAGE_SIZE + CHARGES_PAGE_SIZE,
+  );
 
   return (
-    <>
-      {overview?.unpaid_statement && (
-        <div
-          data-testid="unpaid-banner"
-          className="rounded-lg border border-danger/40 bg-danger/5 p-4 text-sm text-danger"
-        >
-          {t("unpaidWarning", {
-            month: overview.unpaid_statement.month,
-            amount: formatUzs(overview.unpaid_statement.total_uzs),
-          })}
-        </div>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2" data-testid="balance-cards">
-        <div className="rounded-lg border border-border bg-surface p-4">
-          <p className="text-xs font-semibold uppercase text-fg-faint">
-            {t("balance")}
-          </p>
-          <p className="tnum mt-1 text-2xl font-bold text-accent">
-            {formatUzs(overview?.balance_uzs ?? 0)}{" "}
-            <span className="text-sm font-medium text-fg-muted">UZS</span>
-          </p>
-        </div>
-        <div className="rounded-lg border border-border bg-surface p-4">
-          <p className="text-xs font-semibold uppercase text-fg-faint">
-            {t("monthAccrued")}
-          </p>
-          <p className="tnum mt-1 text-2xl font-bold">
-            {formatUzs(overview?.month_accrued_uzs ?? 0)}{" "}
-            <span className="text-sm font-medium text-fg-muted">UZS</span>
-          </p>
-          <p className="tnum mt-1 text-xs text-fg-faint">
-            {t("dailyRate")}: {formatUzs(overview?.daily_rate_uzs ?? 0)} UZS ×{" "}
-            {overview?.seats ?? 0}
-          </p>
-        </div>
+    <div className="flex flex-col rounded-lg border border-border bg-surface">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <p className="text-sm font-semibold">{t("dailyCharges")}</p>
+        <input
+          type="month"
+          value={month}
+          max={currentMonth}
+          onChange={(event) => {
+            setMonth(event.target.value || currentMonth);
+            setPage(0);
+          }}
+          data-testid="charges-month"
+          className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+        />
       </div>
-
-      <div className="rounded-lg border border-border bg-surface">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <p className="text-sm font-semibold">{t("dailyCharges")}</p>
-          <input
-            type="month"
-            value={month}
-            max={currentMonth}
-            onChange={(event) => setMonth(event.target.value || currentMonth)}
-            data-testid="charges-month"
-            className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
-          />
-        </div>
-        <div className="max-h-72 overflow-y-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 bg-surface-2 text-xs uppercase text-fg-muted">
-              <tr>
-                <th className="px-4 py-2">{t("colDate")}</th>
-                <th className="px-4 py-2">{t("colOperator")}</th>
-                <th className="px-4 py-2 text-right">{t("colAmount")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(charges?.charges ?? []).map((row, index) => (
-                <tr key={`${row.date}-${row.operator_name}-${index}`}>
-                  <td className="tnum px-4 py-1.5">{row.date}</td>
-                  <td className="px-4 py-1.5">{row.operator_name}</td>
-                  <td className="tnum px-4 py-1.5 text-right">
-                    {formatUzs(row.amount_uzs)}
-                  </td>
-                </tr>
-              ))}
-              {(charges?.charges ?? []).length === 0 && (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-4 py-6 text-center text-xs text-fg-faint"
-                  >
-                    —
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <p className="tnum border-t border-border px-4 py-2 text-right text-sm font-semibold">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
+          <tr>
+            <th className="px-4 py-2">{t("colDate")}</th>
+            <th className="px-4 py-2">{t("colOperator")}</th>
+            <th className="px-4 py-2 text-right">{t("colAmount")}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {slice.map((row, index) => (
+            <tr key={`${row.date}-${row.operator_name}-${index}`}>
+              <td className="tnum px-4 py-2">{row.date}</td>
+              <td className="px-4 py-2">{row.operator_name}</td>
+              <td className="tnum px-4 py-2 text-right">
+                {formatUzs(row.amount_uzs)}
+              </td>
+            </tr>
+          ))}
+          {slice.length === 0 && (
+            <tr>
+              <td
+                colSpan={3}
+                className="px-4 py-8 text-center text-xs text-fg-faint"
+              >
+                —
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <div className="mt-auto flex items-center justify-between border-t border-border px-4 py-2">
+        <p className="tnum text-sm font-semibold">
           {t("total")}: {formatUzs(charges?.total_uzs ?? 0)} UZS
         </p>
-      </div>
-
-      <div className="rounded-lg border border-border bg-surface">
-        <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
-          {t("statements")}
-        </p>
-        <ul className="divide-y divide-border">
-          {(statements?.statements ?? []).map((statement) => (
-            <li
-              key={statement.month}
-              className="flex items-center gap-2 px-4 py-2 text-sm"
+        {rows.length > CHARGES_PAGE_SIZE && (
+          <div
+            className="flex items-center gap-1.5"
+            data-testid="charges-pagination"
+          >
+            <button
+              type="button"
+              aria-label="prev"
+              disabled={safePage === 0}
+              onClick={() => setPage(safePage - 1)}
+              className="grid size-7 place-items-center rounded-md border border-border text-sm disabled:opacity-30"
             >
-              <span className="tnum flex-1">{statement.month}</span>
-              <span className="tnum">{formatUzs(statement.total_uzs)} UZS</span>
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 text-xs font-semibold",
-                  STATUS_BADGE[statement.status] ?? "bg-surface-3",
-                )}
-              >
-                {t(`stmt_${statement.status}`)}
-              </span>
-            </li>
-          ))}
-          {(statements?.statements ?? []).length === 0 && (
-            <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
-          )}
-        </ul>
+              ‹
+            </button>
+            <span className="tnum text-xs text-fg-muted">
+              {safePage * CHARGES_PAGE_SIZE + 1}–
+              {Math.min((safePage + 1) * CHARGES_PAGE_SIZE, rows.length)} /{" "}
+              {rows.length}
+            </span>
+            <button
+              type="button"
+              aria-label="next"
+              disabled={safePage >= pageCount - 1}
+              onClick={() => setPage(safePage + 1)}
+              className="grid size-7 place-items-center rounded-md border border-border text-sm disabled:opacity-30"
+            >
+              ›
+            </button>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -993,6 +962,10 @@ function LicenseTab() {
     queryKey: ["b-overview"],
     queryFn: fetchBillingOverview,
   });
+  const { data: statements } = useQuery({
+    queryKey: ["b-statements"],
+    queryFn: fetchBillingStatements,
+  });
   const payRequest = useMutation({
     mutationFn: (amount: number) => submitManualPayment(amount),
     onSuccess: () => {
@@ -1009,7 +982,7 @@ function LicenseTab() {
     return <div className="h-40 animate-pulse rounded-lg bg-surface-2" />;
 
   return (
-    <div className="max-w-lg space-y-4" data-testid="license-tab">
+    <div className="space-y-4" data-testid="license-tab">
       {payOpen && (
         <PayRequestDialog
           initialAmount={
@@ -1024,86 +997,171 @@ function LicenseTab() {
           }}
         />
       )}
-      <BillingSection />
-      <div className="rounded-lg border border-border bg-surface p-4">
-        {data.status === "trial" && data.trial_days_left !== null ? (
-          <p className="text-sm">
-            {t("trialLeft")}: <b className="tnum">{data.trial_days_left}</b>
+
+      {overview?.unpaid_statement && (
+        <div
+          data-testid="unpaid-banner"
+          className="rounded-lg border border-danger/40 bg-danger/5 p-4 text-sm text-danger"
+        >
+          {t("unpaidWarning", {
+            month: overview.unpaid_statement.month,
+            amount: formatUzs(overview.unpaid_statement.total_uzs),
+          })}
+        </div>
+      )}
+
+      {/* ── Summary row: balance | this month | current plan + pay ── */}
+      <div className="grid gap-3 md:grid-cols-3" data-testid="balance-cards">
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs font-semibold uppercase text-fg-faint">
+            {t("balance")}
           </p>
-        ) : (
-          <p className="tnum text-sm text-fg-muted">
-            {t("period")}: {data.current_period_start?.slice(0, 10)} —{" "}
-            {data.current_period_end?.slice(0, 10)}
+          <p className="tnum mt-2 text-3xl font-bold text-accent">
+            {formatUzs(overview?.balance_uzs ?? 0)}
+            <span className="ml-1 text-sm font-medium text-fg-muted">UZS</span>
           </p>
-        )}
-        <dl className="tnum mt-3 space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-fg-muted">{t("seats")}</dt>
-            <dd data-testid="license-seats">{data.seats}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-fg-muted">{t("perSeat")}</dt>
-            <dd>{formatUzs(data.price_per_operator_uzs)} UZS</dd>
-          </div>
-          <div className="flex justify-between border-t border-border pt-1.5 font-semibold">
-            <dt>{t("total")}</dt>
-            <dd data-testid="license-total">{formatUzs(data.total_uzs)} UZS</dd>
-          </div>
-        </dl>
-        <div className="mt-3 flex gap-2">
-          {["payme", "click"].map((provider) => (
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs font-semibold uppercase text-fg-faint">
+            {t("monthAccrued")}
+          </p>
+          <p className="tnum mt-2 text-3xl font-bold">
+            {formatUzs(overview?.month_accrued_uzs ?? 0)}
+            <span className="ml-1 text-sm font-medium text-fg-muted">UZS</span>
+          </p>
+          <p className="tnum mt-1.5 text-xs text-fg-faint">
+            {t("dailyRate")}: {formatUzs(overview?.daily_rate_uzs ?? 0)} UZS ×{" "}
+            {overview?.seats ?? 0}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          {data.status === "trial" && data.trial_days_left !== null ? (
+            <p className="text-xs font-semibold uppercase text-fg-faint">
+              {t("trialLeft")}:{" "}
+              <b className="tnum text-fg">{data.trial_days_left}</b>
+            </p>
+          ) : (
+            <p className="tnum text-xs font-semibold uppercase text-fg-faint">
+              {t("period")}: {data.current_period_start?.slice(0, 10)} —{" "}
+              {data.current_period_end?.slice(0, 10)}
+            </p>
+          )}
+          <dl className="tnum mt-2 space-y-1 text-sm">
+            <div className="flex justify-between">
+              <dt className="text-fg-muted">{t("seats")}</dt>
+              <dd data-testid="license-seats">{data.seats}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-fg-muted">{t("perSeat")}</dt>
+              <dd>{formatUzs(data.price_per_operator_uzs)} UZS</dd>
+            </div>
+            <div className="flex justify-between border-t border-border pt-1 font-semibold">
+              <dt>{t("total")}</dt>
+              <dd data-testid="license-total">
+                {formatUzs(data.total_uzs)} UZS
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-3 flex gap-2">
+            {["payme", "click"].map((provider) => (
+              <button
+                key={provider}
+                type="button"
+                onClick={() =>
+                  useToastStore
+                    .getState()
+                    .push({ kind: "info", text: `${t("pay")}: ${provider}` })
+                }
+                className="flex-1 rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-fg hover:opacity-90"
+              >
+                {providerLabel(provider)}
+              </button>
+            ))}
             <button
-              key={provider}
               type="button"
-              onClick={() =>
-                useToastStore
-                  .getState()
-                  .push({ kind: "info", text: `${t("pay")}: ${provider}` })
-              }
-              className="flex-1 rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-fg hover:opacity-90"
+              data-testid="pay-bank-btn"
+              onClick={() => setPayOpen(true)}
+              className="flex-1 rounded-md border border-accent px-3 py-2 text-xs font-semibold text-accent hover:bg-accent-soft"
             >
-              {providerLabel(provider)}
+              Bank/Naqd
             </button>
-          ))}
-          <button
-            type="button"
-            data-testid="pay-bank-btn"
-            onClick={() => setPayOpen(true)}
-            className="flex-1 rounded-md border border-accent px-3 py-2 text-xs font-semibold text-accent hover:bg-accent-soft"
-          >
-            Bank/Naqd
-          </button>
+          </div>
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-surface">
-        <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
-          {t("payments")}
-        </p>
-        <ul className="divide-y divide-border">
-          {data.payments.length === 0 && (
-            <li className="px-4 py-4 text-center text-xs text-fg-faint">—</li>
-          )}
-          {data.payments.map((payment) => (
-            <li
-              key={payment.id}
-              className="flex items-center gap-2 px-4 py-2 text-sm"
-            >
-              <span className="flex-1">{providerLabel(payment.provider)}</span>
-              <span className="tnum">{formatUzs(payment.amount_uzs)} UZS</span>
-              <span
-                className={cn(
-                  "rounded-full px-2 py-0.5 text-xs",
-                  payment.status === "approved"
-                    ? "bg-accent-soft text-accent"
-                    : "bg-surface-3 text-fg-muted",
-                )}
-              >
-                {payment.status}
-              </span>
-            </li>
-          ))}
-        </ul>
+      {/* ── Detail row: daily charges | statements + payments ── */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <DailyChargesCard />
+
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-surface">
+            <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+              {t("statements")}
+            </p>
+            <ul className="divide-y divide-border">
+              {(statements?.statements ?? []).map((statement) => (
+                <li
+                  key={statement.month}
+                  className="flex items-center gap-2 px-4 py-2 text-sm"
+                >
+                  <span className="tnum flex-1">{statement.month}</span>
+                  <span className="tnum">
+                    {formatUzs(statement.total_uzs)} UZS
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-xs font-semibold",
+                      STATUS_BADGE[statement.status] ?? "bg-surface-3",
+                    )}
+                  >
+                    {t(`stmt_${statement.status}`)}
+                  </span>
+                </li>
+              ))}
+              {(statements?.statements ?? []).length === 0 && (
+                <li className="px-4 py-6 text-center text-xs text-fg-faint">
+                  —
+                </li>
+              )}
+            </ul>
+          </div>
+
+          <div className="rounded-lg border border-border bg-surface">
+            <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+              {t("payments")}
+            </p>
+            <ul className="divide-y divide-border">
+              {data.payments.length === 0 && (
+                <li className="px-4 py-4 text-center text-xs text-fg-faint">
+                  —
+                </li>
+              )}
+              {data.payments.map((payment) => (
+                <li
+                  key={payment.id}
+                  className="flex items-center gap-2 px-4 py-2 text-sm"
+                >
+                  <span className="flex-1">
+                    {providerLabel(payment.provider)}
+                  </span>
+                  <span className="tnum">
+                    {formatUzs(payment.amount_uzs)} UZS
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-xs",
+                      payment.status === "approved"
+                        ? "bg-accent-soft text-accent"
+                        : "bg-surface-3 text-fg-muted",
+                    )}
+                  >
+                    {payment.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );
