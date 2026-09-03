@@ -161,27 +161,27 @@ const RU: Guide = {
 const UZ: Guide = {
   title: "amoCRM / Kommo bilan integratsiya",
   intro:
-    "Ulangandan so'ng DooCall mobil ilovasidagi har bir tugagan qo'ng'iroq avtomatik amoCRM'da paydo bo'ladi: telefon raqami bo'yicha kontaktga (bitta faol bitim bo'lsa — bitimga) audio yozuv havolasi bilan biriktiriladi. Notanish raqamlar uchun DooCall kontaktni o'zi yaratadi.",
+    "Ulangandan so’ng DooCall mobil ilovasidagi har bir tugagan qo’ng’iroq avtomatik amoCRM’da paydo bo’ladi: telefon raqami bo’yicha kontaktga (bitta faol bitim bo’lsa — bitimga) audio yozuv havolasi bilan biriktiriladi. Notanish raqamlar uchun DooCall kontaktni o’zi yaratadi.",
   apiDocsLabel: "API hujjatlari",
-  footer: "© DooCall. Integratsiya bo'yicha savollar: kabinetingizdagi qo'llab-quvvatlash.",
+  footer: "© DooCall. Integratsiya bo’yicha savollar: kabinetingizdagi qo’llab-quvvatlash.",
   sections: [
     {
       step: 1,
-      title: "amoCRM'da integratsiya yarating",
+      title: "amoCRM’da integratsiya yarating",
       body: (
         <>
           <p>
-            amoCRM'ga administrator sifatida kirib, integratsiyalar
-            bo'limini oching:
+            amoCRM’ga administrator sifatida kirib, integratsiyalar
+            bo’limini oching:
           </p>
           <DocsList
             items={[
               <>
-                Yangi interfeys: <b>amoМаркет</b> (chap menyu) → o'ng yuqori
+                Yangi interfeys: <b>amoМаркет</b> (chap menyu) → o’ng yuqori
                 burchakdagi «···» tugmasi → <b>«Создать интеграцию»</b>.
               </>,
               <>
-                Yoki to'g'ridan-to'g'ri manzil:{" "}
+                Yoki to’g’ridan-to’g’ri manzil:{" "}
                 <code>
                   https://&lt;akkauntingiz&gt;.amocrm.ru/settings/widgets/
                 </code>
@@ -189,7 +189,7 @@ const UZ: Guide = {
             ]}
           />
           <p>
-            <b>Tashqi (xususiy) integratsiya</b>ni tanlab formani to'ldiring:
+            <b>Tashqi (xususiy) integratsiya</b>ni tanlab formani to’ldiring:
             nomi — masalan «DooCall»; redirect havola — istalgan haqiqiy URL
             (masalan <code>https://doocall.uz</code>, uzoq muddatli token
             uchun ishlatilmaydi); <b>«Доступ к данным аккаунта»</b>{" "}
@@ -205,11 +205,11 @@ const UZ: Guide = {
         <>
           <p>
             Yaratilgan integratsiya kartochkasini oching →{" "}
-            <b>«Ключи и доступы»</b> bo'limi → <b>«Долгосрочный токен»</b> →
+            <b>«Ключи и доступы»</b> bo’limi → <b>«Долгосрочный токен»</b> →
             «Сгенерировать». Muddatni maksimal (5 yilgacha) tanlang.
           </p>
           <DocsNote kind="warning">
-            Token faqat BIR marta ko'rsatiladi — darhol nusxalab oling.
+            Token faqat BIR marta ko’rsatiladi — darhol nusxalab oling.
             Qayta generatsiya qilinsa, eski token barcha ulangan
             xizmatlarda ishlamay qoladi.
           </DocsNote>
@@ -218,12 +218,12 @@ const UZ: Guide = {
     },
     {
       step: 3,
-      title: "DooCall'da ulang",
+      title: "DooCall’da ulang",
       body: (
         <>
           <p>
             DooCall kabinetida: <b>Sozlamalar → Integratsiya → amoCRM</b>.
-            To'ldiring:
+            To’ldiring:
           </p>
           <DocsList
             items={[
@@ -236,13 +236,13 @@ const UZ: Guide = {
                 <b>Kirish tokeni</b> — 2-qadamdagi uzoq muddatli token;
               </>,
               <>
-                <b>amoCRM foydalanuvchi ID</b> (ixtiyoriy) — qo'ng'iroqlar
+                <b>amoCRM foydalanuvchi ID</b> (ixtiyoriy) — qo’ng’iroqlar
                 va yangi kontaktlar kimga biriktirilishi.
               </>,
             ]}
           />
           <p>
-            <b>«Ulash»</b>ni, so'ng <b>«Ulanishni tekshirish»</b>ni bosing —
+            <b>«Ulash»</b>ni, so’ng <b>«Ulanishni tekshirish»</b>ni bosing —
             muvaffaqiyatda akkauntingiz nomi qaytadi.
           </p>
         </>
@@ -253,30 +253,30 @@ const UZ: Guide = {
       body: (
         <DocsList
           items={[
-            "Har bir tugagan qo'ng'iroq amoCRM'ga yuboriladi (API v4 /calls): yo'nalish, davomiylik va yozuvning doimiy havolasi bilan.",
-            "Statuslar: suhbat bo'ldi, javob berilmadi, band — amoCRM qo'ng'iroq kartochkasida ko'rinadi.",
-            "Raqam amoCRM'da topilmasa, DooCall avval kontakt yaratadi (ism — DooCall kontaktlar katalogidan yoki raqamning o'zi), keyin qo'ng'iroqni biriktiradi.",
-            "Yetkazish holati DooCall kabinetidagi amoCRM sahifasida ko'rinadi («ishlayapti» / xato matni).",
+            "Har bir tugagan qo’ng’iroq amoCRM’ga yuboriladi (API v4 /calls): yo’nalish, davomiylik va yozuvning doimiy havolasi bilan.",
+            "Statuslar: suhbat bo’ldi, javob berilmadi, band — amoCRM qo’ng’iroq kartochkasida ko’rinadi.",
+            "Raqam amoCRM’da topilmasa, DooCall avval kontakt yaratadi (ism — DooCall kontaktlar katalogidan yoki raqamning o’zi), keyin qo’ng’iroqni biriktiradi.",
+            "Yetkazish holati DooCall kabinetidagi amoCRM sahifasida ko’rinadi («ishlayapti» / xato matni).",
           ]}
         />
       ),
     },
     {
-      title: "Yuzaga kelishi mumkin bo'lgan muammolar",
+      title: "Yuzaga kelishi mumkin bo’lgan muammolar",
       body: (
         <DocsList
           items={[
             <>
-              <b>HTTP 401</b> — token noto'g'ri, bekor qilingan yoki muddati
-              tugagan: yangisini yaratib DooCall'da yangilang;
+              <b>HTTP 401</b> — token noto’g’ri, bekor qilingan yoki muddati
+              tugagan: yangisini yaratib DooCall’da yangilang;
             </>,
             <>
-              <b>Akkaunt manzili o'zgardi</b> — «Akkaunt manzili» maydonini
+              <b>Akkaunt manzili o’zgardi</b> — «Akkaunt manzili» maydonini
               yangilab, ulanishni qayta tekshiring;
             </>,
             <>
-              Qo'ng'iroq tushmadi — DooCall'dagi amoCRM sahifasida statusni
-              ko'ring va integratsiya yoqilganiga ishonch hosil qiling.
+              Qo’ng’iroq tushmadi — DooCall’dagi amoCRM sahifasida statusni
+              ko’ring va integratsiya yoqilganiga ishonch hosil qiling.
             </>,
           ]}
         />

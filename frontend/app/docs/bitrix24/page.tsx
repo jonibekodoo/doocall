@@ -157,9 +157,9 @@ const RU: Guide = {
 const UZ: Guide = {
   title: "Bitrix24 bilan integratsiya",
   intro:
-    "Ulangandan so'ng DooCall mobil ilovasidagi har bir tugagan qo'ng'iroq Bitrix24'da telefon qo'ng'irog'i sifatida avtomatik ro'yxatga olinadi: notanish raqamlar uchun Bitrix24 o'zi lid yaratadi, audio yozuv qo'ng'iroqqa biriktiriladi yoki CRM lentasiga joylanadi.",
+    "Ulangandan so’ng DooCall mobil ilovasidagi har bir tugagan qo’ng’iroq Bitrix24’da telefon qo’ng’irog’i sifatida avtomatik ro’yxatga olinadi: notanish raqamlar uchun Bitrix24 o’zi lid yaratadi, audio yozuv qo’ng’iroqqa biriktiriladi yoki CRM lentasiga joylanadi.",
   apiDocsLabel: "API hujjatlari",
-  footer: "© DooCall. Integratsiya bo'yicha savollar: kabinetingizdagi qo'llab-quvvatlash.",
+  footer: "© DooCall. Integratsiya bo’yicha savollar: kabinetingizdagi qo’llab-quvvatlash.",
   sections: [
     {
       step: 1,
@@ -167,8 +167,8 @@ const UZ: Guide = {
       body: (
         <>
           <p>
-            Bitrix24'da oching: <b>Разработчикам</b> (chap menyu) →{" "}
-            <b>Другое</b> → <b>«Входящий вебхук»</b>. Quyidagi ko'rinishdagi
+            Bitrix24’da oching: <b>Разработчикам</b> (chap menyu) →{" "}
+            <b>Другое</b> → <b>«Входящий вебхук»</b>. Quyidagi ko’rinishdagi
             tayyor havolali sahifa ochiladi:
           </p>
           <DocsCode>{`https://portalingiz.bitrix24.ru/rest/1/xxxxxxxxxxxxxxxx/`}</DocsCode>
@@ -182,12 +182,12 @@ const UZ: Guide = {
         <>
           <p>
             <b>«Настройка прав»</b> blokida «+ выбрать»ni bosib IKKITA
-            huquqni qo'shing:
+            huquqni qo’shing:
           </p>
           <DocsList
             items={[
               <>
-                <b>«Телефония (telephony)»</b> — qo'ng'iroqlarni ro'yxatga
+                <b>«Телефония (telephony)»</b> — qo’ng’iroqlarni ro’yxatga
                 olish;
               </>,
               <>
@@ -197,46 +197,46 @@ const UZ: Guide = {
             ]}
           />
           <DocsNote kind="warning">
-            Adashtirmang: ro'yxatda o'xshash «Телефония (совершение звонков){" "}
-            <b>(call)</b>» bandi ham bor — u TO'G'RI KELMAYDI. Qavsida
-            aynan «<b>(telephony)</b>» yozilgani kerak. So'ng
+            Adashtirmang: ro’yxatda o’xshash «Телефония (совершение звонков){" "}
+            <b>(call)</b>» bandi ham bor — u TO’G’RI KELMAYDI. Qavsida
+            aynan «<b>(telephony)</b>» yozilgani kerak. So’ng
             «Сохранить»ni bosing.
           </DocsNote>
           <DocsNote>
-            Huquqlar o'zgartirilganda yoki «Перегенерировать» bosilganda
-            havola kodi o'zgarishi mumkin — saqlagach URL'ni solishtiring
-            va kerak bo'lsa DooCall'da yangilang.
+            Huquqlar o’zgartirilganda yoki «Перегенерировать» bosilganda
+            havola kodi o’zgarishi mumkin — saqlagach URL’ni solishtiring
+            va kerak bo’lsa DooCall’da yangilang.
           </DocsNote>
         </>
       ),
     },
     {
       step: 3,
-      title: "DooCall'da ulang",
+      title: "DooCall’da ulang",
       body: (
         <>
           <p>
             DooCall kabinetida: <b>Sozlamalar → Integratsiya → Bitrix24</b>.
-            To'ldiring:
+            To’ldiring:
           </p>
           <DocsList
             items={[
               <>
-                <b>Kiruvchi vebhuk URL</b> — 1-qadamdagi havola to'liq
+                <b>Kiruvchi vebhuk URL</b> — 1-qadamdagi havola to’liq
                 holda;
               </>,
               <>
-                <b>Bitrix24 foydalanuvchi ID</b> — qo'ng'iroqlar kim nomidan
+                <b>Bitrix24 foydalanuvchi ID</b> — qo’ng’iroqlar kim nomidan
                 yozilishi (odatda 1 — administrator);
               </>,
               <>
-                <b>Akkaunt manzili</b> — ma'lumot uchun, masalan{" "}
+                <b>Akkaunt manzili</b> — ma’lumot uchun, masalan{" "}
                 <code>portalingiz.bitrix24.ru</code>.
               </>,
             ]}
           />
           <p>
-            <b>«Ulash»</b>ni, so'ng <b>«Ulanishni tekshirish»</b>ni bosing.
+            <b>«Ulash»</b>ni, so’ng <b>«Ulanishni tekshirish»</b>ni bosing.
           </p>
         </>
       ),
@@ -246,17 +246,17 @@ const UZ: Guide = {
       body: (
         <DocsList
           items={[
-            "Qo'ng'iroq telephony.externalcall.register orqali ro'yxatga olinib, finish bilan yakunlanadi — telefoniya statistikasi va CRM kartochkasiga tushadi.",
+            "Qo’ng’iroq telephony.externalcall.register orqali ro’yxatga olinib, finish bilan yakunlanadi — telefoniya statistikasi va CRM kartochkasiga tushadi.",
             "Notanish raqam → Bitrix24 avtomatik lid yaratadi (CRM_CREATE).",
             "Statuslar: muvaffaqiyatli (200), javob berilmadi (304), band (486), rad etildi (603).",
-            "mp3/wav yozuvlar to'g'ridan-to'g'ri qo'ng'iroqqa biriktiriladi; boshqa formatlar (masalan Android'dagi .ogg) doimiy havola sifatida lid/kontakt lentasiga joylanadi.",
-            "Ayni qo'ng'iroq 30 daqiqa ichida qayta yuborilsa dublikat hosil bo'lmaydi (EXTERNAL_CALL_ID).",
+            "mp3/wav yozuvlar to’g’ridan-to’g’ri qo’ng’iroqqa biriktiriladi; boshqa formatlar (masalan Android’dagi .ogg) doimiy havola sifatida lid/kontakt lentasiga joylanadi.",
+            "Ayni qo’ng’iroq 30 daqiqa ichida qayta yuborilsa dublikat hosil bo’lmaydi (EXTERNAL_CALL_ID).",
           ]}
         />
       ),
     },
     {
-      title: "Yuzaga kelishi mumkin bo'lgan muammolar",
+      title: "Yuzaga kelishi mumkin bo’lgan muammolar",
       body: (
         <DocsList
           items={[
@@ -265,11 +265,11 @@ const UZ: Guide = {
               huquqi yetishmayapti (2-qadamga qarang);
             </>,
             <>
-              <b>INVALID_CREDENTIALS</b> — vebhuk havolasi o'zgargan yoki
-              o'chirilgan: amaldagi URL'ni nusxalab DooCall'da yangilang;
+              <b>INVALID_CREDENTIALS</b> — vebhuk havolasi o’zgargan yoki
+              o’chirilgan: amaldagi URL’ni nusxalab DooCall’da yangilang;
             </>,
             <>
-              Qo'ng'iroq tushmadi — DooCall kabinetidagi Bitrix24
+              Qo’ng’iroq tushmadi — DooCall kabinetidagi Bitrix24
               sahifasida statusni va integratsiya yoqilganini tekshiring.
             </>,
           ]}
@@ -321,7 +321,7 @@ const EN: Guide = {
             ]}
           />
           <DocsNote kind="warning">
-            Don't confuse it with the similar “Telephony (making calls){" "}
+            Don’t confuse it with the similar “Telephony (making calls){" "}
             <b>(call)</b>” item — it will NOT work. You need the one with
             “<b>(telephony)</b>” in parentheses. Then press Save.
           </DocsNote>
