@@ -7,6 +7,8 @@ import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   Cell,
@@ -22,10 +24,13 @@ import { DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import {
   CHART_COLORS,
+  ChartBox,
   ChartContainer,
+  ReportCard,
   chartAxisProps,
   chartTooltipStyle,
 } from "@/components/charts/theme";
+import { StatCard } from "@/components/ui/StatCard";
 import {
   fetchGeneralReport,
   fetchLastContact,
@@ -105,52 +110,143 @@ function GeneralView() {
     queryKey: ["r-general"],
     queryFn: () => fetchGeneralReport(),
   });
+  const tReports = useTranslations("reports");
   if (isPending) return <Skeleton />;
   if (!data) return null;
   const { report } = data;
-  const cols = [
-    { key: "all", stats: report.all },
-    { key: "inbound", stats: report.inbound },
-    { key: "outbound", stats: report.outbound },
-  ] as const;
+  const rate =
+    report.all.total > 0
+      ? Math.round((report.all.answered / report.all.total) * 100)
+      : 0;
+  const donut = [
+    { name: tCalls("answered"), value: report.all.answered },
+    { name: tCalls("missed"), value: report.all.missed },
+  ];
+  const directions = [
+    {
+      name: tCalls("inbound"),
+      answered: report.inbound.answered,
+      missed: report.inbound.missed,
+    },
+    {
+      name: tCalls("outbound"),
+      answered: report.outbound.answered,
+      missed: report.outbound.missed,
+    },
+  ];
   return (
-    <div data-testid="report-general">
-      <div className="grid gap-3 sm:grid-cols-3">
-        {cols.map(({ key, stats }) => (
-          <div
-            key={key}
-            className="rounded-lg border border-border bg-surface p-4"
-          >
-            <p className="text-xs font-semibold uppercase text-fg-faint">
-              {t(key)}
-            </p>
-            <p className="tnum mt-1 text-2xl font-semibold">{stats.total}</p>
-            <p className="tnum mt-2 text-sm text-accent">
-              {tCalls("answered")}: {stats.answered}
-            </p>
-            <p className="tnum text-sm text-danger">
-              {tCalls("missed")}: {stats.missed}
-            </p>
-          </div>
-        ))}
+    <div data-testid="report-general" className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label={t("all")} value={report.all.total} />
+        <StatCard
+          label={tCalls("answered")}
+          value={report.all.answered}
+          tone="accent"
+          hint={rate + "%"}
+        />
+        <StatCard
+          label={tCalls("missed")}
+          value={report.all.missed}
+          tone="danger"
+        />
+        <StatCard
+          label={tCalls("duration")}
+          value={hhmmss(report.total_duration_sec)}
+        />
       </div>
-      <p className="tnum mt-3 text-sm text-fg-muted">
-        {tCalls("duration")}: <b>{hhmmss(report.total_duration_sec)}</b>
-      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReportCard title={tReports("answeredMissed")}>
+          <div className="relative">
+            <ChartBox height={240}>
+              <PieChart>
+                <Tooltip {...chartTooltipStyle} />
+                <Pie
+                  data={donut}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius="65%"
+                  outerRadius="90%"
+                  paddingAngle={2}
+                  strokeWidth={0}
+                >
+                  <Cell fill={CHART_COLORS.answered} />
+                  <Cell fill={CHART_COLORS.missed} />
+                </Pie>
+              </PieChart>
+            </ChartBox>
+            <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
+              <div>
+                <p className="tnum text-3xl font-bold">{report.all.total}</p>
+                <p className="text-xs uppercase text-fg-faint">{t("all")}</p>
+              </div>
+            </div>
+          </div>
+        </ReportCard>
+        <ReportCard title={tReports("byDirection")}>
+          <ChartBox height={240}>
+            <BarChart data={directions} barGap={6}>
+              <XAxis dataKey="name" {...chartAxisProps} />
+              <YAxis {...chartAxisProps} width={36} />
+              <Tooltip {...chartTooltipStyle} />
+              <Bar
+                dataKey="answered"
+                fill={CHART_COLORS.answered}
+                name={tCalls("answered")}
+                radius={[6, 6, 0, 0]}
+              />
+              <Bar
+                dataKey="missed"
+                fill={CHART_COLORS.missed}
+                name={tCalls("missed")}
+                radius={[6, 6, 0, 0]}
+              />
+            </BarChart>
+          </ChartBox>
+        </ReportCard>
+      </div>
     </div>
   );
 }
 
 function WeekdayView() {
   const t = useTranslations("calls");
+  const tReports = useTranslations("reports");
   const { data, isPending } = useQuery({
     queryKey: ["r-weekday"],
     queryFn: () => fetchWeekdayMatrix(),
   });
   if (isPending) return <Skeleton />;
+  const labels = tReports("weekdaysShort").split(",");
+  const chartRows = (data?.report ?? []).map((row) => ({
+    name: labels[row.weekday - 1] ?? String(row.weekday),
+    answered: row.answered,
+    missed: row.missed,
+  }));
   return (
+    <div className="space-y-4">
+    <ReportCard title={tReports("weekdayMatrix")}>
+      <ChartBox height={240}>
+        <BarChart data={chartRows} barGap={4}>
+          <XAxis dataKey="name" {...chartAxisProps} interval={0} />
+          <YAxis {...chartAxisProps} width={36} />
+          <Tooltip {...chartTooltipStyle} />
+          <Bar
+            dataKey="answered"
+            fill={CHART_COLORS.answered}
+            name={t("answered")}
+            radius={[6, 6, 0, 0]}
+          />
+          <Bar
+            dataKey="missed"
+            fill={CHART_COLORS.missed}
+            name={t("missed")}
+            radius={[6, 6, 0, 0]}
+          />
+        </BarChart>
+      </ChartBox>
+    </ReportCard>
     <table
-      className="w-full rounded-lg border border-border bg-surface text-sm"
+      className="w-full overflow-hidden rounded-lg border border-border bg-surface text-sm"
       data-testid="report-weekday"
     >
       <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
@@ -167,7 +263,7 @@ function WeekdayView() {
         {(data?.report ?? []).map((row) => (
           <tr key={row.weekday} className="border-t border-border">
             <td className="px-3 py-2 font-medium">
-              {WEEKDAYS_RU[row.weekday - 1]}
+              {labels[row.weekday - 1] ?? WEEKDAYS_RU[row.weekday - 1]}
             </td>
             <td className="tnum px-3 py-2 text-right">{row.total}</td>
             <td className="tnum px-3 py-2 text-right">{row.inbound}</td>
@@ -182,6 +278,7 @@ function WeekdayView() {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -226,7 +323,21 @@ function PeriodView() {
         <Skeleton />
       ) : (
         <ChartContainer height={280}>
-          <BarChart data={(data?.report ?? []).slice(-31)}>
+          <AreaChart data={(data?.report ?? []).slice(-31)}>
+            <defs>
+              <linearGradient id="periodFill" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="0%"
+                  stopColor={CHART_COLORS.answered}
+                  stopOpacity={0.35}
+                />
+                <stop
+                  offset="100%"
+                  stopColor={CHART_COLORS.answered}
+                  stopOpacity={0.02}
+                />
+              </linearGradient>
+            </defs>
             <XAxis
               dataKey="bucket"
               {...chartAxisProps}
@@ -234,15 +345,16 @@ function PeriodView() {
             />
             <YAxis {...chartAxisProps} width={36} />
             <Tooltip {...chartTooltipStyle} />
-            <Bar dataKey="total" fill={CHART_COLORS.answered}>
-              <LabelList
-                dataKey="total"
-                position="top"
-                fill="var(--fg-muted)"
-                fontSize={10}
-              />
-            </Bar>
-          </BarChart>
+            <Area
+              type="monotone"
+              dataKey="total"
+              stroke={CHART_COLORS.answered}
+              strokeWidth={2.5}
+              fill="url(#periodFill)"
+              dot={{ r: 2.5, fill: CHART_COLORS.answered, strokeWidth: 0 }}
+              activeDot={{ r: 4 }}
+            />
+          </AreaChart>
         </ChartContainer>
       )}
     </div>
@@ -556,9 +668,9 @@ function ReportsInner() {
               type="button"
               onClick={() => setTab(tabs[0].id)}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium",
+                "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
                 tab === tabs[0].id
-                  ? "bg-accent text-accent-fg"
+                  ? "bg-accent text-accent-fg shadow-sm"
                   : "border border-border text-fg-muted hover:bg-surface-2",
               )}
             >
@@ -568,9 +680,9 @@ function ReportsInner() {
             <details key={group} className="group relative">
               <summary
                 className={cn(
-                  "cursor-pointer list-none rounded-md px-3 py-1.5 text-sm font-medium",
+                  "cursor-pointer list-none rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
                   tabs.some((item) => item.id === tab)
-                    ? "bg-accent text-accent-fg"
+                    ? "bg-accent text-accent-fg shadow-sm"
                     : "border border-border text-fg-muted hover:bg-surface-2",
                 )}
               >

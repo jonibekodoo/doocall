@@ -151,6 +151,48 @@ class TestOverdueBlocking:
         ).exists()
 
 
+class TestRefund:
+    def test_refund_debits_balance_and_notifies(
+        self, company: Company, subscription: Subscription
+    ) -> None:
+        payment = Payment.all_objects.create(
+            company=company, provider="manual", amount_uzs=300_000
+        )
+        services.apply_payment(payment, now=dt(2026, 9, 4, 10))
+        company.refresh_from_db()
+        assert company.balance_uzs == 300_000
+
+        services.refund_payment(payment, now=dt(2026, 9, 5, 10))
+        company.refresh_from_db()
+        payment.refresh_from_db()
+        assert company.balance_uzs == 0
+        assert payment.status == Payment.Status.REJECTED
+        note = BillingNotification.all_objects.filter(
+            company=company, kind=BillingNotification.Kind.PAYMENT_REFUNDED
+        ).first()
+        assert note is not None and note.amount_uzs == 300_000
+
+    def test_refund_can_drive_balance_negative(
+        self, company: Company, subscription: Subscription
+    ) -> None:
+        payment = Payment.all_objects.create(
+            company=company, provider="manual", amount_uzs=200_000
+        )
+        services.apply_payment(payment, now=dt(2026, 9, 4, 10))
+        company.balance_uzs = 50_000  # part already spent on a statement
+        company.save(update_fields=["balance_uzs"])
+        services.refund_payment(payment, now=dt(2026, 9, 5, 10))
+        company.refresh_from_db()
+        assert company.balance_uzs == -150_000  # visible debt
+
+    def test_only_approved_payments_refundable(self, company: Company) -> None:
+        payment = Payment.all_objects.create(
+            company=company, provider="manual", amount_uzs=100_000
+        )
+        with pytest.raises(ValueError):
+            services.refund_payment(payment, now=dt(2026, 9, 5, 10))
+
+
 class TestTariffChangeNotification:
     def test_global_price_change_notifies_companies(self, company: Company) -> None:
         row = PricingSetting.objects.get(company=None)

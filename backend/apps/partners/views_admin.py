@@ -398,15 +398,14 @@ class AdminPaymentsView(StaffView):
 
 
 class AdminPaymentRefundView(StaffView):
-    @extend_schema(summary="Mark a payment refunded (reverses cashback)")
+    @extend_schema(summary="Refund a payment (debits balance, notifies client, reverses cashback)")
     def post(self, request: Request, payment_id: int) -> Response:
         payment = Payment.all_objects.filter(pk=payment_id).first()
         if payment is None:
             raise ApiError(ErrorCode.MISSING_FIELD, "payment not found", 404)
         if payment.status != Payment.Status.APPROVED:
             raise ApiError(ErrorCode.MISSING_FIELD, "only approved payments can be refunded", 400)
-        payment.status = Payment.Status.REJECTED  # refund marker (no new enum)
-        payment.save(update_fields=["status"])
+        billing.refund_payment(payment, actor=cast(User, request.user))
         services.reverse_cashback(payment)
         AuditLog.objects.create(
             company=payment.company,

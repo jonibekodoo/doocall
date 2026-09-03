@@ -380,6 +380,37 @@ def credit_balance(
     _reactivate_if_clear(company, now)
 
 
+@transaction.atomic
+def refund_payment(
+    payment: Payment, *, actor: User | None = None, now: datetime | None = None
+) -> Payment:
+    """Reverse an approved payment: mark rejected, DEBIT the balance and
+    tell the client. (The admin returns the money outside the system.)"""
+    now = now or timezone.now()
+    if payment.status != Payment.Status.APPROVED:
+        raise ValueError("only approved payments can be refunded")
+    payment.status = Payment.Status.REJECTED  # refund marker (no new enum)
+    payment.save(update_fields=["status"])
+    company = Company.objects.select_for_update().get(pk=payment.company_id)
+    company.balance_uzs -= payment.amount_uzs  # may go negative → visible debt
+    company.save(update_fields=["balance_uzs", "updated_at"])
+    notify(
+        company,
+        BillingNotification.Kind.PAYMENT_REFUNDED,
+        f"To'lov bekor qilindi: {payment.amount_uzs:,} UZS balansdan yechildi. "
+        f"Balans: {company.balance_uzs:,} UZS".replace(",", " "),
+        payment.amount_uzs,
+    )
+    _audit(
+        company,
+        "payment.refunded",
+        actor,
+        amount_uzs=payment.amount_uzs,
+        payment_id=payment.pk,
+    )
+    return payment
+
+
 def run_overdue_enforcement(now: datetime) -> int:
     """Block companies whose statement stayed unpaid past the grace window."""
     today = now.date()

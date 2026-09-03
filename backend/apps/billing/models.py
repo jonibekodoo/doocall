@@ -248,6 +248,7 @@ class BillingNotification(TenantModel):
         PAYMENT_DUE = "payment_due", "Payment due"
         PAYMENT_REQUESTED = "payment_requested", "Payment request submitted"
         PAYMENT_RECEIVED = "payment_received", "Payment received"
+        PAYMENT_REFUNDED = "payment_refunded", "Payment refunded"
         TARIFF_CHANGED = "tariff_changed", "Tariff changed"
         BLOCKED = "blocked", "Access blocked"
 

@@ -96,7 +96,11 @@
     "allOperators": "All operators",
     "latestSuccessful": "Latest successful calls",
     "currentUnanswered": "Currently unanswered",
-    "recordingGuide": "How to enable call recording"
+    "recordingGuide": "How to enable call recording",
+    "kTotal": "Total calls",
+    "answerRate": "answered",
+    "directionChart": "By direction",
+    "operatorChart": "By operator"
   },
   "contacts": {
     "new": "+ New contact",
@@ -129,7 +133,9 @@
     "howLongAgo": "How long ago",
     "withContact": "With contact",
     "attempts": "Attempts",
-    "noData": "No data"
+    "noData": "No data yet",
+    "byDirection": "By direction",
+    "weekdaysShort": "Mo,Tu,We,Th,Fr,Sa,Su"
   },
   "settings": {
     "usersGroups": "Users & groups",

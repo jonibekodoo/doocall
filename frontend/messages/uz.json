@@ -96,7 +96,11 @@
     "allOperators": "Barcha operatorlar",
     "latestSuccessful": "So'nggi muvaffaqiyatli qo'ng'iroqlar",
     "currentUnanswered": "Hozirgi javobsizlar",
-    "recordingGuide": "Qo'ng'iroq yozuvini qanday yoqish"
+    "recordingGuide": "Qo'ng'iroq yozuvini qanday yoqish",
+    "kTotal": "Jami qo'ng'iroqlar",
+    "answerRate": "javob berildi",
+    "directionChart": "Yo'nalishlar bo'yicha",
+    "operatorChart": "Operatorlar bo'yicha"
   },
   "contacts": {
     "new": "+ Yangi kontakt",
@@ -129,7 +133,9 @@
     "howLongAgo": "Qancha oldin",
     "withContact": "Kontakt bilan",
     "attempts": "Urinishlar",
-    "noData": "No data"
+    "noData": "Ma'lumot yo'q",
+    "byDirection": "Yo'nalishlar bo'yicha",
+    "weekdaysShort": "Du,Se,Ch,Pa,Ju,Sh,Ya"
   },
   "settings": {
     "usersGroups": "Foydalanuvchilar va guruhlar",

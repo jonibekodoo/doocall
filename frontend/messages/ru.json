@@ -96,7 +96,11 @@
     "allOperators": "Все операторы",
     "latestSuccessful": "Последние успешные звонки",
     "currentUnanswered": "Текущие неотвеченные",
-    "recordingGuide": "Как включить запись звонков"
+    "recordingGuide": "Как включить запись звонков",
+    "kTotal": "Всего звонков",
+    "answerRate": "отвечено",
+    "directionChart": "По направлениям",
+    "operatorChart": "По операторам"
   },
   "contacts": {
     "new": "+ Новый контакт",
@@ -129,7 +133,9 @@
     "howLongAgo": "Как давно",
     "withContact": "С контактом",
     "attempts": "Попыток",
-    "noData": "No data"
+    "noData": "Нет данных",
+    "byDirection": "По направлениям",
+    "weekdaysShort": "Пн,Вт,Ср,Чт,Пт,Сб,Вс"
   },
   "settings": {
     "usersGroups": "Пользователи и группы",

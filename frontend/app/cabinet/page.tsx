@@ -14,10 +14,12 @@ import { CallAudioButton } from "@/components/CallAudioButton";
 import { DirectionIcon, directionBars } from "@/components/calls-shared";
 import {
   CHART_COLORS,
-  ChartContainer,
+  ChartBox,
+  ReportCard,
   chartAxisProps,
   chartTooltipStyle,
 } from "@/components/charts/theme";
+import { StatCard } from "@/components/ui/StatCard";
 import { fetchDashboard } from "@/lib/api/endpoints";
 import type { CallRow } from "@/lib/api/types";
 import { formatDuration, formatPhone } from "@/lib/format";
@@ -173,9 +175,36 @@ export default function CabinetHome() {
           ))}
         </div>
       ) : data ? (
+        <>
+          {/* KPI summary row */}
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label={tDash("kTotal")} value={data.general.all.total} />
+            <StatCard
+              label={tCalls("answered")}
+              value={data.general.all.answered}
+              tone="accent"
+              hint={
+                data.general.all.total > 0
+                  ? `${Math.round(
+                      (data.general.all.answered / data.general.all.total) * 100,
+                    )}% ${tDash("answerRate")}`
+                  : undefined
+              }
+            />
+            <StatCard
+              label={tCalls("missed")}
+              value={data.general.all.missed}
+              tone="danger"
+            />
+            <StatCard
+              label={tCalls("duration")}
+              value={formatDuration(data.general.total_duration_sec)}
+            />
+          </div>
         <div className="grid gap-4 lg:grid-cols-2">
           {/* §6.1 stacked horizontal bars — Все/Входящие/Исходящие */}
-          <ChartContainer height={200}>
+          <ReportCard title={tDash("directionChart")}>
+          <ChartBox height={200}>
             <BarChart
               data={bars.map((bar) => ({
                 ...bar,
@@ -203,6 +232,7 @@ export default function CabinetHome() {
                 stackId="a"
                 fill={CHART_COLORS.missed}
                 name={tCalls("missed")}
+                radius={[0, 6, 6, 0]}
               >
                 <LabelList
                   dataKey="total"
@@ -212,10 +242,12 @@ export default function CabinetHome() {
                 />
               </Bar>
             </BarChart>
-          </ChartContainer>
+          </ChartBox>
+          </ReportCard>
 
           {/* Per-operator stacked columns, sorted desc with labels */}
-          <ChartContainer height={200}>
+          <ReportCard title={tDash("operatorChart")}>
+          <ChartBox height={200}>
             <BarChart
               data={[...operators]
                 .sort((a, b) => b.total - a.total)
@@ -241,6 +273,7 @@ export default function CabinetHome() {
                 stackId="o"
                 fill={CHART_COLORS.missed}
                 name={tCalls("missed")}
+                radius={[6, 6, 0, 0]}
               >
                 <LabelList
                   dataKey="total"
@@ -250,7 +283,8 @@ export default function CabinetHome() {
                 />
               </Bar>
             </BarChart>
-          </ChartContainer>
+          </ChartBox>
+          </ReportCard>
 
           <CallsMiniTable
             title={tDash("latestSuccessful")}
@@ -264,6 +298,7 @@ export default function CabinetHome() {
             reportHref="/cabinet/reports?tab=unanswered"
           />
         </div>
+        </>
       ) : null}
     </div>
   );
