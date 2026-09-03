@@ -192,7 +192,7 @@
       "responsibleUserId": "amoCRM user ID for calls (optional)"
     },
     "bitrix24": {
-      "info": "Create an inbound webhook in your Bitrix24 (Developer resources → Other → Inbound webhook) with the 'telephony' permission, then paste it below. Calls are registered via telephony.externalcall with the recording attached.",
+      "info": "Create an inbound webhook in your Bitrix24 (Developer resources → Other → Inbound webhook) with the 'telephony' and 'crm' permissions, then paste it below. Calls are registered via telephony.externalcall; Bitrix24 creates a lead for unknown numbers, and the recording is attached to the call or posted to the CRM timeline.",
       "regionLabel": "Choose the connection type, depending on your Bitrix24 national version.",
       "regionRu": "Russian Bitrix24 account — bitrix24.ru",
       "regionByKz": "Belarusian and Kazakhstani accounts — bitrix24.by, bitrix24.kz",

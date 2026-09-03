@@ -172,12 +172,16 @@ def _amocrm_send(config: dict[str, Any], record: CallRecord, record_url: str | N
 
 
 # ── Bitrix24 (inbound webhook, telephony.externalcall.*) ───────────────────
-B24_STATUS = {  # call_status → SIP-style code Bitrix24 expects
-    CallRecord.CallStatus.ANSWERED: 200,
-    CallRecord.CallStatus.NO_ANSWER: 480,
-    CallRecord.CallStatus.BUSY: 486,
-    CallRecord.CallStatus.FAILED: 603,
+# The webhook needs BOTH scopes: telephony (register/finish/attachRecord)
+# and crm (timeline comment fallback for non-mp3/wav recordings).
+B24_STATUS = {  # call_status → SIP code per apidocs.bitrix24.com (finish)
+    CallRecord.CallStatus.ANSWERED: 200,  # successful call
+    CallRecord.CallStatus.NO_ANSWER: 304,  # missed call
+    CallRecord.CallStatus.BUSY: 486,  # busy
+    CallRecord.CallStatus.FAILED: 603,  # declined
 }
+
+B24_AUDIO_EXTS = {"mp3", "wav"}  # attachRecord accepts only these
 
 
 def _b24_call(config: dict[str, Any], method: str, params: dict[str, Any]) -> Any:
@@ -193,6 +197,47 @@ def _bitrix24_test(config: dict[str, Any]) -> str:
     return str(result.get("NAME") or result.get("ID") or "ok")
 
 
+def _b24_attach_recording(
+    config: dict[str, Any],
+    registered: dict[str, Any],
+    record: CallRecord,
+    record_url: str,
+) -> None:
+    """Attach the recording to the finished call; Bitrix24 only accepts
+    mp3/wav files, so anything else lands as a CRM timeline comment with
+    the permanent link instead."""
+    audio = record.audios.first()
+    ext = (audio.filename.rsplit(".", 1)[-1].lower() if audio and "." in audio.filename else "")
+    if ext in B24_AUDIO_EXTS:
+        try:
+            _b24_call(
+                config,
+                "telephony.externalcall.attachrecord",
+                {
+                    "CALL_ID": registered["CALL_ID"],
+                    "FILENAME": f"doocall-{record.server_id.hex}.{ext}",
+                    "RECORD_URL": record_url,
+                },
+            )
+            return
+        except ProviderError:
+            pass  # fall through to the timeline comment
+    entity_id = registered.get("CRM_ENTITY_ID")
+    if not entity_id:
+        return  # nowhere to leave the link; the call itself is already logged
+    _b24_call(
+        config,
+        "crm.timeline.comment.add",
+        {
+            "fields": {
+                "ENTITY_ID": entity_id,
+                "ENTITY_TYPE": str(registered.get("CRM_ENTITY_TYPE") or "lead").lower(),
+                "COMMENT": f"DooCall — запись разговора: {record_url}",
+            }
+        },
+    )
+
+
 def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
     user_id = int(config.get("user_id") or 1)
     registered = _b24_call(
@@ -203,33 +248,28 @@ def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str |
             "PHONE_NUMBER": record.counterparty_number,
             "TYPE": 2 if record.call_type == CallRecord.CallType.INBOUND else 1,
             "CALL_START_DATE": record.start_time.isoformat(),
+            # Unknown numbers: Bitrix24 creates the lead/contact itself.
             "CRM_CREATE": 1,
             "SHOW": 0,
+            # Dedup guard: repeated dispatch of the same DooCall record
+            # within 30 minutes reuses the registered call.
+            "EXTERNAL_CALL_ID": record.server_id.hex,
         },
     )
-    call_id = (registered or {}).get("CALL_ID")
-    if not call_id:
+    if not (registered or {}).get("CALL_ID"):
         raise ProviderError("telephony.externalcall.register returned no CALL_ID")
     _b24_call(
         config,
         "telephony.externalcall.finish",
         {
-            "CALL_ID": call_id,
+            "CALL_ID": registered["CALL_ID"],
             "USER_ID": user_id,
             "DURATION": record.duration,
             "STATUS_CODE": B24_STATUS.get(record.call_status, 603),
         },
     )
     if record_url:
-        _b24_call(
-            config,
-            "telephony.externalcall.attachrecord",
-            {
-                "CALL_ID": call_id,
-                "FILENAME": f"doocall-{record.server_id.hex}.mp3",
-                "RECORD_URL": record_url,
-            },
-        )
+        _b24_attach_recording(config, registered, record, record_url)
 
 
 # ── Odoo (JSON-RPC) ────────────────────────────────────────────────────────

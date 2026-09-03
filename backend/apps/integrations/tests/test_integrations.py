@@ -281,6 +281,83 @@ class TestAmoCrmAdapter:
             self._run(monkeypatch, call, [not_landed, {"_embedded": {"contacts": []}}])
 
 
+B24_CONFIG = {"webhook_url": "https://my.bitrix24.ru/rest/1/tok/", "user_id": "7"}
+
+
+class TestBitrix24Adapter:
+    """register → finish → recording (attachRecord for mp3/wav, timeline
+    comment fallback for everything else, e.g. Android .ogg)."""
+
+    def _run(
+        self, monkeypatch: pytest.MonkeyPatch, call: CallRecord, results: list[Any]
+    ) -> list[tuple[str, Any]]:
+        seen: list[tuple[str, Any]] = []
+
+        def fake_http(url: str, payload: Any = None, *, headers: Any = None, method: Any = None):
+            seen.append((url, payload))
+            result = results[len(seen) - 1]
+            if isinstance(result, Exception):
+                raise result
+            return {"result": result}
+
+        monkeypatch.setattr(providers, "_http_json", fake_http)
+        providers.send_call("bitrix24", B24_CONFIG, call, "https://rec.example/1")
+        return seen
+
+    REGISTERED = {"CALL_ID": "EC1", "CRM_ENTITY_TYPE": "LEAD", "CRM_ENTITY_ID": 42}
+
+    def test_ogg_recording_becomes_timeline_comment(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The conftest call carries rec.ogg → attachRecord must be skipped.
+        seen = self._run(monkeypatch, call, [self.REGISTERED, {}, {"ID": 9}])
+        methods = [u.rsplit("/", 1)[-1] for u, _ in seen]
+        assert methods == [
+            "telephony.externalcall.register.json",
+            "telephony.externalcall.finish.json",
+            "crm.timeline.comment.add.json",
+        ]
+        register = seen[0][1]
+        assert register["PHONE_NUMBER"] == "+998901112233"
+        assert register["TYPE"] == 2  # inbound
+        assert register["CRM_CREATE"] == 1
+        assert register["EXTERNAL_CALL_ID"] == call.server_id.hex
+        finish = seen[1][1]
+        assert finish["CALL_ID"] == "EC1" and finish["USER_ID"] == 7
+        assert finish["STATUS_CODE"] == 200  # answered
+        comment = seen[2][1]["fields"]
+        assert comment["ENTITY_ID"] == 42 and comment["ENTITY_TYPE"] == "lead"
+        assert "https://rec.example/1" in comment["COMMENT"]
+
+    def test_mp3_recording_uses_attachrecord(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        call.audios.update(filename="rec.mp3")
+        seen = self._run(monkeypatch, call, [self.REGISTERED, {}, {"FILE_ID": 3}])
+        attach_url, attach = seen[2]
+        assert attach_url.endswith("telephony.externalcall.attachrecord.json")
+        assert attach["RECORD_URL"] == "https://rec.example/1"
+        assert attach["FILENAME"].endswith(".mp3")
+
+    def test_missed_call_status_code_304(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        call.call_status = CallRecord.CallStatus.NO_ANSWER
+        call.save(update_fields=["call_status"])
+        seen = self._run(monkeypatch, call, [self.REGISTERED, {}, {"ID": 9}])
+        assert seen[1][1]["STATUS_CODE"] == 304
+
+    def test_bitrix_error_raises(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_http(url: str, payload: Any = None, *, headers: Any = None, method: Any = None):
+            return {"error": "INVALID_CREDENTIALS", "error_description": "bad webhook"}
+
+        monkeypatch.setattr(providers, "_http_json", fake_http)
+        with pytest.raises(providers.ProviderError, match="bad webhook"):
+            providers.send_call("bitrix24", B24_CONFIG, call, None)
+
+
 class TestCrmCatalog:
     def test_admin_crud_and_cabinet_list(
         self, client: APIClient, company: Company, db: Any

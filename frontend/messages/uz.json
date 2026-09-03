@@ -192,7 +192,7 @@
       "responsibleUserId": "Qo'ng'iroqlar uchun amoCRM foydalanuvchi ID (ixtiyoriy)"
     },
     "bitrix24": {
-      "info": "Bitrix24'da kiruvchi vebhuk yarating (Dasturchi resurslari → Boshqa → Kiruvchi vebhuk, «Telefoniya» huquqi bilan) va uni quyiga joylang. Qo'ng'iroqlar telephony.externalcall orqali, audio yozuv biriktirilgan holda ro'yxatga olinadi.",
+      "info": "Bitrix24'da kiruvchi vebhuk yarating (Dasturchi resurslari → Boshqa → Kiruvchi vebhuk) — «Telefoniya (telephony)» va «CRM (crm)» huquqlari bilan — va uni quyiga joylang. Qo'ng'iroqlar telephony.externalcall orqali ro'yxatga olinadi; notanish raqamlar uchun Bitrix24 o'zi lid yaratadi, audio yozuv qo'ng'iroqqa yoki CRM lentasiga biriktiriladi.",
       "regionLabel": "Bitrix24 milliy versiyasiga qarab ulanish usulini tanlang.",
       "regionRu": "Rossiya akkaunti — bitrix24.ru",
       "regionByKz": "Belarus va Qozog'iston akkauntlari — bitrix24.by, bitrix24.kz",
