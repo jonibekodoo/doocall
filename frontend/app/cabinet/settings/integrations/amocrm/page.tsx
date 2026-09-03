@@ -30,6 +30,11 @@ export default function AmoCrmIntegrationPage() {
           placeholder: "eyJ0eXAiOiJKV1Qi…",
           secret: true,
         },
+        {
+          key: "responsible_user_id",
+          label: t("responsibleUserId"),
+          placeholder: "504141",
+        },
       ]}
     />
   );

@@ -83,39 +83,85 @@ AMO_STATUS = {  # call_status → amoCRM "результат звонка" enum
 }
 
 
+def _amo_headers(config: dict[str, Any]) -> dict[str, str]:
+    return {"Authorization": f"Bearer {config['access_token']}"}
+
+
 def _amocrm_test(config: dict[str, Any]) -> str:
     base = _clean_base(config["base_url"])
-    body = _http_json(
-        f"{base}/api/v4/account",
-        headers={"Authorization": f"Bearer {config['access_token']}"},
-    )
+    body = _http_json(f"{base}/api/v4/account", headers=_amo_headers(config))
     return str(body.get("name") or body.get("id") or "ok")
+
+
+def _amo_call_payload(
+    config: dict[str, Any], record: CallRecord, record_url: str | None
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "direction": "inbound"
+        if record.call_type == CallRecord.CallType.INBOUND
+        else "outbound",
+        "uniq": record.server_id.hex,
+        "duration": record.duration,
+        "source": "DooCall",
+        "link": record_url or "",
+        "phone": record.counterparty_number,
+        "call_result": record.resolved_name or record.counterparty_name or "",
+        "call_status": AMO_STATUS.get(record.call_status, 6),
+        "created_at": int(record.start_time.timestamp()),
+    }
+    if responsible := str(config.get("responsible_user_id") or "").strip():
+        try:
+            payload["responsible_user_id"] = int(responsible)
+        except ValueError:
+            pass  # misconfigured — the call still lands, just unassigned
+    return payload
+
+
+def _amo_call_landed(body: Any) -> bool:
+    """True when amoCRM attached the call to some entity (contact/deal)."""
+    calls = ((body or {}).get("_embedded") or {}).get("calls") or []
+    return any(entry.get("entity_id") for entry in calls)
+
+
+def _amocrm_create_contact(config: dict[str, Any], record: CallRecord) -> None:
+    """amoCRM adds a call ONLY when the phone matches an existing entity —
+    for unknown numbers we create the contact first, then retry the call."""
+    base = _clean_base(config["base_url"])
+    contact: dict[str, Any] = {
+        "name": record.resolved_name
+        or record.counterparty_name
+        or record.counterparty_number,
+        "custom_fields_values": [
+            {
+                "field_code": "PHONE",
+                "values": [{"value": record.counterparty_number, "enum_code": "WORK"}],
+            }
+        ],
+    }
+    if responsible := str(config.get("responsible_user_id") or "").strip():
+        try:
+            contact["responsible_user_id"] = int(responsible)
+        except ValueError:
+            pass
+    body = _http_json(f"{base}/api/v4/contacts", [contact], headers=_amo_headers(config))
+    created = ((body or {}).get("_embedded") or {}).get("contacts") or []
+    if not created:
+        raise ProviderError(
+            f"amoCRM: contact for {record.counterparty_number} could not be created"
+        )
 
 
 def _amocrm_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
     base = _clean_base(config["base_url"])
-    payload = [
-        {
-            "direction": "inbound"
-            if record.call_type == CallRecord.CallType.INBOUND
-            else "outbound",
-            "uniq": record.server_id.hex,
-            "duration": record.duration,
-            "source": "DooCall",
-            "link": record_url or "",
-            "phone": record.counterparty_number,
-            "call_result": record.resolved_name or record.counterparty_name or "",
-            "call_status": AMO_STATUS.get(record.call_status, 6),
-            "created_at": int(record.start_time.timestamp()),
-        }
-    ]
-    body = _http_json(
-        f"{base}/api/v4/calls",
-        payload,
-        headers={"Authorization": f"Bearer {config['access_token']}"},
-    )
-    errors = (body or {}).get("errors")
-    if errors:
+    payload = [_amo_call_payload(config, record, record_url)]
+    body = _http_json(f"{base}/api/v4/calls", payload, headers=_amo_headers(config))
+    if _amo_call_landed(body):
+        return
+    # Phone unknown to this amoCRM account → create the contact, retry once.
+    _amocrm_create_contact(config, record)
+    body = _http_json(f"{base}/api/v4/calls", payload, headers=_amo_headers(config))
+    if not _amo_call_landed(body):
+        errors = (body or {}).get("errors") or body
         raise ProviderError(f"amoCRM rejected the call: {json.dumps(errors)[:300]}")
 
 

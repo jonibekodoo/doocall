@@ -20,8 +20,8 @@ PROVIDERS = tuple(CrmIntegration.Provider.values)
 
 # Non-secret defaults shown in an empty form.
 CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
-    "amocrm": ("base_url", "access_token"),
-    "bitrix24": ("webhook_url", "user_id"),
+    "amocrm": ("base_url", "access_token", "responsible_user_id", "region"),
+    "bitrix24": ("webhook_url", "user_id", "account", "region"),
     "odoo": ("url", "db", "login", "api_key"),
 }
 

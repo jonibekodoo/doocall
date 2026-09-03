@@ -188,7 +188,8 @@
       "regionRu": "Rossiya versiyasi akkaunti — amocrm.ru",
       "regionKommo": "Xalqaro versiya akkaunti — kommo.com",
       "baseUrl": "Akkaunt manzili",
-      "accessToken": "Kirish tokeni (uzoq muddatli)"
+      "accessToken": "Kirish tokeni (uzoq muddatli)",
+      "responsibleUserId": "Qo'ng'iroqlar uchun amoCRM foydalanuvchi ID (ixtiyoriy)"
     },
     "bitrix24": {
       "info": "Bitrix24'da kiruvchi vebhuk yarating (Dasturchi resurslari → Boshqa → Kiruvchi vebhuk, «Telefoniya» huquqi bilan) va uni quyiga joylang. Qo'ng'iroqlar telephony.externalcall orqali, audio yozuv biriktirilgan holda ro'yxatga olinadi.",

@@ -188,7 +188,8 @@
       "regionRu": "Russian version account — amocrm.ru",
       "regionKommo": "International version account — kommo.com",
       "baseUrl": "Account address",
-      "accessToken": "Access token (long-lived)"
+      "accessToken": "Access token (long-lived)",
+      "responsibleUserId": "amoCRM user ID for calls (optional)"
     },
     "bitrix24": {
       "info": "Create an inbound webhook in your Bitrix24 (Developer resources → Other → Inbound webhook) with the 'telephony' permission, then paste it below. Calls are registered via telephony.externalcall with the recording attached.",

@@ -186,6 +186,80 @@ class TestPublicApi:
         assert self._post(api, {**auth, "action": "nope"}).status_code == 400
 
 
+AMO_CONFIG = {
+    "base_url": "https://x.amocrm.ru",
+    "access_token": "t" * 20,
+    "responsible_user_id": "504141",
+}
+
+
+class TestAmoCrmAdapter:
+    """Contract of the amoCRM sender: attach by phone, create-contact fallback."""
+
+    def _run(
+        self, monkeypatch: pytest.MonkeyPatch, call: CallRecord, responses: list[Any]
+    ) -> list[tuple[str, Any]]:
+        seen: list[tuple[str, Any]] = []
+
+        def fake_http(url: str, payload: Any = None, *, headers: Any = None, method: Any = None):
+            seen.append((url, payload))
+            return responses[len(seen) - 1]
+
+        monkeypatch.setattr(providers, "_http_json", fake_http)
+        providers.send_call("amocrm", AMO_CONFIG, call, "https://rec.example/1")
+        return seen
+
+    def test_direct_success_single_request(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        landed = {
+            "_total_items": 1,
+            "errors": [],
+            "_embedded": {"calls": [{"id": 1, "entity_id": 777, "entity_type": "contact"}]},
+        }
+        seen = self._run(monkeypatch, call, [landed])
+        assert len(seen) == 1
+        url, payload = seen[0]
+        assert url.endswith("/api/v4/calls")
+        row = payload[0]
+        assert row["phone"] == "+998901112233"
+        assert row["direction"] == "inbound"
+        assert row["call_status"] == 4  # answered → разговор состоялся
+        assert row["link"] == "https://rec.example/1"
+        assert row["responsible_user_id"] == 504141
+        assert row["uniq"] == call.server_id.hex
+
+    def test_unknown_phone_creates_contact_and_retries(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        not_landed = {"_total_items": 0, "errors": [{"detail": "Entity not found"}], "_embedded": {"calls": []}}
+        contact_created = {"_embedded": {"contacts": [{"id": 555}]}}
+        landed = {"errors": [], "_embedded": {"calls": [{"id": 2, "entity_id": 555}]}}
+        seen = self._run(monkeypatch, call, [not_landed, contact_created, landed])
+        assert [u.rsplit("/", 1)[-1] for u, _ in seen] == ["calls", "contacts", "calls"]
+        contact = seen[1][1][0]
+        assert contact["name"] == "+998901112233"  # no known name → number
+        assert (
+            contact["custom_fields_values"][0]["values"][0]["value"] == "+998901112233"
+        )
+        assert contact["responsible_user_id"] == 504141
+
+    def test_raises_when_retry_also_fails(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        not_landed = {"errors": [{"detail": "nope"}], "_embedded": {"calls": []}}
+        contact_created = {"_embedded": {"contacts": [{"id": 5}]}}
+        with pytest.raises(providers.ProviderError, match="rejected"):
+            self._run(monkeypatch, call, [not_landed, contact_created, not_landed])
+
+    def test_contact_creation_failure_raises(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        not_landed = {"errors": [], "_embedded": {"calls": []}}
+        with pytest.raises(providers.ProviderError, match="could not be created"):
+            self._run(monkeypatch, call, [not_landed, {"_embedded": {"contacts": []}}])
+
+
 class TestCrmCatalog:
     def test_admin_crud_and_cabinet_list(
         self, client: APIClient, company: Company, db: Any
