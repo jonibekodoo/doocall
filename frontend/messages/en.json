@@ -218,6 +218,8 @@
     "title": "My calls"
   },
   "landing": {
+    "integrationsTitle": "Integrations",
+    "integrationsText": "DooCall connects to popular CRM systems: calls and recordings land in your CRM automatically.",
     "heroTitle": "Every call — under control",
     "heroSubtitle": "dooCall records every call your operators make, stores it and turns it into reports. SIM card, app — done.",
     "heroCta": "Start 14 days free",

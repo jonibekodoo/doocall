@@ -218,6 +218,8 @@
     "title": "Mening qo'ng'iroqlarim"
   },
   "landing": {
+    "integrationsTitle": "Integratsiyalar",
+    "integrationsText": "DooCall mashhur CRM tizimlari bilan ulanadi: qo'ng'iroqlar va audio yozuvlar avtomatik CRM'ingizga tushadi.",
     "heroTitle": "Har bir qo'ng'iroq — nazorat ostida",
     "heroSubtitle": "dooCall operatorlaringizning barcha qo'ng'iroqlarini yozib oladi, saqlaydi va hisobotga aylantiradi. SIM-karta, ilova — bo'ldi.",
     "heroCta": "14 kun bepul boshlash",

@@ -20,6 +20,7 @@ import Link from "next/link";
 
 import { CabinetMenu } from "@/components/landing/CabinetMenu";
 import { DownloadApp } from "@/components/landing/DownloadApp";
+import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
 import { LandingLocaleSwitcher } from "@/components/landing/LandingLocaleSwitcher";
 import { RefCapture } from "@/components/landing/RefCapture";
 import { PricingSection } from "@/components/landing/PricingSection";
@@ -248,6 +249,14 @@ export default async function Landing() {
           </div>
         </div>
       </section>
+
+      {/* ── Integrations (live catalog) ────────────────────────────────── */}
+      <IntegrationsSection
+        strings={{
+          title: t.integrationsTitle,
+          text: t.integrationsText,
+        }}
+      />
 
       {/* ── Pricing (live) ─────────────────────────────────────────────── */}
       <PricingSection

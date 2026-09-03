@@ -7,6 +7,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.integrations.views_public import (
     CrmLogoView,
     CustomApiView,
+    PublicCrmCatalogView,
     RecordRedirectView,
 )
 from apps.web.views_public import (
@@ -31,6 +32,11 @@ urlpatterns = [
     # Permanent recording link for CRMs (302 → presigned MinIO URL).
     path("api/public/rec/<str:rec_id>", RecordRedirectView.as_view(), name="public-rec"),
     path("api/public/crm-logo/<int:entry_id>", CrmLogoView.as_view(), name="public-crm-logo"),
+    re_path(
+        r"^api/public/crm-catalog/?$",
+        PublicCrmCatalogView.as_view(),
+        name="public-crm-catalog",
+    ),
     # Public landing endpoints (no auth).
     # Slash-optional: the Next dev proxy strips trailing slashes.
     re_path(r"^api/public/pricing/?$", PublicPricingView.as_view(), name="public-pricing"),

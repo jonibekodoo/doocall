@@ -225,3 +225,23 @@ class CrmLogoView(View):
         if entry is None or not entry.logo_key:
             return HttpResponse(status=404)
         return HttpResponseRedirect(storage.presigned_url(entry.logo_key))
+
+
+class PublicCrmCatalogView(View):
+    """Active catalog tiles for the landing page (no auth)."""
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        from django.http import JsonResponse
+
+        from .views_catalog import logo_public_url
+
+        entries = [
+            {
+                "id": e.pk,
+                "name": e.name,
+                "site_url": e.site_url,
+                "logo_url": logo_public_url(e),
+            }
+            for e in CrmCatalogEntry.objects.filter(is_active=True)
+        ]
+        return JsonResponse({"success": True, "entries": entries})

@@ -119,12 +119,14 @@ class IntegrationDetailView(AdminCabinetView):
 class CrmCatalogListView(CabinetView):
     @extend_schema(summary="Active CRM catalog tiles for the integration grid")
     def get(self, request: Request) -> Response:
+        from .views_catalog import logo_public_url
+
         rows = [
             {
                 "id": e.pk,
                 "name": e.name,
                 "site_url": e.site_url,
-                "logo_url": f"/api/public/crm-logo/{e.pk}" if e.logo_key else None,
+                "logo_url": logo_public_url(e),
             }
             for e in CrmCatalogEntry.objects.filter(is_active=True)
         ]

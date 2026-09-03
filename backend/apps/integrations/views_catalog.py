@@ -25,12 +25,20 @@ MAX_LOGO_BYTES = 2 * 1024 * 1024
 ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
 
 
+def logo_public_url(entry: CrmCatalogEntry) -> str | None:
+    """Absolute URL on DOMAIN_APP — the admin vhost does not proxy
+    /api/public/*, so a relative path breaks <img> on the admin portal."""
+    if not entry.logo_key:
+        return None
+    return f"{settings.URL_SCHEME}://{settings.DOMAIN_APP}/api/public/crm-logo/{entry.pk}"
+
+
 def _entry_body(entry: CrmCatalogEntry) -> dict[str, Any]:
     return {
         "id": entry.pk,
         "name": entry.name,
         "site_url": entry.site_url,
-        "logo_url": f"/api/public/crm-logo/{entry.pk}" if entry.logo_key else None,
+        "logo_url": logo_public_url(entry),
         "sort_order": entry.sort_order,
         "is_active": entry.is_active,
     }
