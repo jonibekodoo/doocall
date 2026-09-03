@@ -173,7 +173,23 @@
     "apiDocsLink": "API documentation for developers",
     "country": "Country",
     "timezone": "Time zone",
+    "balance": "Balance",
+    "monthAccrued": "Accrued this month",
+    "dailyRate": "Daily rate / operator",
+    "dailyCharges": "Daily charges",
+    "colDate": "Date",
+    "colOperator": "Operator",
+    "colAmount": "Amount",
+    "statements": "Monthly statements",
+    "stmt_paid": "paid",
+    "stmt_pending": "pending",
+    "stmt_overdue": "overdue",
+    "unpaidWarning": "{amount} UZS for {month} is unpaid. The system will be blocked unless paid within 2 days.",
     "timezoneNote": "Call times, date filters, reports and the \"today\" boundary are computed in this time zone. Device-local timestamps from the mobile app are interpreted in it too."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications yet"
   },
   "crm": {
     "pageTitle": "Integration",

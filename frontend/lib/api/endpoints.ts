@@ -285,6 +285,67 @@ export const saveAccountSettings = (payload: Partial<AccountSettings>) =>
     payload,
   );
 
+export interface BillingOverview extends ApiEnvelope {
+  balance_uzs: number;
+  month_accrued_uzs: number;
+  price_per_operator_uzs: number;
+  daily_rate_uzs: number;
+  seats: number;
+  blocked: boolean;
+  unpaid_statement: {
+    month: string;
+    total_uzs: number;
+    status: string;
+  } | null;
+}
+
+export const fetchBillingOverview = () =>
+  get<BillingOverview>("/billing/overview");
+
+export const fetchBillingCharges = (month: string) =>
+  get<{
+    success: boolean;
+    month: string;
+    total_uzs: number;
+    days: Array<{ date: string; total_uzs: number; operators: number }>;
+    charges: Array<{
+      date: string;
+      operator_name: string;
+      amount_uzs: number;
+      price_per_operator_uzs: number;
+    }>;
+  }>(`/billing/charges?month=${month}`);
+
+export const fetchBillingStatements = () =>
+  get<{
+    success: boolean;
+    statements: Array<{
+      month: string;
+      total_uzs: number;
+      status: string;
+      settled_at: string | null;
+    }>;
+  }>("/billing/statements");
+
+export interface BillingNotificationRow {
+  id: number;
+  kind: string;
+  message: string;
+  amount_uzs: number | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export const fetchNotifications = () =>
+  get<{
+    success: boolean;
+    unread: number;
+    notifications: BillingNotificationRow[];
+  }>("/notifications");
+
+export const markNotificationsRead = () =>
+  post<{ success: boolean; marked: number }>("/notifications/read");
+
 export const fetchApiKey = () =>
   get<{ success: boolean; api_key_masked: string | null }>("/settings/api-key");
 export const rotateApiKey = () =>

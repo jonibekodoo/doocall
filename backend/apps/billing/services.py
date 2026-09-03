@@ -10,20 +10,32 @@ Pricing rules (master spec §4, executed from the Phase-4 task message):
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import calendar
+from datetime import date, datetime, timedelta
 from typing import cast
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.accounts.models import OperatorProfile, User
 from apps.companies.models import Company
 from apps.core.models import AuditLog
 
-from .models import Invoice, InvoiceLine, Payment, PricingSetting, Subscription
+from .models import (
+    BillingNotification,
+    DailyCharge,
+    Invoice,
+    InvoiceLine,
+    MonthlyStatement,
+    Payment,
+    PricingSetting,
+    Subscription,
+)
 
 PERIOD_DAYS = 30
+GRACE_DAYS = 2  # unpaid statement blocks the account on day 3
 
 
 class InvalidTransition(Exception):
@@ -206,6 +218,208 @@ def roll_period(
     return invoice
 
 
+# ── Daily billing model ────────────────────────────────────────────────────
+def notify(
+    company: Company, kind: str, message: str, amount_uzs: int | None = None
+) -> BillingNotification:
+    return cast(
+        BillingNotification,
+        BillingNotification.all_objects.create(
+            company=company, kind=kind, message=message, amount_uzs=amount_uzs
+        ),
+    )
+
+
+def daily_rate(price_per_operator_uzs: int, day: date) -> int:
+    """Monthly tariff spread over the actual days of that month."""
+    days_in_month = calendar.monthrange(day.year, day.month)[1]
+    return round(price_per_operator_uzs / days_in_month)
+
+
+def accrue_operator_day(
+    company: Company, operator: OperatorProfile, day: date
+) -> DailyCharge | None:
+    """Write ONE operator-day charge (idempotent). Trial/suspended = free."""
+    if company.status != Company.Status.ACTIVE:
+        return None
+    price = effective_price(company)  # today's tariff — a change applies same day
+    charge, _created = DailyCharge.all_objects.get_or_create(
+        company=company,
+        date=day,
+        operator_name=operator.user_name,
+        defaults={
+            "operator": operator,
+            "amount_uzs": daily_rate(price, day),
+            "price_per_operator_uzs": price,
+        },
+    )
+    return cast(DailyCharge, charge)
+
+
+def accrue_company_day(company: Company, day: date) -> int:
+    """Charge every ACTIVE operator of the company for ``day``."""
+    if company.status != Company.Status.ACTIVE:
+        return 0
+    count = 0
+    for operator in OperatorProfile.all_objects.filter(company=company, is_active=True):
+        if accrue_operator_day(company, operator, day) is not None:
+            count += 1
+    return count
+
+
+def _month_start(day: date) -> date:
+    return day.replace(day=1)
+
+
+def _prev_month_start(day: date) -> date:
+    return (day.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+
+def month_accrued(company: Company, month: date) -> int:
+    month = _month_start(month)
+    if month.month == 12:
+        next_month = month.replace(year=month.year + 1, month=1)
+    else:
+        next_month = month.replace(month=month.month + 1)
+    total = DailyCharge.all_objects.filter(
+        company=company, date__gte=month, date__lt=next_month
+    ).aggregate(s=Sum("amount_uzs"))["s"]
+    return int(total or 0)
+
+
+def _reactivate_if_clear(company: Company, now: datetime) -> None:
+    """Bring a suspended company back once nothing is owed."""
+    owes = (
+        MonthlyStatement.all_objects.filter(company=company)
+        .exclude(status=MonthlyStatement.Status.PAID)
+        .exists()
+    )
+    if owes or company.status != Company.Status.SUSPENDED:
+        return
+    subscription = Subscription.all_objects.filter(company=company).first()
+    if subscription is not None and subscription.status == Subscription.Status.SUSPENDED:
+        activate(subscription, now=now)
+    else:
+        company.status = Company.Status.ACTIVE
+        company.save(update_fields=["status", "updated_at"])
+
+
+@transaction.atomic
+def settle_statement(statement: MonthlyStatement, *, now: datetime) -> bool:
+    """Deduct the statement from the balance if it covers the total."""
+    company = Company.objects.select_for_update().get(pk=statement.company_id)
+    if statement.status == MonthlyStatement.Status.PAID or statement.total_uzs == 0:
+        if statement.status != MonthlyStatement.Status.PAID:
+            statement.status = MonthlyStatement.Status.PAID
+            statement.settled_at = now
+            statement.save(update_fields=["status", "settled_at"])
+        return True
+    if company.balance_uzs < statement.total_uzs:
+        return False
+    company.balance_uzs -= statement.total_uzs
+    company.save(update_fields=["balance_uzs", "updated_at"])
+    statement.status = MonthlyStatement.Status.PAID
+    statement.settled_at = now
+    statement.save(update_fields=["status", "settled_at"])
+    notify(
+        company,
+        BillingNotification.Kind.CHARGE_SETTLED,
+        f"{statement.month:%Y-%m} oyi uchun {statement.total_uzs:,} UZS balansdan yechildi. "
+        f"Qoldiq: {company.balance_uzs:,} UZS".replace(",", " "),
+        statement.total_uzs,
+    )
+    _audit(company, "billing.statement_settled", total_uzs=statement.total_uzs)
+    return True
+
+
+def settle_month(company: Company, month: date, *, now: datetime) -> MonthlyStatement:
+    """Create/refresh the statement for ``month`` and try to settle it."""
+    month = _month_start(month)
+    total = month_accrued(company, month)
+    statement, _ = MonthlyStatement.all_objects.get_or_create(
+        company=company, month=month, defaults={"total_uzs": total}
+    )
+    if statement.status != MonthlyStatement.Status.PAID and statement.total_uzs != total:
+        statement.total_uzs = total
+        statement.save(update_fields=["total_uzs"])
+    if not settle_statement(statement, now=now) and statement.status == (
+        MonthlyStatement.Status.PENDING
+    ):
+        notify(
+            company,
+            BillingNotification.Kind.PAYMENT_DUE,
+            f"{month:%Y-%m} oyi uchun {statement.total_uzs:,} UZS to'lov qilish kerak. "
+            f"{GRACE_DAYS} kun ichida to'lanmasa tizim bloklanadi.".replace(",", " "),
+            statement.total_uzs,
+        )
+    return cast(MonthlyStatement, statement)
+
+
+@transaction.atomic
+def credit_balance(
+    company: Company, amount_uzs: int, *, now: datetime, note: str = ""
+) -> None:
+    """Top up the balance and auto-settle unpaid statements (oldest first)."""
+    company = Company.objects.select_for_update().get(pk=company.pk)
+    company.balance_uzs += amount_uzs
+    company.save(update_fields=["balance_uzs", "updated_at"])
+    notify(
+        company,
+        BillingNotification.Kind.PAYMENT_RECEIVED,
+        f"To'lov qabul qilindi: {amount_uzs:,} UZS. Balans: {company.balance_uzs:,} UZS".replace(
+            ",", " "
+        ),
+        amount_uzs,
+    )
+    for statement in MonthlyStatement.all_objects.filter(company=company).exclude(
+        status=MonthlyStatement.Status.PAID
+    ).order_by("month"):
+        if not settle_statement(statement, now=now):
+            break
+    company.refresh_from_db()
+    _reactivate_if_clear(company, now)
+
+
+def run_overdue_enforcement(now: datetime) -> int:
+    """Block companies whose statement stayed unpaid past the grace window."""
+    today = now.date()
+    blocked = 0
+    unpaid = MonthlyStatement.all_objects.filter(
+        status=MonthlyStatement.Status.PENDING
+    ).select_related("company")
+    for statement in unpaid:
+        if statement.month.month == 12:
+            due_from = statement.month.replace(year=statement.month.year + 1, month=1)
+        else:
+            due_from = statement.month.replace(month=statement.month.month + 1)
+        if today < due_from + timedelta(days=GRACE_DAYS):
+            continue
+        statement.status = MonthlyStatement.Status.OVERDUE
+        statement.save(update_fields=["status"])
+        company = statement.company
+        if company.status == Company.Status.ACTIVE:
+            subscription = Subscription.all_objects.filter(company=company).first()
+            if subscription is not None and subscription.status in (
+                Subscription.Status.TRIAL,
+                Subscription.Status.ACTIVE,
+            ):
+                suspend(subscription, reason="payment_overdue")
+            else:
+                company.status = Company.Status.SUSPENDED
+                company.save(update_fields=["status", "updated_at"])
+            notify(
+                company,
+                BillingNotification.Kind.BLOCKED,
+                f"{statement.month:%Y-%m} oyi to'lovi kechikkani uchun tizim bloklandi. "
+                f"To'lovdan so'ng avtomatik ochiladi ({statement.total_uzs:,} UZS)".replace(
+                    ",", " "
+                ),
+                statement.total_uzs,
+            )
+            blocked += 1
+    return blocked
+
+
 @transaction.atomic
 def apply_payment(
     payment: Payment,
@@ -253,6 +467,10 @@ def apply_payment(
         amount_uzs=payment.amount_uzs,
         payment_id=payment.pk,
     )
+
+    # Daily-billing model: every approved payment tops up the prepaid balance
+    # and auto-settles unpaid monthly statements (unblocking if cleared).
+    credit_balance(payment.company, payment.amount_uzs, now=now)
 
     # Cashback engine (A.5): one idempotent accrual per successful payment,
     # regardless of provider (manual admin approval, Payme, Click).

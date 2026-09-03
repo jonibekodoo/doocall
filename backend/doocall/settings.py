@@ -155,6 +155,18 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.tasks.cleanup_expired_audio",
         "schedule": crontab(hour=2, minute=0),  # stub until Phase 9
     },
+    "accrue-daily-charges": {
+        "task": "apps.billing.tasks.accrue_daily_charges",
+        "schedule": crontab(hour=0, minute=30),  # bills the finished day
+    },
+    "settle-monthly-statements": {
+        "task": "apps.billing.tasks.settle_monthly_statements",
+        "schedule": crontab(hour=0, minute=45),  # no-op except on the 1st
+    },
+    "enforce-overdue-payments": {
+        "task": "apps.billing.tasks.enforce_overdue_payments",
+        "schedule": crontab(hour=1, minute=15),  # grace over → block access
+    },
 }
 
 # ── Object storage (MinIO / S3-compatible) ─────────────────────────────────

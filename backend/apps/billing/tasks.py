@@ -59,6 +59,57 @@ def run_invoice_generation(now: datetime) -> int:
     return count
 
 
+def run_daily_accrual(now: datetime) -> int:
+    """Write yesterday's operator-day charges for every active company."""
+    from datetime import timedelta
+
+    day = (now - timedelta(hours=6)).date()  # 00:30 run bills the finished day
+    total = 0
+    for company in Company.objects.filter(status=Company.Status.ACTIVE):
+        total += services.accrue_company_day(company, day)
+    return total
+
+
+def run_monthly_settlement(now: datetime) -> int:
+    """On the 1st: bill the previous month for every company that used it."""
+    if now.day != 1:
+        return 0
+    from apps.billing.models import DailyCharge
+
+    prev_month = services._prev_month_start(now.date())
+    company_ids = (
+        DailyCharge.all_objects.filter(date__gte=prev_month, date__lt=now.date())
+        .values_list("company_id", flat=True)
+        .distinct()
+    )
+    count = 0
+    for company in Company.objects.filter(pk__in=list(company_ids)):
+        services.settle_month(company, prev_month, now=now)
+        count += 1
+    return count
+
+
+@shared_task(name="apps.billing.tasks.accrue_daily_charges")
+def accrue_daily_charges(now_iso: str | None = None) -> int:
+    count = run_daily_accrual(_resolve_now(now_iso))
+    logger.info("daily accrual: %d operator-day charge(s)", count)
+    return count
+
+
+@shared_task(name="apps.billing.tasks.settle_monthly_statements")
+def settle_monthly_statements(now_iso: str | None = None) -> int:
+    count = run_monthly_settlement(_resolve_now(now_iso))
+    logger.info("monthly settlement: %d statement(s) processed", count)
+    return count
+
+
+@shared_task(name="apps.billing.tasks.enforce_overdue_payments")
+def enforce_overdue_payments(now_iso: str | None = None) -> int:
+    count = services.run_overdue_enforcement(_resolve_now(now_iso))
+    logger.info("overdue enforcement: blocked %d company(ies)", count)
+    return count
+
+
 @shared_task(name="apps.billing.tasks.suspend_expired_trials")
 def suspend_expired_trials(now_iso: str | None = None) -> int:
     count = run_trial_expiry(_resolve_now(now_iso))

@@ -67,6 +67,29 @@ class PricingSetting(models.Model):
                     trial_days=self.trial_days,
                     changed_by=self.updated_by,
                 )
+            # Tariff change → in-app notice to every affected client profile.
+            if old is not None and old.price_per_operator_uzs != self.price_per_operator_uzs:
+                from apps.companies.models import Company
+
+                affected = (
+                    [self.company]
+                    if self.company is not None
+                    else list(Company.objects.exclude(status=Company.Status.SUSPENDED))
+                )
+                message = (
+                    f"Tarif o'zgardi: {self.price_per_operator_uzs:,} UZS / operator / oy "
+                    f"(avvalgisi {old.price_per_operator_uzs:,} UZS). "
+                    "Yangi tarif shu kundan boshlab qo'llanadi."
+                ).replace(",", " ")
+                BillingNotification.all_objects.bulk_create(
+                    BillingNotification(
+                        company=company,
+                        kind=BillingNotification.Kind.TARIFF_CHANGED,
+                        message=message,
+                        amount_uzs=self.price_per_operator_uzs,
+                    )
+                    for company in affected
+                )
 
 
 class PricingSettingHistory(models.Model):
@@ -155,6 +178,90 @@ class InvoiceLine(models.Model):
 
     def __str__(self) -> str:
         return self.description
+
+
+class DailyCharge(TenantModel):
+    """One operator-day of usage (the unit of the daily billing model).
+
+    ``operator_name`` survives operator deletion — an operator added and
+    removed the same day still costs one day.
+    """
+
+    date = models.DateField()
+    operator = models.ForeignKey(
+        "accounts.OperatorProfile",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="daily_charges",
+    )
+    operator_name = models.CharField(max_length=150)
+    amount_uzs = models.PositiveIntegerField()
+    price_per_operator_uzs = models.PositiveIntegerField(
+        help_text="Monthly tariff in force on that day (rate = tariff / days in month)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ["-date", "operator_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "date", "operator_name"],
+                name="uniq_daily_charge_per_operator_day",
+            ),
+        ]
+        indexes = [models.Index(fields=["company", "-date"])]
+
+    def __str__(self) -> str:
+        return f"{self.date} {self.operator_name}: {self.amount_uzs} UZS"
+
+
+class MonthlyStatement(TenantModel):
+    """Previous-month usage total, settled from the balance on the 1st."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PAID = "paid", "Paid"
+        OVERDUE = "overdue", "Overdue"
+
+    month = models.DateField(help_text="First day of the billed month")
+    total_uzs = models.PositiveBigIntegerField(default=0)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ["-month"]
+        constraints = [
+            models.UniqueConstraint(fields=["company", "month"], name="uniq_statement_per_month"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.company} {self.month:%Y-%m}: {self.total_uzs} UZS ({self.status})"
+
+
+class BillingNotification(TenantModel):
+    """In-app message shown in the client's cabinet (bell + profile)."""
+
+    class Kind(models.TextChoices):
+        CHARGE_SETTLED = "charge_settled", "Monthly charge deducted"
+        PAYMENT_DUE = "payment_due", "Payment due"
+        PAYMENT_RECEIVED = "payment_received", "Payment received"
+        TARIFF_CHANGED = "tariff_changed", "Tariff changed"
+        BLOCKED = "blocked", "Access blocked"
+
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+    message = models.CharField(max_length=300)
+    amount_uzs = models.BigIntegerField(null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["company", "is_read", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.kind}: {self.message[:40]}"
 
 
 class Payment(TenantModel):

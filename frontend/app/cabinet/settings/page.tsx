@@ -18,6 +18,9 @@ import {
   deleteGroup,
   fetchAccountSettings,
   fetchApiKey,
+  fetchBillingCharges,
+  fetchBillingOverview,
+  fetchBillingStatements,
   fetchCrmCatalog,
   fetchDevices,
   fetchGroups,
@@ -778,6 +781,149 @@ function IntegrationTab() {
 }
 
 // ── Tab 6: license & payment ───────────────────────────────────────────────
+const STATUS_BADGE: Record<string, string> = {
+  paid: "bg-accent-soft text-accent",
+  pending: "bg-warning/15 text-warning",
+  overdue: "bg-danger/10 text-danger",
+};
+
+function BillingSection() {
+  const t = useTranslations("settings");
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [month, setMonth] = useState(currentMonth);
+  const { data: overview } = useQuery({
+    queryKey: ["b-overview"],
+    queryFn: fetchBillingOverview,
+  });
+  const { data: charges } = useQuery({
+    queryKey: ["b-charges", month],
+    queryFn: () => fetchBillingCharges(month),
+  });
+  const { data: statements } = useQuery({
+    queryKey: ["b-statements"],
+    queryFn: fetchBillingStatements,
+  });
+
+  return (
+    <>
+      {overview?.unpaid_statement && (
+        <div
+          data-testid="unpaid-banner"
+          className="rounded-lg border border-danger/40 bg-danger/5 p-4 text-sm text-danger"
+        >
+          {t("unpaidWarning", {
+            month: overview.unpaid_statement.month,
+            amount: formatUzs(overview.unpaid_statement.total_uzs),
+          })}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2" data-testid="balance-cards">
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs font-semibold uppercase text-fg-faint">
+            {t("balance")}
+          </p>
+          <p className="tnum mt-1 text-2xl font-bold text-accent">
+            {formatUzs(overview?.balance_uzs ?? 0)}{" "}
+            <span className="text-sm font-medium text-fg-muted">UZS</span>
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs font-semibold uppercase text-fg-faint">
+            {t("monthAccrued")}
+          </p>
+          <p className="tnum mt-1 text-2xl font-bold">
+            {formatUzs(overview?.month_accrued_uzs ?? 0)}{" "}
+            <span className="text-sm font-medium text-fg-muted">UZS</span>
+          </p>
+          <p className="tnum mt-1 text-xs text-fg-faint">
+            {t("dailyRate")}: {formatUzs(overview?.daily_rate_uzs ?? 0)} UZS ×{" "}
+            {overview?.seats ?? 0}
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+          <p className="text-sm font-semibold">{t("dailyCharges")}</p>
+          <input
+            type="month"
+            value={month}
+            max={currentMonth}
+            onChange={(event) => setMonth(event.target.value || currentMonth)}
+            data-testid="charges-month"
+            className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+          />
+        </div>
+        <div className="max-h-72 overflow-y-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="sticky top-0 bg-surface-2 text-xs uppercase text-fg-muted">
+              <tr>
+                <th className="px-4 py-2">{t("colDate")}</th>
+                <th className="px-4 py-2">{t("colOperator")}</th>
+                <th className="px-4 py-2 text-right">{t("colAmount")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {(charges?.charges ?? []).map((row, index) => (
+                <tr key={`${row.date}-${row.operator_name}-${index}`}>
+                  <td className="tnum px-4 py-1.5">{row.date}</td>
+                  <td className="px-4 py-1.5">{row.operator_name}</td>
+                  <td className="tnum px-4 py-1.5 text-right">
+                    {formatUzs(row.amount_uzs)}
+                  </td>
+                </tr>
+              ))}
+              {(charges?.charges ?? []).length === 0 && (
+                <tr>
+                  <td
+                    colSpan={3}
+                    className="px-4 py-6 text-center text-xs text-fg-faint"
+                  >
+                    —
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="tnum border-t border-border px-4 py-2 text-right text-sm font-semibold">
+          {t("total")}: {formatUzs(charges?.total_uzs ?? 0)} UZS
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-border bg-surface">
+        <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+          {t("statements")}
+        </p>
+        <ul className="divide-y divide-border">
+          {(statements?.statements ?? []).map((statement) => (
+            <li
+              key={statement.month}
+              className="flex items-center gap-2 px-4 py-2 text-sm"
+            >
+              <span className="tnum flex-1">{statement.month}</span>
+              <span className="tnum">{formatUzs(statement.total_uzs)} UZS</span>
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-semibold",
+                  STATUS_BADGE[statement.status] ?? "bg-surface-3",
+                )}
+              >
+                {t(`stmt_${statement.status}`)}
+              </span>
+            </li>
+          ))}
+          {(statements?.statements ?? []).length === 0 && (
+            <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
+          )}
+        </ul>
+      </div>
+    </>
+  );
+}
+
 function LicenseTab() {
   const t = useTranslations("settings");
   const { data } = useQuery({ queryKey: ["s-license"], queryFn: fetchLicense });
@@ -786,6 +932,7 @@ function LicenseTab() {
 
   return (
     <div className="max-w-lg space-y-4" data-testid="license-tab">
+      <BillingSection />
       <div className="rounded-lg border border-border bg-surface p-4">
         {data.status === "trial" && data.trial_days_left !== null ? (
           <p className="text-sm">

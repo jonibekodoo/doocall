@@ -192,9 +192,13 @@ class UserDetailView(AdminCabinetView):
             profile.group = OperatorGroup.objects.filter(pk=request.data.get("group_id")).first()
         if "is_active" in request.data:
             # Billable seats react IMMEDIATELY (license endpoint reads live count).
+            was_active = profile.is_active
             profile.is_active = bool(request.data["is_active"])
             profile.user.is_active = profile.is_active
             profile.user.save(update_fields=["is_active"])
+            if was_active and not profile.is_active:
+                # The worked part of today is still billed (daily model).
+                billing.accrue_operator_day(self.company, profile, timezone.now().date())
             AuditLog.objects.create(
                 company=self.company,
                 actor=cast(User, request.user),
@@ -209,6 +213,9 @@ class UserDetailView(AdminCabinetView):
     @extend_schema(summary="Delete operator")
     def delete(self, request: Request, operator_id: int) -> Response:
         profile = self._get(operator_id)
+        if profile.is_active:
+            # Added-and-removed the same day still costs one operator-day.
+            billing.accrue_operator_day(self.company, profile, timezone.now().date())
         profile.user.delete()  # cascades to profile
         return Response({"success": True})
 
@@ -419,6 +426,8 @@ class WebhookTestView(AdminCabinetView):
 
 # ── License ────────────────────────────────────────────────────────────────
 class LicenseView(CabinetView):
+    allow_when_suspended = True  # the payment page must stay reachable
+
     @extend_schema(summary="License state: trial/period, seats × price, payments")
     def get(self, request: Request) -> Response:
         company = self.company

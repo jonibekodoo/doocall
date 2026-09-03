@@ -4,6 +4,7 @@ from apps.integrations import views as integration_views
 
 from . import (
     views,
+    views_billing,
     views_calls,
     views_contacts,
     views_dashboard,
@@ -119,6 +120,19 @@ urlpatterns = [
     ),
     path("auth/verify-email", views.EmailVerifyView.as_view(), name="verify-email"),
     path("billing/status", views.BillingStatusView.as_view(), name="billing-status"),
+    path("billing/overview", views_billing.BillingOverviewView.as_view(), name="b-overview"),
+    path("billing/charges", views_billing.BillingChargesView.as_view(), name="b-charges"),
+    path(
+        "billing/statements",
+        views_billing.BillingStatementsView.as_view(),
+        name="b-statements",
+    ),
+    path("notifications", views_billing.NotificationsView.as_view(), name="notifications"),
+    path(
+        "notifications/read",
+        views_billing.NotificationsReadView.as_view(),
+        name="notifications-read",
+    ),
     path(
         "billing/webhooks/<str:provider_name>",
         views.ProviderWebhookView.as_view(),

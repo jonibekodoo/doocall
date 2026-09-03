@@ -40,6 +40,9 @@ class CabinetView(APIView):
     """Base for every tenant-scoped cabinet endpoint."""
 
     permission_classes = [IsAuthenticated, HasCompany]
+    # Views that must stay reachable while the company is blocked for
+    # non-payment (license/billing/notifications) set this to True.
+    allow_when_suspended = False
 
     def initial(self, request: Request, *args: Any, **kwargs: Any) -> None:
         super().initial(request, *args, **kwargs)
@@ -52,6 +55,17 @@ class CabinetView(APIView):
                 ErrorCode.INVALID_API_KEY,
                 "wrong company domain",
                 http.HTTP_403_FORBIDDEN,
+            )
+        # Blocked-for-non-payment companies keep ONLY the billing surface.
+        if (
+            user.company is not None
+            and user.company.status == Company.Status.SUSPENDED
+            and not self.allow_when_suspended
+        ):
+            raise ApiError(
+                ErrorCode.SUBSCRIPTION_INACTIVE,
+                "Company subscription is suspended",
+                http.HTTP_402_PAYMENT_REQUIRED,
             )
         # After authentication: scope ALL TenantManager querysets to the
         # user's company for the remainder of this request.

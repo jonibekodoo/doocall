@@ -30,6 +30,8 @@ class Company(models.Model):
         max_length=2, blank=True, default="UZ", help_text="ISO 3166-1 alpha-2"
     )
     timezone = models.CharField(max_length=64, blank=True, default="Asia/Tashkent")
+    # Prepaid balance: payments top it up; monthly statements deduct from it.
+    balance_uzs = models.BigIntegerField(default=0)
 
     # ── Integrator binding (Addendum A.2) ──────────────────────────────────
     class AcquiredVia(models.TextChoices):

@@ -173,7 +173,23 @@
     "apiDocsLink": "Dasturchilar uchun API hujjatlari",
     "country": "Davlat",
     "timezone": "Vaqt mintaqasi",
+    "balance": "Balans",
+    "monthAccrued": "Shu oy hisoblangan",
+    "dailyRate": "Kunlik narx / operator",
+    "dailyCharges": "Kunlik hisob-kitob",
+    "colDate": "Sana",
+    "colOperator": "Operator",
+    "colAmount": "Summa",
+    "statements": "Oylik hisobotlar",
+    "stmt_paid": "to'langan",
+    "stmt_pending": "kutilmoqda",
+    "stmt_overdue": "kechikkan",
+    "unpaidWarning": "{month} oyi uchun {amount} UZS to'lov qilinmagan. 2 kun ichida to'lanmasa tizim bloklanadi.",
     "timezoneNote": "Qo'ng'iroq vaqtlari, sana filtrlari, hisobotlar va «bugun» chegarasi shu vaqt mintaqasida hisoblanadi. Mobil ilovadan kelgan lokal vaqt ham shu mintaqada talqin qilinadi."
+  },
+  "notifications": {
+    "title": "Bildirishnomalar",
+    "empty": "Hozircha bildirishnoma yo'q"
   },
   "crm": {
     "pageTitle": "Integratsiya",

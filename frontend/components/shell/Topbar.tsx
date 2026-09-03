@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { NotificationsBell } from "@/components/shell/NotificationsBell";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ export function Topbar({ periodSlot }: { periodSlot?: React.ReactNode }) {
       <div className="min-w-0 flex-1">{periodSlot}</div>
 
       <div className="flex items-center gap-1.5">
+        <NotificationsBell />
         {/* Locale switcher */}
         <div
           className="flex rounded-full border border-border p-0.5"
