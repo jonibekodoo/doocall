@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   approvePayment,
@@ -114,12 +115,12 @@ export default function AdminPaymentsPage() {
                         <button
                           type="button"
                           data-testid={`approve-${p.id}`}
-                          onClick={() =>
-                            window.confirm(
+                          onClick={async () =>
+                            (await confirmDialog(
                               t("payments.confirmApprove", {
                                 amount: formatUzs(p.amount_uzs),
                               }),
-                            ) && approve.mutate(p.id)
+                            )) && approve.mutate(p.id)
                           }
                           className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-accent-fg"
                         >
@@ -129,9 +130,10 @@ export default function AdminPaymentsPage() {
                       {p.status === "approved" && (
                         <button
                           type="button"
-                          onClick={() =>
-                            window.confirm(t("payments.confirmRefund")) &&
-                            refund.mutate(p.id)
+                          onClick={async () =>
+                            (await confirmDialog(t("payments.confirmRefund"), {
+                              danger: true,
+                            })) && refund.mutate(p.id)
                           }
                           className="rounded-md border border-danger/40 px-2.5 py-1 text-xs text-danger"
                         >

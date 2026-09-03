@@ -8,6 +8,7 @@ import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 
+import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   createCrmCatalogEntry,
@@ -183,9 +184,10 @@ export default function AdminCrmCatalogPage() {
               <button
                 type="button"
                 aria-label={`delete ${entry.name}`}
-                onClick={() =>
-                  window.confirm(t("deleteConfirm", { name: entry.name })) &&
-                  destroy.mutate(entry.id)
+                onClick={async () =>
+                  (await confirmDialog(t("deleteConfirm", { name: entry.name }), {
+                    danger: true,
+                  })) && destroy.mutate(entry.id)
                 }
                 className="grid size-7 place-items-center rounded-md text-fg-muted hover:bg-danger/10 hover:text-danger"
               >

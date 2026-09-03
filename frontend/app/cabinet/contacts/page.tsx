@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
+import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   contactFromCall,
@@ -153,6 +154,7 @@ function ContactDialog({
 
 function ContactsInner() {
   const t = useTranslations("contacts");
+  const tc = useTranslations("common");
   const tNav = useTranslations("nav");
   const queryClient = useQueryClient();
   const params = useSearchParams();
@@ -247,8 +249,13 @@ function ContactsInner() {
           <button
             type="button"
             aria-label="delete"
-            onClick={() => {
-              if (window.confirm("?")) remove.mutate(row.id);
+            onClick={async () => {
+              if (
+                await confirmDialog(`${tc("delete")}: ${row.name}?`, {
+                  danger: true,
+                })
+              )
+                remove.mutate(row.id);
             }}
             className="text-fg-faint hover:text-danger"
           >

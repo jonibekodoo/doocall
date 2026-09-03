@@ -8,6 +8,7 @@ import { Smartphone, Trash2, UploadCloud } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 
+import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   deleteAppRelease,
@@ -164,9 +165,10 @@ export default function AdminAppPage() {
                       <button
                         type="button"
                         aria-label={t("delete")}
-                        onClick={() =>
-                          window.confirm(t("deleteConfirm")) &&
-                          remove.mutate(release.id)
+                        onClick={async () =>
+                          (await confirmDialog(t("deleteConfirm"), {
+                            danger: true,
+                          })) && remove.mutate(release.id)
                         }
                         className="grid size-7 place-items-center rounded-md text-fg-faint hover:bg-danger/10 hover:text-danger"
                       >

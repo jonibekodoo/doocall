@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { ApiError } from "@/lib/api/client";
 import { AuthProvider } from "@/lib/auth";
+import { ConfirmHost } from "@/components/ui/Confirm";
 import { ToastProvider, useToastStore } from "@/components/ui/Toast";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -39,7 +40,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          {children}
+          <ConfirmHost />
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   companyAction,
@@ -437,8 +438,8 @@ export default function AdminCompanyDetailPage() {
             <button
               type="button"
               data-testid="suspend-btn"
-              onClick={() =>
-                window.confirm(t("suspendConfirm")) &&
+              onClick={async () =>
+                (await confirmDialog(t("suspendConfirm"), { danger: true })) &&
                 act.mutate({ action: "suspend" })
               }
               className="rounded-md border border-danger/40 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/5"

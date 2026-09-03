@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { CredentialsDialog } from "@/components/CredentialsDialog";
+import { confirmDialog, promptDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   createGroup,
@@ -345,8 +346,11 @@ function DevicesTab() {
                 <span className="tnum flex-1">{formatPhone(sim.number)}</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    const number = window.prompt(t("setNumber"), sim.number);
+                  onClick={async () => {
+                    const number = await promptDialog(
+                      t("setNumber"),
+                      sim.number,
+                    );
                     if (number) patchSim(sim.id, { number }).then(invalidate);
                   }}
                   className="text-xs text-accent hover:underline"
@@ -371,8 +375,8 @@ function DevicesTab() {
           </ul>
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm(`${t("deleteDevice")}?`))
+            onClick={async () => {
+              if (await confirmDialog(`${t("deleteDevice")}?`, { danger: true }))
                 deleteDevice(device.id).then(invalidate);
             }}
             className="mt-3 flex items-center gap-1.5 text-xs text-fg-faint hover:text-danger"
