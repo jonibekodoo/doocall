@@ -7,6 +7,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.integrations.views_public import (
     CrmLogoView,
     CustomApiView,
+    OdooAppDownloadView,
     PublicCrmCatalogView,
     RecordRedirectView,
 )
@@ -36,6 +37,11 @@ urlpatterns = [
         r"^api/public/crm-catalog/?$",
         PublicCrmCatalogView.as_view(),
         name="public-crm-catalog",
+    ),
+    re_path(
+        r"^api/public/odoo-app/?$",
+        OdooAppDownloadView.as_view(),
+        name="public-odoo-app",
     ),
     # Public landing endpoints (no auth).
     # Slash-optional: the Next dev proxy strips trailing slashes.

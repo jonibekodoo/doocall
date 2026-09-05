@@ -314,8 +314,50 @@ def _odoo_test(config: dict[str, Any]) -> str:
     return f"uid={_odoo_auth(config)}"
 
 
+def _odoo_send_via_app(
+    config: dict[str, Any], uid: int, record: CallRecord, record_url: str | None
+) -> None:
+    """Preferred path: the DooCall Odoo app (doocall.call) is installed —
+    it links partner/lead, posts chatter and renders the audio player."""
+    existing = _odoo_execute(
+        config,
+        uid,
+        "doocall.call",
+        "search_count",
+        [[("server_id", "=", record.server_id.hex)]],
+    )
+    if existing:
+        return
+    _odoo_execute(
+        config,
+        uid,
+        "doocall.call",
+        "create",
+        [
+            {
+                "call_id": record.call_id,
+                "server_id": record.server_id.hex,
+                "direction": "inbound"
+                if record.call_type == CallRecord.CallType.INBOUND
+                else "outbound",
+                "status": record.call_status,
+                "phone": record.counterparty_number,
+                "operator": record.operator.user_name if record.operator else False,
+                "duration": record.duration,
+                "start_time": record.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "record_url": record_url or False,
+            }
+        ],
+    )
+
+
 def _odoo_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
     uid = _odoo_auth(config)
+    try:
+        _odoo_send_via_app(config, uid, record, record_url)
+        return
+    except ProviderError:
+        pass  # app not installed → legacy chatter-only delivery below
     tail = record.counterparty_number[-9:]  # match regardless of +998 formatting
     partner_ids = _odoo_execute(
         config,

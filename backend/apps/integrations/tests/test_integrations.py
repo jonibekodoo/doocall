@@ -358,6 +358,88 @@ class TestBitrix24Adapter:
             providers.send_call("bitrix24", B24_CONFIG, call, None)
 
 
+ODOO_CONFIG = {
+    "url": "https://erp.x.uz",
+    "db": "prod",
+    "login": "bot@x.uz",
+    "api_key": "k" * 20,
+}
+
+
+class TestOdooAdapter:
+    """Prefers the DooCall Odoo app (doocall.call); falls back to chatter."""
+
+    def _run(
+        self, monkeypatch: pytest.MonkeyPatch, call: CallRecord, results: list[Any]
+    ) -> list[dict[str, Any]]:
+        seen: list[dict[str, Any]] = []
+
+        def fake_http(url: str, payload: Any = None, *, headers: Any = None, method: Any = None):
+            seen.append(payload["params"])
+            result = results[len(seen) - 1]
+            if isinstance(result, Exception):
+                raise result
+            return {"result": result}
+
+        monkeypatch.setattr(providers, "_http_json", fake_http)
+        providers.send_call("odoo", ODOO_CONFIG, call, "https://rec.example/1")
+        return seen
+
+    @staticmethod
+    def _kw(params: dict[str, Any]) -> tuple[str, str]:
+        # execute_kw args: [db, uid, key, model, method, args, kwargs]
+        return params["args"][3], params["args"][4]
+
+    def test_app_installed_creates_doocall_call(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self._run(monkeypatch, call, [7, 0, 101])  # auth, search_count, create
+        assert seen[0]["method"] == "authenticate"
+        assert self._kw(seen[1]) == ("doocall.call", "search_count")
+        model, method = self._kw(seen[2])
+        assert (model, method) == ("doocall.call", "create")
+        payload = seen[2]["args"][5][0][0]
+        assert payload["server_id"] == call.server_id.hex
+        assert payload["direction"] == "inbound"
+        assert payload["status"] == "answered"
+        assert payload["record_url"] == "https://rec.example/1"
+
+    def test_duplicate_dispatch_skips_create(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self._run(monkeypatch, call, [7, 1])  # already exists
+        assert len(seen) == 2
+
+    def test_without_app_falls_back_to_chatter(
+        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        no_model = providers.ProviderError("Odoo: Object doocall.call doesn't exist")
+        # auth, search_count fails → legacy: partner search, message_post
+        seen = self._run(monkeypatch, call, [7, no_model, [42], True])
+        assert self._kw(seen[2]) == ("res.partner", "search")
+        assert self._kw(seen[3]) == ("res.partner", "message_post")
+
+
+class TestOdooAppDownload:
+    def test_zip_contains_the_module(self, db: Any) -> None:
+        import io as _io
+        import zipfile
+
+        from rest_framework.test import APIClient
+
+        response = APIClient().get("/api/public/odoo-app")
+        assert response.status_code == 200
+        assert response["Content-Type"] == "application/zip"
+        archive = zipfile.ZipFile(_io.BytesIO(response.content))
+        names = archive.namelist()
+        assert "doocall/__manifest__.py" in names
+        assert "doocall/models/doocall_call.py" in names
+        assert "doocall/views/doocall_call_views.xml" in names
+        assert "doocall/security/ir.model.access.csv" in names
+        manifest = archive.read("doocall/__manifest__.py").decode()
+        assert "19.0" in manifest
+
+
 class TestCrmCatalog:
     def test_admin_crud_and_cabinet_list(
         self, client: APIClient, company: Company, db: Any

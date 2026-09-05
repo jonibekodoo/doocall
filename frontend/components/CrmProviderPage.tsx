@@ -36,6 +36,7 @@ export function CrmProviderPage({
   regions,
   fields,
   guideHref,
+  downloadHref,
 }: {
   provider: "amocrm" | "bitrix24" | "odoo";
   title: string;
@@ -43,6 +44,7 @@ export function CrmProviderPage({
   regions?: { label: string; options: CrmRegion[] };
   fields: CrmField[];
   guideHref?: string;
+  downloadHref?: string;
 }) {
   const t = useTranslations("crm");
   const queryClient = useQueryClient();
@@ -122,6 +124,16 @@ export function CrmProviderPage({
       <div className="mt-4 rounded-md border-l-4 border-accent bg-accent-soft/40 p-4 text-sm leading-relaxed text-fg">
         {info}
       </div>
+
+      {downloadHref && (
+        <a
+          href={downloadHref}
+          data-testid="crm-app-download"
+          className="mt-4 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:opacity-90"
+        >
+          ⬇ {t("downloadApp")}
+        </a>
+      )}
 
       {regions && (
         <div className="mt-5 space-y-2">

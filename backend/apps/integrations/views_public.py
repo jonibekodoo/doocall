@@ -253,6 +253,30 @@ class CrmLogoView(View):
         return response
 
 
+class OdooAppDownloadView(View):
+    """Zips the bundled DooCall Odoo 19 addon on the fly (no auth —
+    the module contains no secrets, only client-side code)."""
+
+    def get(self, request: HttpRequest) -> HttpResponse:
+        import io as _io
+        import zipfile
+        from pathlib import Path
+
+        from django.conf import settings as dj_settings
+
+        app_dir = Path(dj_settings.BASE_DIR) / "odoo_app" / "doocall"
+        if not app_dir.is_dir():
+            return HttpResponse(status=404)
+        buffer = _io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(app_dir.rglob("*")):
+                if path.is_file() and "__pycache__" not in path.parts:
+                    archive.write(path, "doocall/" + str(path.relative_to(app_dir)))
+        response = HttpResponse(buffer.getvalue(), content_type="application/zip")
+        response["Content-Disposition"] = 'attachment; filename="doocall_odoo19.zip"'
+        return response
+
+
 class PublicCrmCatalogView(View):
     """Active catalog tiles for the landing page (no auth)."""
 

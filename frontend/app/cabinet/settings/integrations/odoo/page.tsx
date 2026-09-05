@@ -11,6 +11,7 @@ export default function OdooIntegrationPage() {
       provider="odoo"
       title="Odoo"
       info={t("info")}
+      downloadHref="/api/public/odoo-app"
       fields={[
         { key: "url", label: t("url"), placeholder: "https://erp.mycompany.uz" },
         { key: "db", label: t("db"), placeholder: "mycompany" },
