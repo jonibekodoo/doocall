@@ -252,7 +252,7 @@
       "userId": "Bitrix24 user ID for calls (default 1)"
     },
     "odoo": {
-      "info": "1) Download the DooCall app for Odoo 19 using the button below, extract it into your addons folder and install it (Apps → DooCall). 2) Create an API key in Odoo (Preferences → Account Security → API Keys) for a user with CRM access and fill the fields below. With the app every call shows inside the contact/lead with an audio player; without it, only a chatter note is posted.",
+      "info": "1) Download the DooCall app for Odoo 19 using the button below, extract it into your addons folder and install it (Apps → DooCall). 2) Create an API key in Odoo (Preferences → Account Security → API Keys) for an administrator user (only it writes records; data is read-only for everyone else) and fill the fields below. With the app every call shows inside the contact/lead with an audio player; without it, only a chatter note is posted.",
       "url": "Odoo server URL",
       "db": "Database name",
       "login": "User login (e-mail)",

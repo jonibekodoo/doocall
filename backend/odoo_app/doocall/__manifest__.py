@@ -8,7 +8,7 @@ Har bir qo'ng'iroq avtomatik ravishda kontakt (yoki yangi lid) bilan
 bog'lanadi, chatter'ga yozuv tushadi va qo'ng'iroq kartochkasida audio
 player orqali yozuvni tinglash mumkin.
 """,
-    "version": "19.0.1.0.0",
+    "version": "19.0.1.1.0",
     "author": "DooCall",
     "website": "https://doocall.uz",
     "category": "Sales/CRM",

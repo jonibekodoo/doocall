@@ -16,12 +16,19 @@
                 <page string="DooCall qo'ng'iroqlari" name="doocall_calls"
                       invisible="doocall_call_count == 0">
                     <field name="doocall_call_ids" readonly="1">
-                        <list>
+                        <list create="false" edit="false" delete="false"
+                              decoration-success="status == 'answered'"
+                              decoration-danger="status in ('no_answer','failed')"
+                              decoration-warning="status == 'busy'">
                             <field name="start_time"/>
                             <field name="direction"/>
-                            <field name="status"/>
-                            <field name="operator"/>
+                            <field name="status" widget="badge"
+                                   decoration-success="status == 'answered'"
+                                   decoration-danger="status in ('no_answer','failed')"
+                                   decoration-warning="status == 'busy'"/>
+                            <field name="user_id" widget="many2one_avatar_user"/>
                             <field name="duration_display"/>
+                            <field name="record_url" column_invisible="1"/>
                             <button name="action_play_record" type="object"
                                     icon="fa-play-circle" title="Yozuvni tinglash"
                                     invisible="not record_url"/>

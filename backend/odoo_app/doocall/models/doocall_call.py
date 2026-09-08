@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-"""DooCall qo'ng'irog'i: kontakt/lid bilan avtomatik bog'lanadi, chatter'ga
-yozuv tushiradi, kartochkasida audio player ko'rsatadi."""
+"""DooCall qo'ng'irog'i: kontakt/lid bilan avtomatik bog'lanadi, operator
+Odoo foydalanuvchisiga biriktiriladi, chatter'ga yozuv tushiradi va
+kartochkasida audio player ko'rsatadi. Ma'lumotlar faqat o'qish uchun —
+ular DooCall serveridan avtomatik keladi."""
 
 from markupsafe import Markup
 
@@ -13,13 +15,14 @@ class DoocallCall(models.Model):
     _order = "start_time desc, id desc"
     _rec_name = "display_label"
 
-    call_id = fields.Char(string="Call ID", index=True)
-    server_id = fields.Char(string="Server ID", index=True, copy=False)
+    call_id = fields.Char(string="Call ID", index=True, readonly=True)
+    server_id = fields.Char(string="Server ID", index=True, copy=False, readonly=True)
     direction = fields.Selection(
         [("inbound", "Kiruvchi"), ("outbound", "Chiquvchi")],
         string="Yo'nalish",
         required=True,
         default="inbound",
+        readonly=True,
     )
     status = fields.Selection(
         [
@@ -31,17 +34,24 @@ class DoocallCall(models.Model):
         string="Holat",
         required=True,
         default="answered",
+        readonly=True,
     )
-    phone = fields.Char(string="Telefon", index=True)
-    operator = fields.Char(string="Operator")
-    duration = fields.Integer(string="Davomiylik (soniya)")
+    phone = fields.Char(string="Telefon", index=True, readonly=True)
+    operator = fields.Char(string="Operator (DooCall)", readonly=True)
+    user_id = fields.Many2one(
+        "res.users", string="Operator (Odoo)", index=True, readonly=True
+    )
+    duration = fields.Integer(string="Davomiylik (soniya)", readonly=True)
     duration_display = fields.Char(
         string="Davomiylik", compute="_compute_duration_display"
     )
-    start_time = fields.Datetime(string="Boshlanish vaqti")
-    record_url = fields.Char(string="Yozuv havolasi")
-    partner_id = fields.Many2one("res.partner", string="Kontakt", index=True)
-    lead_id = fields.Many2one("crm.lead", string="Lid", index=True)
+    start_time = fields.Datetime(string="Boshlanish vaqti", readonly=True)
+    date = fields.Date(string="Sana", compute="_compute_date", store=True)
+    record_url = fields.Char(string="Yozuv havolasi", readonly=True)
+    partner_id = fields.Many2one(
+        "res.partner", string="Kontakt", index=True, readonly=True
+    )
+    lead_id = fields.Many2one("crm.lead", string="Lid", index=True, readonly=True)
     display_label = fields.Char(compute="_compute_display_label")
     player_html = fields.Html(
         string="Audio yozuv", compute="_compute_player_html", sanitize=False
@@ -56,6 +66,11 @@ class DoocallCall(models.Model):
         for rec in self:
             minutes, seconds = divmod(rec.duration or 0, 60)
             rec.duration_display = "%02d:%02d" % (minutes, seconds)
+
+    @api.depends("start_time")
+    def _compute_date(self):
+        for rec in self:
+            rec.date = rec.start_time.date() if rec.start_time else False
 
     @api.depends("direction", "phone")
     def _compute_display_label(self):
@@ -92,30 +107,46 @@ class DoocallCall(models.Model):
         digits = "".join(ch for ch in (self.phone or "") if ch.isdigit())
         return digits[-9:] if len(digits) >= 9 else digits
 
+    def _match_operator_user(self):
+        """DooCall operator login/ismi bo'yicha Odoo foydalanuvchisini topish."""
+        self.ensure_one()
+        if not self.operator:
+            return False
+        Users = self.env["res.users"]
+        user = Users.search([("login", "=ilike", self.operator)], limit=1)
+        if not user:
+            user = Users.search([("name", "=ilike", self.operator)], limit=1)
+        if not user:
+            user = Users.search([("name", "ilike", self.operator)], limit=1)
+        return user
+
     def _link_and_notify(self):
         self.ensure_one()
-        tail = self._phone_tail()
-        if tail and not self.partner_id:
-            self.partner_id = self.env["res.partner"].search(
-                ["|", ("phone", "like", tail), ("mobile", "like", tail)], limit=1
+        record = self.sudo()
+        if not record.user_id:
+            record.user_id = record._match_operator_user()
+        tail = record._phone_tail()
+        if tail and not record.partner_id:
+            # Odoo 19: res.partner'da "mobile" maydoni yo'q — faqat "phone".
+            record.partner_id = self.env["res.partner"].search(
+                [("phone", "like", tail)], limit=1
             )
-        if not self.partner_id and not self.lead_id:
+        if not record.partner_id and not record.lead_id:
             lead = False
             if tail:
-                lead = self.env["crm.lead"].search(
-                    [("phone", "like", tail)], limit=1
-                )
+                lead = self.env["crm.lead"].search([("phone", "like", tail)], limit=1)
             if not lead:
                 lead = self.env["crm.lead"].create(
                     {
-                        "name": "DooCall: %s" % (self.phone or "?"),
-                        "phone": self.phone,
+                        "name": "DooCall: %s" % (record.phone or "?"),
+                        "phone": record.phone,
                         "type": "lead",
+                        "user_id": record.user_id.id or False,
                     }
                 )
-            self.lead_id = lead
-        body = self._chatter_body()
-        for target in (self.partner_id, self.lead_id):
+            record.lead_id = lead
+        body = record._chatter_body()
+        for target in (record.partner_id, record.lead_id):
             if target:
                 target.message_post(body=body)
 
@@ -132,8 +163,9 @@ class DoocallCall(models.Model):
             statuses.get(self.status, self.status),
             self.duration_display,
         )
-        if self.operator:
-            body += Markup("<br/>Operator: %s") % self.operator
+        operator_label = self.user_id.name or self.operator
+        if operator_label:
+            body += Markup("<br/>Operator: %s") % operator_label
         if self.record_url:
             body += Markup(
                 '<br/><a href="%s" target="_blank">&#9654; Yozuvni tinglash</a>'

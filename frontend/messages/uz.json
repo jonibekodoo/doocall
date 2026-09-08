@@ -252,7 +252,7 @@
       "userId": "Qo'ng'iroqlar uchun Bitrix24 foydalanuvchi ID (odatda 1)"
     },
     "odoo": {
-      "info": "1) Quyidagi tugma orqali DooCall Odoo 19 ilovasini yuklab olib, addons papkasiga chiqarib o'rnating (Apps → DooCall). 2) Odoo'da CRM huquqi bor foydalanuvchi uchun API kalit yarating (Preferences → Account Security → API Keys) va quyidagi maydonlarni to'ldiring. Ilova o'rnatilgach har bir qo'ng'iroq kontakt/lid ichida audio player bilan ko'rinadi; ilovasiz — faqat chatter yozuvi.",
+      "info": "1) Quyidagi tugma orqali DooCall Odoo 19 ilovasini yuklab olib, addons papkasiga chiqarib o'rnating (Apps → DooCall). 2) Odoo'da administrator huquqli foydalanuvchi uchun API kalit yarating (yozuvlar faqat shu foydalanuvchi orqali yoziladi, qolganlar uchun read-only) (Preferences → Account Security → API Keys) va quyidagi maydonlarni to'ldiring. Ilova o'rnatilgach har bir qo'ng'iroq kontakt/lid ichida audio player bilan ko'rinadi; ilovasiz — faqat chatter yozuvi.",
       "url": "Odoo server URL",
       "db": "Ma'lumotlar bazasi nomi",
       "login": "Foydalanuvchi logini (e-mail)",

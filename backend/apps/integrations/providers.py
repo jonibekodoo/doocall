@@ -359,12 +359,13 @@ def _odoo_send(config: dict[str, Any], record: CallRecord, record_url: str | Non
     except ProviderError:
         pass  # app not installed → legacy chatter-only delivery below
     tail = record.counterparty_number[-9:]  # match regardless of +998 formatting
+    # Odoo 18+ res.partner'da "mobile" maydoni yo'q — faqat "phone".
     partner_ids = _odoo_execute(
         config,
         uid,
         "res.partner",
         "search",
-        ["|", ("phone", "like", tail), ("mobile", "like", tail)],
+        [("phone", "like", tail)],
         limit=1,
     )
     direction = "Kiruvchi" if record.call_type == CallRecord.CallType.INBOUND else "Chiquvchi"
