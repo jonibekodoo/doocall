@@ -118,6 +118,28 @@ class AuthView(BaseApiView):
                 status=http.HTTP_401_UNAUTHORIZED,
             )
 
+        # Host guard (contract §1): the login base URL must be the company's
+        # own subdomain, or the neutral api.<root> host. The public site and
+        # portal hosts (doocall.uz, app.doocall.uz, ...) are rejected, and a
+        # company subdomain must match the operator's company — otherwise a
+        # user could sign in through another company's URL.
+        from apps.core import domains
+
+        host = request.get_host()
+        sub = domains.company_subdomain(host)
+        if domains.device_login_denied(host) or (
+            sub is not None and operator.company.slug != sub
+        ):
+            return Response(
+                {
+                    "success": False,
+                    "api_key": "",
+                    "message": "wrong company domain",
+                    "error_code": ErrorCode.INVALID_CREDENTIALS,
+                },
+                status=http.HTTP_401_UNAUTHORIZED,
+            )
+
         require_active_company(operator.company)
 
         with transaction.atomic():

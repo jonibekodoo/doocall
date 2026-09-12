@@ -57,9 +57,13 @@ def authenticate_device(request: Request) -> OperatorProfile:
         if user_name and user_name != operator.user_name:
             raise ApiError(ErrorCode.INVALID_API_KEY, "invalid api_key", http.HTTP_401_UNAUTHORIZED)
 
-    # Company-subdomain guard: a device posting to <slug>.DOMAIN_ROOT must
-    # belong to that company (host is routing, api_key stays the authority).
-    sub = domains.company_subdomain(request.get_host())
+    # Host guard. The public site + portal hosts are never device endpoints.
+    host = request.get_host()
+    if domains.device_login_denied(host):
+        raise ApiError(ErrorCode.INVALID_API_KEY, "invalid api_key", http.HTTP_401_UNAUTHORIZED)
+    # A device posting to <slug>.DOMAIN_ROOT must belong to that company
+    # (host is routing, api_key stays the authority).
+    sub = domains.company_subdomain(host)
     if sub is not None and operator.company.slug != sub:
         raise ApiError(ErrorCode.INVALID_API_KEY, "invalid api_key", http.HTTP_401_UNAUTHORIZED)
 

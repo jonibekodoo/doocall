@@ -63,6 +63,28 @@ class TestUsersAndSeats:
         )
         assert mobile.json() == {"success": True, "api_key": creds["api_key"]}
 
+    def test_user_name_globally_unique_across_companies(
+        self, client: APIClient, company: Company, other_company_noise: Company
+    ) -> None:
+        from apps.accounts.models import OperatorProfile, User
+
+        # An operator "shared" already exists in the OTHER company.
+        other_user = User.objects.create_user(
+            username="shared@noise-co", company=other_company_noise
+        )
+        OperatorProfile.all_objects.create(
+            company=other_company_noise, user=other_user, user_name="shared"
+        )
+        # Creating "shared" (or "SHARED") in this company must be rejected.
+        assert (
+            client.post(f"{BASE}/users", {"user_name": "shared"}, format="json").status_code
+            == 400
+        )
+        assert (
+            client.post(f"{BASE}/users", {"user_name": "SHARED"}, format="json").status_code
+            == 400
+        )
+
     def test_deactivate_toggle_hits_license_seats_instantly(
         self, client: APIClient, company: Company, op_a: OperatorProfile, op_b: OperatorProfile
     ) -> None:

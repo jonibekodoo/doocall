@@ -121,8 +121,16 @@ class UsersView(CabinetView):
         phone2 = (request.data.get("phone2") or "").strip()
         if not user_name:
             raise ApiError(ErrorCode.MISSING_FIELD, "user_name required", 400)
-        if OperatorProfile.objects.filter(user_name=user_name).exists():
-            raise ApiError(ErrorCode.MISSING_FIELD, "user_name already taken", 400)
+        # Login (user_name) must be unique ACROSS ALL companies: on the shared
+        # api.<root> host the api_key resolves the operator, so a duplicate
+        # username in another company would be ambiguous. all_objects escapes
+        # the tenant scope to check globally.
+        if OperatorProfile.all_objects.filter(user_name__iexact=user_name).exists():
+            raise ApiError(
+                ErrorCode.MISSING_FIELD,
+                "user_name already taken (choose a globally unique login)",
+                400,
+            )
 
         group = None
         if group_id := request.data.get("group_id"):

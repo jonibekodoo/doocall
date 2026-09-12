@@ -37,6 +37,27 @@ def company_subdomain(host: str | None) -> str | None:
     return sub
 
 
+def device_login_denied(host: str | None) -> bool:
+    """True when a device (mobile) login/upload must be REJECTED on this host.
+
+    The public site + portal hosts (doocall.uz, www, app.doocall.uz,
+    app.admin.doocall.uz) are never device endpoints. ``api.<root>`` stays a
+    neutral shared host (api_key is the authority), and ``<slug>.<root>``
+    company hosts are handled by :func:`company_subdomain` matching.
+    """
+    host = (host or "").split(":")[0].strip().lower()
+    root = getattr(settings, "DOMAIN_ROOT", "")
+    if not root:
+        return False
+    denied = {
+        root,
+        f"www.{root}",
+        getattr(settings, "DOMAIN_APP", ""),
+        getattr(settings, "DOMAIN_ADMIN", ""),
+    }
+    return host in denied
+
+
 def cabinet_url(slug: str) -> str:
     """Absolute URL of a company's cabinet on its own subdomain."""
     return f"{settings.URL_SCHEME}://{slug}.{settings.DOMAIN_ROOT}/cabinet"
