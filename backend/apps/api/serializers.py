@@ -44,7 +44,9 @@ class UploadRequestSerializer(serializers.Serializer):
     call_status = serializers.ChoiceField(choices=["answered", "no_answer", "busy", "failed"])
 
     from_number = serializers.CharField(source="from", required=False)  # placeholder, see below
-    to = serializers.CharField()
+    # Hidden/suppressed caller ID: the device sends blank or null — the call
+    # must still be accepted (otherwise the app retries the upload forever).
+    to = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
     from_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     to_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     operator_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -67,10 +69,13 @@ class UploadRequestSerializer(serializers.Serializer):
     address = serializers.CharField(required=False, allow_blank=True, default="")
 
     def get_fields(self) -> dict[str, serializers.Field]:
-        # "from" is a Python keyword — declare it dynamically.
+        # "from" is a Python keyword — declare it dynamically. Blank/null is
+        # allowed: hidden caller IDs arrive with an empty "from".
         fields = super().get_fields()
         del fields["from_number"]
-        fields["from"] = serializers.CharField()
+        fields["from"] = serializers.CharField(
+            required=False, allow_blank=True, allow_null=True, default=""
+        )
         return fields
 
 

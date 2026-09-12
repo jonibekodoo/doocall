@@ -52,6 +52,39 @@ def doc_payload(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
+class TestHiddenCallerId:
+    """Live bug (2026-09-11): hidden caller ID → blank/absent from/to must
+    not 400, or the device retries the upload forever."""
+
+    def test_blank_from_and_to_are_accepted(
+        self, client: APIClient, operator: OperatorProfile, fake_storage: Any
+    ) -> None:
+        payload = doc_payload(
+            call_id="hidden-1", audio_file=None, audio_filename="none"
+        )
+        payload["from"] = ""
+        payload["to"] = ""
+        response = client.post(UPLOAD_URL, payload, format="json")
+        assert response.status_code == 200, response.content
+        record = CallRecord.all_objects.get(call_id="hidden-1")
+        assert record.from_number == ""
+        assert record.to_number == ""
+
+    def test_null_and_missing_from_to_are_accepted(
+        self, client: APIClient, operator: OperatorProfile, fake_storage: Any
+    ) -> None:
+        payload = doc_payload(
+            call_id="hidden-2", audio_file=None, audio_filename="none"
+        )
+        payload["from"] = None
+        payload.pop("to")
+        response = client.post(UPLOAD_URL, payload, format="json")
+        assert response.status_code == 200, response.content
+        record = CallRecord.all_objects.get(call_id="hidden-2")
+        assert record.from_number == ""
+        assert record.to_number == ""
+
+
 class TestUploadSuccess:
     def test_success_envelope_shape_is_exact(
         self,
