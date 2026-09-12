@@ -206,6 +206,9 @@ function UsersTab() {
                   !operator.is_active && "opacity-50",
                 )}
               >
+                <span className="tnum mr-1.5 rounded bg-surface-3 px-1.5 py-0.5 text-xs font-semibold text-fg-muted">
+                  #{operator.id}
+                </span>
                 <b>{operator.user_name}</b>
                 {operator.full_name && (
                   <span className="text-fg-muted"> · {operator.full_name}</span>
