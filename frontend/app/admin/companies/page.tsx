@@ -113,7 +113,12 @@ export default function AdminCompaniesPage() {
                       >
                         {company.trial_expired
                           ? t("companies.statusExpired")
-                          : company.status}
+                          : t(
+                              `companies.status${
+                                company.status.charAt(0).toUpperCase() +
+                                company.status.slice(1)
+                              }` as "companies.statusActive",
+                            )}
                       </span>
                     </td>
                     <td

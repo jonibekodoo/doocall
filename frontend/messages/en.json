@@ -439,6 +439,12 @@
       "colCreated": "Created"
     },
     "payments": {
+      "totalRevenue": "Total revenue",
+      "pendingSum": "Pending",
+      "byStatus": "By status",
+      "byProvider": "By provider",
+      "revenue30": "30-day revenue",
+      "paymentsCount": "payments",
       "title": "Payments",
       "provider": "Provider",
       "allProviders": "All providers",

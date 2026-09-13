@@ -181,6 +181,20 @@ export const impersonateStop = (company: string) =>
 export const fetchAdminPayments = (params = "") =>
   g<{ success: boolean; payments: AdminPaymentRow[] }>(`/payments${params}`);
 
+export interface AdminPaymentStats {
+  success: boolean;
+  total_uzs: number;
+  total_count: number;
+  pending_count: number;
+  pending_uzs: number;
+  by_provider: Array<{ provider: string; count: number; amount_uzs: number }>;
+  by_status: Array<{ status: string; count: number; amount_uzs: number }>;
+  revenue_series: number[];
+}
+
+export const fetchPaymentStats = () =>
+  g<AdminPaymentStats>("/payments/stats");
+
 export const approvePayment = (id: number) =>
   post<{
     success: boolean;

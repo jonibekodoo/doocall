@@ -438,6 +438,70 @@ class AdminPaymentsView(StaffView):
         return Response({"success": True, "payments": rows})
 
 
+class AdminPaymentStatsView(StaffView):
+    @extend_schema(summary="Payment statistics: totals, by provider, by status")
+    def get(self, request: Request) -> Response:
+        approved = Payment.all_objects.filter(status=Payment.Status.APPROVED)
+        total_uzs = approved.aggregate(s=Sum("amount_uzs"))["s"] or 0
+        total_count = approved.count()
+
+        # Approved revenue split by provider.
+        by_provider = [
+            {
+                "provider": row["provider"],
+                "count": row["c"],
+                "amount_uzs": int(row["s"] or 0),
+            }
+            for row in approved.values("provider")
+            .annotate(c=Count("id"), s=Sum("amount_uzs"))
+            .order_by("-s")
+        ]
+
+        # Every payment split by status (count + summed amount).
+        by_status = [
+            {
+                "status": row["status"],
+                "count": row["c"],
+                "amount_uzs": int(row["s"] or 0),
+            }
+            for row in Payment.all_objects.values("status")
+            .annotate(c=Count("id"), s=Sum("amount_uzs"))
+            .order_by("-c")
+        ]
+
+        # Approved revenue over the last 30 days (daily buckets, company tz-agnostic UTC).
+        from django.db.models.functions import TruncDate
+
+        since = timezone.now() - timedelta(days=30)
+        day_rows = dict(
+            approved.filter(approved_at__gte=since)
+            .annotate(day=TruncDate("approved_at"))
+            .values("day")
+            .annotate(s=Sum("amount_uzs"))
+            .values_list("day", "s")
+        )
+        series = []
+        for offset in range(29, -1, -1):
+            day = (timezone.now() - timedelta(days=offset)).date()
+            series.append(int(day_rows.get(day, 0) or 0))
+
+        pending = Payment.all_objects.filter(status=Payment.Status.PENDING).aggregate(
+            c=Count("id"), s=Sum("amount_uzs")
+        )
+        return Response(
+            {
+                "success": True,
+                "total_uzs": int(total_uzs),
+                "total_count": total_count,
+                "pending_count": pending["c"] or 0,
+                "pending_uzs": int(pending["s"] or 0),
+                "by_provider": by_provider,
+                "by_status": by_status,
+                "revenue_series": series,
+            }
+        )
+
+
 class AdminPaymentRefundView(StaffView):
     @extend_schema(summary="Refund a payment (debits balance, notifies client, reverses cashback)")
     def post(self, request: Request, payment_id: int) -> Response:

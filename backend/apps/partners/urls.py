@@ -16,6 +16,7 @@ admin_urlpatterns = [
     ),
     path("companies/<int:company_id>/<str:action>", A.AdminCompanyActionView.as_view()),
     path("payments", A.AdminPaymentsView.as_view()),
+    path("payments/stats", A.AdminPaymentStatsView.as_view()),
     path("payments/<int:payment_id>/approve", A.AdminPaymentApproveView.as_view()),
     path("payments/<int:payment_id>/refund", A.AdminPaymentRefundView.as_view()),
     path("settings/pricing", A.AdminPricingView.as_view()),

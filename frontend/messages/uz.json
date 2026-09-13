@@ -439,6 +439,12 @@
       "colCreated": "Yaratilgan"
     },
     "payments": {
+      "totalRevenue": "Umumiy tushum",
+      "pendingSum": "Kutilayotgan",
+      "byStatus": "Holat bo'yicha",
+      "byProvider": "Provayder bo'yicha",
+      "revenue30": "30 kunlik tushum",
+      "paymentsCount": "to'lov",
       "title": "To'lovlar",
       "provider": "Provayder",
       "allProviders": "Barcha provayderlar",

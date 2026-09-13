@@ -439,6 +439,12 @@
       "colCreated": "Создана"
     },
     "payments": {
+      "totalRevenue": "Общий доход",
+      "pendingSum": "Ожидается",
+      "byStatus": "По статусу",
+      "byProvider": "По провайдеру",
+      "revenue30": "Доход за 30 дней",
+      "paymentsCount": "платежей",
       "title": "Платежи",
       "provider": "Провайдер",
       "allProviders": "Все провайдеры",

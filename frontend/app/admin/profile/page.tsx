@@ -26,10 +26,10 @@ export default function AdminProfilePage() {
     <div data-testid="admin-profile" className="max-w-2xl">
       {/* Hero */}
       <div className="relative mb-5 overflow-hidden rounded-2xl border border-border bg-surface">
-        <div className="h-20 bg-gradient-to-r from-[#141817] via-[#1f2a27] to-accent/50" />
+        <div className="h-20 bg-gradient-to-r from-accent via-accent/70 to-accent/40" />
         <div className="px-5 pb-5">
           <div className="-mt-9 mb-3 flex items-end gap-4">
-            <span className="grid size-18 shrink-0 place-items-center rounded-2xl border-4 border-surface bg-[#141817] text-2xl font-bold text-white shadow-md">
+            <span className="grid size-18 shrink-0 place-items-center rounded-2xl border-4 border-surface bg-accent text-2xl font-bold text-accent-fg shadow-md">
               {initial}
             </span>
             <div className="min-w-0 pb-0.5">
