@@ -102,18 +102,18 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-bg" data-testid="admin-shell">
-      {/* Dark admin sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 flex w-[236px] flex-col bg-[#141817] text-white/80 max-sm:hidden">
-        <div className="flex h-14 items-center gap-2 border-b border-white/10 px-4">
+      {/* Light sidebar — matches the cabinet & partner portals */}
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-[236px] flex-col border-r border-border bg-surface max-sm:hidden">
+        <div className="flex h-14 items-center gap-2 border-b border-border px-4">
           <span className="grid size-8 place-items-center rounded-md bg-accent text-accent-fg">
             <ShieldCheck className="size-4" />
           </span>
-          <span className="font-[family-name:var(--font-display)] text-lg font-semibold text-white">
+          <span className="font-[family-name:var(--font-display)] text-lg font-semibold">
             dooCall
           </span>
           <span
             data-testid="admin-badge"
-            className="rounded-full bg-warning/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning"
+            className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning"
           >
             Admin
           </span>
@@ -130,10 +130,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                 href={href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium",
+                  "relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   active
-                    ? "bg-white/10 text-white"
-                    : "hover:bg-white/5 hover:text-white",
+                    ? "bg-accent-soft text-accent"
+                    : "text-fg-muted hover:bg-surface-2 hover:text-fg",
                 )}
               >
                 {active && (
@@ -145,21 +145,21 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="border-t border-white/10 p-2">
+        <div className="border-t border-border p-2">
           <div className="px-3 py-2">
-            <PortalLocaleSwitcher dark />
+            <PortalLocaleSwitcher />
           </div>
-          <p className="truncate px-3 py-1 text-xs text-white/40">
+          <p className="truncate px-3 py-1 text-xs text-fg-faint">
             {user?.email}
           </p>
-          <p className="px-3 pb-1 text-[10px] uppercase text-white/30">
+          <p className="px-3 pb-1 text-[10px] uppercase text-fg-faint">
             {user?.role}
           </p>
           <button
             type="button"
             data-testid="admin-logout"
             onClick={() => logout()}
-            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-white/5 hover:text-white"
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg"
           >
             <LogOut className="size-4" /> {t("logout")}
           </button>
