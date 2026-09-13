@@ -415,6 +415,7 @@
       "title": "Platforma boshqaruv paneli",
       "companies": "Kompaniyalar",
       "companiesHint": "faol {active} · trial {trial} · to'xtatilgan {suspended}",
+      "companiesStatus": "Kompaniyalar holati",
       "payments30": "To'lovlar, 30 kun",
       "callsToday": "Bugungi qo'ng'iroqlar",
       "integrators": "Integratorlar",

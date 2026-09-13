@@ -415,6 +415,7 @@
       "title": "Дашборд платформы",
       "companies": "Компании",
       "companiesHint": "актив {active} · триал {trial} · стоп {suspended}",
+      "companiesStatus": "Статусы компаний",
       "payments30": "Платежи 30 дн",
       "callsToday": "Звонков сегодня",
       "integrators": "Интеграторы",

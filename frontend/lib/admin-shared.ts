@@ -22,12 +22,6 @@ export function kpiCards(kpis: AdminKpis, t: Translator) {
       }),
     },
     {
-      key: "mrr",
-      label: "MRR",
-      value: `${formatUzs(kpis.mrr_uzs)} UZS`,
-      hint: null,
-    },
-    {
       key: "payments30",
       label: t("dashboard.payments30"),
       value: `${formatUzs(kpis.payments_30d_uzs)} UZS`,

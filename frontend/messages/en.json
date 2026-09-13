@@ -415,6 +415,7 @@
       "title": "Platform dashboard",
       "companies": "Companies",
       "companiesHint": "active {active} · trial {trial} · suspended {suspended}",
+      "companiesStatus": "Companies by status",
       "payments30": "Payments 30d",
       "callsToday": "Calls today",
       "integrators": "Integrators",
