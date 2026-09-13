@@ -429,6 +429,7 @@
       "statusTrial": "Триал",
       "statusExpired": "Триал истёк",
       "statusSuspended": "Приостановлены",
+      "colPhone": "Телефон",
       "colEnds": "Истекает",
       "trialEndsAt": "триал до {date}",
       "trialExpiredAt": "триал истёк {date}",

@@ -50,12 +50,33 @@ class SuperadminView(APIView):
     permission_classes = [IsSuperadmin]
 
 
+def _company_phone(company: Company) -> str:
+    """Company contact phone = the company-admin user's phone (set at
+    registration), falling back to any user of the company that has one."""
+    admin = (
+        User.objects.filter(company=company, is_company_admin=True)
+        .exclude(phone="")
+        .values_list("phone", flat=True)
+        .first()
+    )
+    if admin:
+        return admin
+    return (
+        User.objects.filter(company=company)
+        .exclude(phone="")
+        .values_list("phone", flat=True)
+        .first()
+        or ""
+    )
+
+
 def _company_body(company: Company) -> dict[str, Any]:
     subscription = Subscription.all_objects.filter(company=company).first()
     return {
         "id": company.pk,
         "name": company.name,
         "slug": company.slug,
+        "phone": _company_phone(company),
         "status": company.status,
         "trial_ends_at": company.trial_ends_at.isoformat() if company.trial_ends_at else None,
         "trial_expired": (

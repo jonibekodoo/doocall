@@ -429,6 +429,7 @@
       "statusTrial": "Trial",
       "statusExpired": "Trial tugagan",
       "statusSuspended": "To'xtatilgan",
+      "colPhone": "Telefon",
       "colEnds": "Tugash sanasi",
       "trialEndsAt": "trial {date} gacha",
       "trialExpiredAt": "trial {date} da tugagan",

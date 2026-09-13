@@ -429,6 +429,7 @@
       "statusTrial": "Trial",
       "statusExpired": "Trial expired",
       "statusSuspended": "Suspended",
+      "colPhone": "Phone",
       "colEnds": "Ends",
       "trialEndsAt": "trial ends {date}",
       "trialExpiredAt": "trial expired {date}",

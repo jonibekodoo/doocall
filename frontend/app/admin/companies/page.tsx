@@ -54,6 +54,7 @@ export default function AdminCompaniesPage() {
           <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
             <tr>
               <th className="px-3 py-2 text-left">{t("common.company")}</th>
+              <th className="px-3 py-2 text-left">{t("companies.colPhone")}</th>
               <th className="px-3 py-2 text-left">{t("common.status")}</th>
               <th className="px-3 py-2 text-left">{t("companies.colEnds")}</th>
               <th className="px-3 py-2 text-right">
@@ -71,7 +72,7 @@ export default function AdminCompaniesPage() {
             {isPending
               ? Array.from({ length: 8 }).map((_, index) => (
                   <tr key={index}>
-                    <td colSpan={6} className="px-3 py-2.5">
+                    <td colSpan={7} className="px-3 py-2.5">
                       <div className="h-3.5 animate-pulse rounded bg-surface-3" />
                     </td>
                   </tr>
@@ -88,6 +89,18 @@ export default function AdminCompaniesPage() {
                       >
                         {company.name}
                       </Link>
+                    </td>
+                    <td className="tnum px-3 py-2.5 text-xs text-fg-muted">
+                      {company.phone ? (
+                        <a
+                          href={`tel:${company.phone.replace(/\s/g, "")}`}
+                          className="hover:text-accent hover:underline"
+                        >
+                          {company.phone}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       <span

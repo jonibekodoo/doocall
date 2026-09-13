@@ -34,6 +34,7 @@ export interface AdminCompanyRow {
   id: number;
   name: string;
   slug: string;
+  phone: string;
   status: string;
   trial_ends_at: string | null;
   trial_expired: boolean;
