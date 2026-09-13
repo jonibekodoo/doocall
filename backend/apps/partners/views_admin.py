@@ -241,17 +241,37 @@ class AdminCompanyDetailView(StaffView):
                     raise ApiError(ErrorCode.MISSING_FIELD, "audio_retention_days invalid", 400)
                 company.audio_retention_days = days
             fields.append("audio_retention_days")
-        if not fields:
+
+        # Phone lives on the company-admin user (set at registration).
+        phone_changed = False
+        if "phone" in request.data:
+            phone = (request.data["phone"] or "").strip()
+            admin_user = (
+                User.objects.filter(company=company, is_company_admin=True)
+                .order_by("id")
+                .first()
+                or User.objects.filter(company=company).order_by("id").first()
+            )
+            if admin_user is not None:
+                admin_user.phone = phone
+                admin_user.save(update_fields=["phone"])
+                phone_changed = True
+
+        if not fields and not phone_changed:
             raise ApiError(ErrorCode.MISSING_FIELD, "nothing to update", 400)
 
-        company.save(update_fields=[*fields, "updated_at"])
+        if fields:
+            company.save(update_fields=[*fields, "updated_at"])
         AuditLog.objects.create(
             company=company,
             actor=cast(User, request.user),
             action="admin.company_updated",
             target_model="companies.Company",
             target_id=str(company.pk),
-            changes={f: str(getattr(company, f)) for f in fields},
+            changes={
+                **{f: str(getattr(company, f)) for f in fields},
+                **({"phone": _company_phone(company)} if phone_changed else {}),
+            },
         )
         return Response({"success": True, "company": _company_body(company)})
 

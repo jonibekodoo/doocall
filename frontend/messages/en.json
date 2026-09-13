@@ -536,6 +536,14 @@
       "signOut": "Sign out"
     },
     "companyDetail": {
+      "infoTitle": "Company details",
+      "phoneLabel": "Phone",
+      "slugLabel": "Address (slug)",
+      "statusLabel": "Status",
+      "acquiredLabel": "Source",
+      "trialEnds": "Trial ends",
+      "periodEnd": "Period ends",
+      "createdLabel": "Created",
       "back": "Companies",
       "subscription": "subscription",
       "trialEndsAt": "trial ends {date}",

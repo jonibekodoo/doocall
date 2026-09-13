@@ -88,17 +88,20 @@ function ExtendTrialDialog({
 
 function EditCompanyDialog({
   initialName,
+  initialPhone,
   initialRetention,
   onClose,
   onSubmit,
 }: {
   initialName: string;
+  initialPhone: string;
   initialRetention: number | null;
   onClose: () => void;
-  onSubmit: (name: string, retention: number | null) => void;
+  onSubmit: (name: string, phone: string, retention: number | null) => void;
 }) {
   const t = useTranslations("admin.companyDetail");
   const [name, setName] = useState(initialName);
+  const [phone, setPhone] = useState(initialPhone);
   const [retention, setRetention] = useState(
     initialRetention == null ? "" : String(initialRetention),
   );
@@ -122,6 +125,18 @@ function EditCompanyDialog({
             onChange={(event) => setName(event.target.value)}
             data-testid="edit-company-name"
             className="w-full rounded-md border border-border bg-surface px-3 py-2"
+          />
+        </label>
+        <label className="mb-2 block text-sm">
+          <span className="mb-1 block text-xs text-fg-muted">
+            {t("phoneLabel")}
+          </span>
+          <input
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            placeholder="+998 90 123 45 67"
+            data-testid="edit-company-phone"
+            className="tnum w-full rounded-md border border-border bg-surface px-3 py-2"
           />
         </label>
         <label className="mb-2 block text-sm">
@@ -153,6 +168,7 @@ function EditCompanyDialog({
             onClick={() =>
               onSubmit(
                 name.trim(),
+                phone.trim(),
                 retention.trim() === "" ? null : Number(retention),
               )
             }
@@ -329,8 +345,11 @@ export default function AdminCompanyDetailPage() {
   });
 
   const edit = useMutation({
-    mutationFn: (body: { name: string; audio_retention_days: number | null }) =>
-      updateAdminCompany(companyId, body),
+    mutationFn: (body: {
+      name: string;
+      phone: string;
+      audio_retention_days: number | null;
+    }) => updateAdminCompany(companyId, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["a-company", companyId] });
       queryClient.invalidateQueries({ queryKey: ["a-companies"] });
@@ -486,6 +505,54 @@ export default function AdminCompanyDetailPage() {
         </div>
       </div>
 
+      {/* Full company info — every field on its own line */}
+      <section className="mt-6 rounded-lg border border-border bg-surface">
+        <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+          {t("infoTitle")}
+        </p>
+        <dl className="grid gap-x-8 gap-y-0 px-4 py-1 sm:grid-cols-2">
+          {(
+            [
+              ["nameLabel", company.name],
+              ["phoneLabel", company.phone || "—"],
+              ["slugLabel", company.slug],
+              ["statusLabel", company.status],
+              ["subscription", company.subscription_status ?? "—"],
+              ["operatorsCount", String(company.seats)],
+              [
+                "retentionLabel",
+                company.audio_retention_days
+                  ? String(company.audio_retention_days)
+                  : t("retentionDefault"),
+              ],
+              [
+                "acquiredLabel",
+                company.integrator_id
+                  ? `${company.acquired_via} · #${company.integrator_id}`
+                  : company.acquired_via,
+              ],
+              [
+                "trialEnds",
+                company.trial_ends_at ? company.trial_ends_at.slice(0, 10) : "—",
+              ],
+              [
+                "periodEnd",
+                company.period_end ? company.period_end.slice(0, 10) : "—",
+              ],
+              ["createdLabel", company.created_at.slice(0, 10)],
+            ] as const
+          ).map(([key, value]) => (
+            <div
+              key={key}
+              className="flex justify-between gap-3 border-b border-border/60 py-2 text-sm last:border-0"
+            >
+              <dt className="text-fg-muted">{t(key)}</dt>
+              <dd className="tnum text-right font-medium">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <section className="rounded-lg border border-border bg-surface">
           <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
@@ -619,10 +686,11 @@ export default function AdminCompanyDetailPage() {
       {editOpen && (
         <EditCompanyDialog
           initialName={company.name}
+          initialPhone={company.phone ?? ""}
           initialRetention={company.audio_retention_days}
           onClose={() => setEditOpen(false)}
-          onSubmit={(name, retention) => {
-            edit.mutate({ name, audio_retention_days: retention });
+          onSubmit={(name, phone, retention) => {
+            edit.mutate({ name, phone, audio_retention_days: retention });
             setEditOpen(false);
           }}
         />

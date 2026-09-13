@@ -144,7 +144,11 @@ export const resetCompanyUserPassword = (
 
 export const updateAdminCompany = (
   id: number,
-  body: Partial<{ name: string; audio_retention_days: number | null }>,
+  body: Partial<{
+    name: string;
+    phone: string;
+    audio_retention_days: number | null;
+  }>,
 ) =>
   patchJson<{ success: boolean; company: AdminCompanyRow }>(
     abs(`/companies/${id}`),

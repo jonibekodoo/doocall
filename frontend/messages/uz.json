@@ -536,6 +536,14 @@
       "signOut": "Chiqish"
     },
     "companyDetail": {
+      "infoTitle": "Kompaniya ma'lumotlari",
+      "phoneLabel": "Telefon",
+      "slugLabel": "Manzil (slug)",
+      "statusLabel": "Holat",
+      "acquiredLabel": "Manba",
+      "trialEnds": "Sinov tugashi",
+      "periodEnd": "Davr tugashi",
+      "createdLabel": "Yaratilgan",
       "back": "Kompaniyalar",
       "subscription": "obuna",
       "trialEndsAt": "trial {date} gacha",

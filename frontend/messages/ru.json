@@ -536,6 +536,14 @@
       "signOut": "Выйти"
     },
     "companyDetail": {
+      "infoTitle": "Информация о компании",
+      "phoneLabel": "Телефон",
+      "slugLabel": "Адрес (slug)",
+      "statusLabel": "Статус",
+      "acquiredLabel": "Источник",
+      "trialEnds": "Конец пробного",
+      "periodEnd": "Конец периода",
+      "createdLabel": "Создана",
       "back": "Компании",
       "subscription": "подписка",
       "trialEndsAt": "триал до {date}",
