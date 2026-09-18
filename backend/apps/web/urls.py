@@ -122,6 +122,12 @@ urlpatterns = [
     path("billing/status", views.BillingStatusView.as_view(), name="billing-status"),
     path("billing/overview", views_billing.BillingOverviewView.as_view(), name="b-overview"),
     path("billing/pay", views_billing.BillingPayView.as_view(), name="b-pay"),
+    path("billing/paylov/pay", views_billing.BillingPaylovPayView.as_view(), name="b-paylov-pay"),
+    path(
+        "billing/paylov/confirm",
+        views_billing.BillingPaylovConfirmView.as_view(),
+        name="b-paylov-confirm",
+    ),
     path("billing/charges", views_billing.BillingChargesView.as_view(), name="b-charges"),
     path(
         "billing/statements",

@@ -28,7 +28,9 @@ export function formatUzs(amount: number): string {
 /** Payment provider display names ("manual" is shown as Bank/Naqd). */
 export function providerLabel(provider: string): string {
   return (
-    { payme: "Payme", click: "Click", manual: "Bank/Naqd" }[provider] ?? provider
+    { payme: "Payme", click: "Click", paylov: "Paylov", manual: "Bank/Naqd" }[
+      provider
+    ] ?? provider
   );
 }
 

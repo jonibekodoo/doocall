@@ -38,6 +38,7 @@ def call_row(record: CallRecord) -> dict[str, Any]:
         "counterparty_name": record.resolved_name or record.counterparty_name,
         "duration": record.duration,
         "start_time": record.start_time.isoformat(),
+        "has_location": record.latitude is not None and record.longitude is not None,
     }
 
 

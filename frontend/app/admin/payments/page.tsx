@@ -48,6 +48,7 @@ const PROVIDER_COLORS = [
 
 function PaymentStats() {
   const t = useTranslations("admin");
+  const tc = useTranslations("common");
   const { data } = useQuery({
     queryKey: ["a-payment-stats"],
     queryFn: fetchPaymentStats,
@@ -108,8 +109,8 @@ function PaymentStats() {
                   STATUS_TONE[s.status] ?? "bg-surface-3",
                 )}
               >
-                {s.status}: <b className="tnum">{s.count}</b> ·{" "}
-                {formatUzs(s.amount_uzs)}
+                {tc(`payStatus.${s.status}` as "payStatus.pending")}:{" "}
+                <b className="tnum">{s.count}</b> · {formatUzs(s.amount_uzs)}
               </span>
             ))}
           </div>
@@ -200,6 +201,7 @@ function PaymentStats() {
 
 export default function AdminPaymentsPage() {
   const t = useTranslations("admin");
+  const tc = useTranslations("common");
   const [provider, setProvider] = useState("");
   const [status, setStatus] = useState("");
   const queryClient = useQueryClient();
@@ -270,6 +272,7 @@ export default function AdminPaymentsPage() {
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
             <tr>
+              <th className="px-3 py-2 text-left">№</th>
               <th className="px-3 py-2 text-left">{t("common.company")}</th>
               <th className="px-3 py-2 text-left">{t("payments.provider")}</th>
               <th className="px-3 py-2 text-right">{t("common.amount")}</th>
@@ -282,13 +285,14 @@ export default function AdminPaymentsPage() {
             {isPending
               ? Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={6} className="px-3 py-2.5">
+                    <td colSpan={7} className="px-3 py-2.5">
                       <div className="h-3.5 animate-pulse rounded bg-surface-3" />
                     </td>
                   </tr>
                 ))
-              : (data?.payments ?? []).map((p) => (
+              : (data?.payments ?? []).map((p, index) => (
                   <tr key={p.id} className="border-t border-border">
+                    <td className="px-3 py-2.5 text-fg-faint">{index + 1}</td>
                     <td className="px-3 py-2.5">{p.company}</td>
                     <td className="px-3 py-2.5">{providerLabel(p.provider)}</td>
                     <td className="tnum px-3 py-2.5 text-right">
@@ -297,9 +301,18 @@ export default function AdminPaymentsPage() {
                     <td className="tnum px-3 py-2.5 text-right text-accent">
                       {p.cashback_uzs ? formatUzs(p.cashback_uzs) : "—"}
                     </td>
-                    <td className="px-3 py-2.5 text-xs">{p.status}</td>
+                    <td className="px-3 py-2.5 text-xs">
+                      <span
+                        className={cn(
+                          "rounded-full px-2 py-0.5 font-medium",
+                          STATUS_TONE[p.status] ?? "bg-surface-3",
+                        )}
+                      >
+                        {tc(`payStatus.${p.status}` as "payStatus.pending")}
+                      </span>
+                    </td>
                     <td className="px-3 py-2.5 text-right">
-                      {p.status === "pending" && (
+                      {p.status === "pending" && p.provider === "manual" && (
                         <button
                           type="button"
                           data-testid={`approve-${p.id}`}

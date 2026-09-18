@@ -4,7 +4,7 @@
  * editing, companies, accrual ledger, payout actions, suspend toggle. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, Globe, ImageIcon, KeyRound, Pencil } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -13,8 +13,11 @@ import { useState } from "react";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   fetchIntegratorDetail,
+  fetchSalesManagers,
   patchIntegrator,
   payoutAction,
+  resetIntegratorPassword,
+  uploadIntegratorLogo,
 } from "@/lib/api/admin";
 import { effectivePercentLabel } from "@/lib/admin-shared";
 import { formatUzs } from "@/lib/format";
@@ -25,10 +28,17 @@ function EditIntegratorDialog({
   onClose,
   onSubmit,
 }: {
-  initial: { name: string; email: string; phone: string; card: string };
+  initial: {
+    name: string;
+    company_name: string;
+    email: string;
+    phone: string;
+    card: string;
+  };
   onClose: () => void;
   onSubmit: (body: {
     name: string;
+    company_name: string;
     email: string;
     phone: string;
     payout_details: Record<string, string>;
@@ -43,6 +53,7 @@ function EditIntegratorDialog({
 
   const FIELDS = [
     { key: "name" as const, label: t("nameLabel") },
+    { key: "company_name" as const, label: t("companyLabel") },
     { key: "email" as const, label: "Email" },
     { key: "phone" as const, label: t("phoneLabel") },
     { key: "card" as const, label: t("cardLabel") },
@@ -81,6 +92,7 @@ function EditIntegratorDialog({
             onClick={() =>
               onSubmit({
                 name: form.name.trim(),
+                company_name: form.company_name.trim(),
                 email: form.email.trim(),
                 phone: form.phone.trim(),
                 payout_details: form.card.trim()
@@ -88,6 +100,70 @@ function EditIntegratorDialog({
                   : {},
               })
             }
+            className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
+          >
+            {t("save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordDialog({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void;
+  onSubmit: (password: string) => void;
+}) {
+  const t = useTranslations("admin.integratorDetail");
+  const [password, setPassword] = useState("");
+  const generate = () => {
+    const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    setPassword(Array.from(bytes, (b) => alphabet[b % alphabet.length]).join(""));
+  };
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-4"
+      role="dialog"
+    >
+      <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-5 shadow-lg">
+        <h2 className="mb-3 text-base font-semibold">{t("resetPassword")}</h2>
+        <label className="mb-2 block text-sm">
+          <span className="mb-1 flex items-center justify-between text-xs text-fg-muted">
+            {t("newPassword")}
+            <button
+              type="button"
+              onClick={generate}
+              className="font-semibold text-accent hover:underline"
+            >
+              {t("generatePassword")}
+            </button>
+          </span>
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            data-testid="int-password-input"
+            autoComplete="off"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono"
+          />
+        </label>
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-sm"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            data-testid="int-password-submit"
+            disabled={password.length < 8}
+            onClick={() => onSubmit(password)}
             className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
           >
             {t("save")}
@@ -107,11 +183,16 @@ export default function AdminIntegratorDetailPage() {
   const isSuper = user?.role === "superadmin";
   const [override, setOverride] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const { data, isPending } = useQuery({
     queryKey: ["a-integrator", integratorId],
     queryFn: () => fetchIntegratorDetail(integratorId),
     enabled: Number.isFinite(integratorId),
+  });
+  const { data: managers } = useQuery({
+    queryKey: ["a-sales-managers"],
+    queryFn: fetchSalesManagers,
   });
 
   const invalidate = () =>
@@ -137,6 +218,28 @@ export default function AdminIntegratorDetailPage() {
     }) => payoutAction(id, action),
     onSuccess: invalidate,
   });
+  const resetPw = useMutation({
+    mutationFn: (password: string) =>
+      resetIntegratorPassword(integratorId, password),
+    onSuccess: () => {
+      useToastStore
+        .getState()
+        .push({ kind: "success", text: t("passwordSaved") });
+    },
+    onError: (error: Error) =>
+      useToastStore.getState().push({ kind: "error", text: error.message }),
+  });
+  const logoUpload = useMutation({
+    mutationFn: (file: File) => uploadIntegratorLogo(integratorId, file),
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["a-integrators"] });
+      queryClient.invalidateQueries({ queryKey: ["a-integrator-stats"] });
+      useToastStore.getState().push({ kind: "success", text: t("logoSaved") });
+    },
+    onError: (error: Error) =>
+      useToastStore.getState().push({ kind: "error", text: error.message }),
+  });
 
   if (isPending)
     return <div className="h-64 animate-pulse rounded-lg bg-surface-2" />;
@@ -153,7 +256,38 @@ export default function AdminIntegratorDetailPage() {
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="flex items-start gap-3">
+          {/* Logo (click to upload) */}
+          <label
+            className="group relative grid size-14 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-xl border border-border bg-surface-2"
+            title={t("uploadLogo")}
+          >
+            {info.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={info.logo_url}
+                alt={info.company_name || info.name}
+                className="size-full object-contain"
+              />
+            ) : (
+              <ImageIcon className="size-5 text-fg-faint" />
+            )}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              className="hidden"
+              data-testid="int-logo-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) logoUpload.mutate(file);
+                e.target.value = "";
+              }}
+            />
+            <span className="absolute inset-x-0 bottom-0 hidden bg-black/50 py-0.5 text-center text-[9px] font-medium text-white group-hover:block">
+              {logoUpload.isPending ? "…" : t("logoEdit")}
+            </span>
+          </label>
+          <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
             {info.name}
             <button
@@ -166,6 +300,11 @@ export default function AdminIntegratorDetailPage() {
               <Pencil className="size-4" />
             </button>
           </h1>
+          {info.company_name && (
+            <p className="text-sm font-medium text-fg-muted">
+              {info.company_name}
+            </p>
+          )}
           <p className="mt-1 text-sm text-fg-muted">
             {info.email}
             {info.phone && <> · {info.phone}</>} · {t("code")}{" "}
@@ -187,23 +326,49 @@ export default function AdminIntegratorDetailPage() {
             {" · "}
             {t("balance")}: <b>{formatUzs(info.balance_uzs)} UZS</b>
           </p>
+          </div>
         </div>
-        <button
-          type="button"
-          data-testid="int-suspend"
-          onClick={() =>
-            patch.mutate({
-              status: info.status === "active" ? "suspended" : "active",
-            })
-          }
-          className={
-            info.status === "active"
-              ? "rounded-md border border-danger/40 px-3 py-1.5 text-sm text-danger"
-              : "rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-fg"
-          }
-        >
-          {info.status === "active" ? t("suspend") : t("activate")}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="int-publish"
+            onClick={() => patch.mutate({ is_public: !info.is_public })}
+            className={
+              info.is_public
+                ? "inline-flex items-center gap-1.5 rounded-md bg-accent-soft px-3 py-1.5 text-sm font-semibold text-accent"
+                : "inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-2"
+            }
+          >
+            <Globe className="size-4" />
+            {info.is_public ? t("publishedOnSite") : t("publishOnSite")}
+          </button>
+          {isSuper && (
+            <button
+              type="button"
+              data-testid="int-reset-password"
+              onClick={() => setPasswordOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-2"
+            >
+              <KeyRound className="size-4" /> {t("resetPassword")}
+            </button>
+          )}
+          <button
+            type="button"
+            data-testid="int-suspend"
+            onClick={() =>
+              patch.mutate({
+                status: info.status === "active" ? "suspended" : "active",
+              })
+            }
+            className={
+              info.status === "active"
+                ? "rounded-md border border-danger/40 px-3 py-1.5 text-sm text-danger"
+                : "rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-accent-fg"
+            }
+          >
+            {info.status === "active" ? t("suspend") : t("activate")}
+          </button>
+        </div>
       </div>
 
       {isSuper && (
@@ -237,6 +402,40 @@ export default function AdminIntegratorDetailPage() {
         </div>
       )}
 
+      {/* Sales manager assignment + bank + offer */}
+      <section className="mt-6 rounded-lg border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold">{t("salesManagerLabel")}:</span>
+          <select
+            value={info.sales_manager_id ?? ""}
+            onChange={(e) =>
+              patch.mutate({
+                sales_manager_id: e.target.value ? Number(e.target.value) : null,
+              })
+            }
+            className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm"
+          >
+            <option value="">{t("salesManagerNone")}</option>
+            {(managers?.managers ?? []).map((mgr) => (
+              <option key={mgr.id} value={mgr.id}>
+                {mgr.name} ({mgr.commission_percent}%)
+              </option>
+            ))}
+          </select>
+          {info.offer_accepted_at && (
+            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
+              {t("offerAcceptedBadge")}
+            </span>
+          )}
+        </div>
+        {(info.bank_card || info.bank_mfo || info.bank_inn || info.bank_transit) && (
+          <p className="tnum mt-2 text-xs text-fg-faint">
+            {t("bankCard")}: {info.bank_card || "—"} · MFO: {info.bank_mfo || "—"} · INN:{" "}
+            {info.bank_inn || "—"} · {t("bankTransit")}: {info.bank_transit || "—"}
+          </p>
+        )}
+      </section>
+
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <section className="rounded-lg border border-border bg-surface">
           <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
@@ -250,7 +449,7 @@ export default function AdminIntegratorDetailPage() {
                   {formatUzs(c.cashback_uzs)}
                 </span>
                 <p className="text-xs text-fg-faint">
-                  {c.status} · {c.acquired_via}
+                  {t(`st_${c.status}` as "st_active")} · {c.acquired_via}
                 </p>
               </li>
             ))}
@@ -276,7 +475,7 @@ export default function AdminIntegratorDetailPage() {
                 <span className="tnum">{formatUzs(a.amount_uzs)}</span>
                 <span className="tnum text-xs text-fg-faint">{a.percent}%</span>
                 <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px]">
-                  {a.status}
+                  {t(`acc_${a.status}` as "acc_accrued")}
                 </span>
               </li>
             ))}
@@ -300,7 +499,7 @@ export default function AdminIntegratorDetailPage() {
                   {formatUzs(p.amount_uzs)} UZS
                 </span>
                 <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
-                  {p.status}
+                  {t(`po_${p.status}` as "po_pending")}
                 </span>
                 {isSuper && p.status === "pending" && (
                   <>
@@ -350,6 +549,7 @@ export default function AdminIntegratorDetailPage() {
         <EditIntegratorDialog
           initial={{
             name: info.name,
+            company_name: info.company_name ?? "",
             email: info.email,
             phone: info.phone,
             card: info.payout_details?.card ?? "",
@@ -358,6 +558,15 @@ export default function AdminIntegratorDetailPage() {
           onSubmit={(body) => {
             patch.mutate(body);
             setEditOpen(false);
+          }}
+        />
+      )}
+      {passwordOpen && (
+        <ResetPasswordDialog
+          onClose={() => setPasswordOpen(false)}
+          onSubmit={(password) => {
+            resetPw.mutate(password);
+            setPasswordOpen(false);
           }}
         />
       )}

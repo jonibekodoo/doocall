@@ -9,7 +9,12 @@ from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
-from .models import ROLE_INTEGRATOR, ROLE_PLATFORM_ADMIN, ROLE_SUPERADMIN
+from .models import (
+    ROLE_INTEGRATOR,
+    ROLE_PLATFORM_ADMIN,
+    ROLE_SALES_MANAGER,
+    ROLE_SUPERADMIN,
+)
 from .services import role_name
 
 
@@ -36,4 +41,14 @@ class IsIntegrator(BasePermission):
         if role_name(request.user) != ROLE_INTEGRATOR:
             return False
         profile = getattr(request.user, "integrator_profile", None)
+        return profile is not None and profile.status == "active"
+
+
+class IsSalesManager(BasePermission):
+    message = "sales manager role required"
+
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        if role_name(request.user) != ROLE_SALES_MANAGER:
+            return False
+        profile = getattr(request.user, "sales_manager_profile", None)
         return profile is not None and profile.status == "active"

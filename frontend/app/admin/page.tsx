@@ -5,15 +5,20 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  Briefcase,
   Building2,
+  Clock,
+  Coins,
   CreditCard,
   Handshake,
   ListChecks,
+  Phone,
   PhoneCall,
   Wallet,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -32,9 +37,17 @@ import {
   chartAxisProps,
   chartTooltipStyle,
 } from "@/components/charts/theme";
-import { fetchKpis } from "@/lib/api/admin";
+import {
+  type DashboardMetric,
+  type DashboardPeriod,
+  fetchDashboardSeries,
+  fetchKpis,
+  fetchSalesManagerStats,
+} from "@/lib/api/admin";
 import { formatUzs } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+const PERIODS: DashboardPeriod[] = ["daily", "weekly", "monthly", "yearly"];
 
 function KpiTile({
   icon: Icon,
@@ -74,15 +87,155 @@ function KpiTile({
   );
 }
 
-/** Build a labelled series from the raw 30-value array (x = day offset). */
-function toSeries(values: number[]): Array<{ d: string; v: number }> {
-  const n = values.length;
-  return values.map((v, i) => {
-    const daysAgo = n - 1 - i;
-    const date = new Date();
-    date.setDate(date.getDate() - daysAgo);
-    return { d: `${date.getMonth() + 1}/${date.getDate()}`, v };
+/** Time-series area chart with a daily/weekly/monthly/yearly selector. */
+function PeriodChart({
+  metric,
+  title,
+  color,
+  fillId,
+  money = false,
+}: {
+  metric: DashboardMetric;
+  title: string;
+  color: string;
+  fillId: string;
+  money?: boolean;
+}) {
+  const t = useTranslations("admin");
+  const [period, setPeriod] = useState<DashboardPeriod>("daily");
+  const { data, isPending } = useQuery({
+    queryKey: ["a-series", metric, period],
+    queryFn: () => fetchDashboardSeries(metric, period),
   });
+  const series = data?.series ?? [];
+  const interval = period === "daily" ? 6 : period === "weekly" ? 1 : 0;
+
+  return (
+    <ReportCard
+      title={title}
+      action={
+        <select
+          value={period}
+          onChange={(e) => setPeriod(e.target.value as DashboardPeriod)}
+          aria-label={t("dashboard.period")}
+          className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+        >
+          {PERIODS.map((p) => (
+            <option key={p} value={p}>
+              {t(`dashboard.period${p[0].toUpperCase()}${p.slice(1)}` as "dashboard.periodDaily")}
+            </option>
+          ))}
+        </select>
+      }
+    >
+      {isPending ? (
+        <div className="h-[240px] animate-pulse rounded-lg bg-surface-2" />
+      ) : (
+        <ChartBox height={240}>
+          <AreaChart data={series}>
+            <defs>
+              <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="label" {...chartAxisProps} interval={interval} />
+            <YAxis
+              {...chartAxisProps}
+              width={money ? 44 : 36}
+              allowDecimals={false}
+              tickFormatter={(v: number) =>
+                v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)
+              }
+            />
+            <Tooltip
+              {...chartTooltipStyle}
+              formatter={(v: number) => [
+                money ? `${formatUzs(v)} UZS` : v.toLocaleString(),
+                "",
+              ]}
+            />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={color}
+              strokeWidth={2.5}
+              fill={`url(#${fillId})`}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          </AreaChart>
+        </ChartBox>
+      )}
+    </ReportCard>
+  );
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+function SalesManagersSummary() {
+  const t = useTranslations("admin");
+  const { data } = useQuery({ queryKey: ["a-sales-stats"], queryFn: fetchSalesManagerStats });
+  if (!data || data.managers.length === 0) return null;
+  const top = [...data.managers]
+    .sort((a, b) => b.commission_uzs - a.commission_uzs)
+    .slice(0, 5);
+  const max = Math.max(1, ...top.map((r) => r.commission_uzs));
+  return (
+    <div className="space-y-4">
+      <h2 className="text-sm font-semibold text-fg-muted">
+        {t("dashboard.salesManagersTitle")}
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          icon={Briefcase}
+          label={t("salesM.total")}
+          value={data.totals.managers}
+        />
+        <KpiTile
+          icon={Handshake}
+          label={t("salesM.integrators")}
+          value={data.totals.integrators}
+        />
+        <KpiTile
+          icon={CreditCard}
+          label={t("salesM.revenue")}
+          value={`${formatUzs(data.totals.revenue_uzs)} UZS`}
+        />
+        <KpiTile
+          icon={Coins}
+          label={t("salesM.commissionPaid")}
+          value={`${formatUzs(data.totals.commission_uzs)} UZS`}
+        />
+      </div>
+      <ReportCard title={t("salesM.topByCommission")}>
+        <ul className="space-y-3">
+          {top.map((r, i) => (
+            <li key={r.id} className="flex items-center gap-3">
+              <span className="w-5 text-center text-sm">
+                {i < 3 ? MEDALS[i] : <span className="text-fg-faint">{i + 1}</span>}
+              </span>
+              <Link
+                href={`/admin/sales-managers/${r.id}`}
+                className="w-32 shrink-0 truncate text-sm font-medium text-accent hover:underline"
+              >
+                {r.name}
+              </Link>
+              <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="h-full rounded-full bg-accent"
+                  style={{ width: `${(r.commission_uzs / max) * 100}%` }}
+                />
+              </div>
+              <span className="tnum w-24 shrink-0 text-right text-sm font-semibold">
+                {formatUzs(r.commission_uzs)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </ReportCard>
+    </div>
+  );
 }
 
 export default function AdminDashboard() {
@@ -136,6 +289,24 @@ export default function AdminDashboard() {
         />
         <KpiTile
           icon={PhoneCall}
+          label={t("dashboard.totalCalls")}
+          value={data.total_calls.toLocaleString()}
+          hint={t("dashboard.totalCallTimeHint")}
+        />
+        <KpiTile
+          icon={Clock}
+          label={t("dashboard.totalCallTime")}
+          value={t("dashboard.hours", {
+            n: Math.round(data.total_call_seconds / 3600).toLocaleString(),
+          })}
+          hint={t("dashboard.totalCallTimeHint")}
+        />
+      </div>
+
+      {/* Secondary row: calls today / integrators / pending payments / payouts */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          icon={Phone}
           label={t("dashboard.callsToday")}
           value={data.calls_today}
         />
@@ -144,10 +315,6 @@ export default function AdminDashboard() {
           label={t("dashboard.integrators")}
           value={data.integrators}
         />
-      </div>
-
-      {/* Attention row: pending payments / payouts */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Link href="/admin/payments" className="block">
           <KpiTile
             icon={Wallet}
@@ -210,66 +377,25 @@ export default function AdminDashboard() {
           </div>
         </ReportCard>
 
-        <ReportCard title={t("dashboard.paymentsChart")}>
-          <ChartBox height={240}>
-            <AreaChart data={toSeries(data.payments_series)}>
-              <defs>
-                <linearGradient id="payFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={CHART_COLORS.answered} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={CHART_COLORS.answered} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="d" {...chartAxisProps} interval={6} />
-              <YAxis
-                {...chartAxisProps}
-                width={44}
-                tickFormatter={(v: number) =>
-                  v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)
-                }
-              />
-              <Tooltip
-                {...chartTooltipStyle}
-                formatter={(v: number) => [`${formatUzs(v)} UZS`, ""]}
-              />
-              <Area
-                type="monotone"
-                dataKey="v"
-                stroke={CHART_COLORS.answered}
-                strokeWidth={2.5}
-                fill="url(#payFill)"
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </AreaChart>
-          </ChartBox>
-        </ReportCard>
+        <PeriodChart
+          metric="payments"
+          title={t("dashboard.paymentsChart")}
+          color={CHART_COLORS.answered}
+          fillId="payFill"
+          money
+        />
       </div>
 
       {/* Calls area (full width) */}
-      <ReportCard title={t("dashboard.callsChart")}>
-        <ChartBox height={220}>
-          <AreaChart data={toSeries(data.calls_series)}>
-            <defs>
-              <linearGradient id="callFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={CHART_COLORS.inbound} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={CHART_COLORS.inbound} stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <XAxis dataKey="d" {...chartAxisProps} interval={6} />
-            <YAxis {...chartAxisProps} width={36} />
-            <Tooltip {...chartTooltipStyle} />
-            <Area
-              type="monotone"
-              dataKey="v"
-              stroke={CHART_COLORS.inbound}
-              strokeWidth={2.5}
-              fill="url(#callFill)"
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-          </AreaChart>
-        </ChartBox>
-      </ReportCard>
+      <PeriodChart
+        metric="calls"
+        title={t("dashboard.callsChart")}
+        color={CHART_COLORS.inbound}
+        fillId="callFill"
+      />
+
+      {/* Sales managers */}
+      <SalesManagersSummary />
     </div>
   );
 }

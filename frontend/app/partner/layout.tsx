@@ -52,7 +52,7 @@ function PartnerShell({ children }: { children: React.ReactNode }) {
             Partner
           </span>
         </div>
-        <nav className="flex-1 space-y-1 p-2">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
           {NAV.map(({ href, key, icon: Icon }) => {
             const active =
               href === "/partner"

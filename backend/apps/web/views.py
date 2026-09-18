@@ -484,6 +484,19 @@ class EmailVerifyView(APIView):
         return Response({"success": True})
 
 
+def _enabled_payment_providers() -> list[str]:
+    """Provider codes the paywall may offer (admin-managed on/off)."""
+    from django.conf import settings as dj
+
+    from apps.billing.models import ensure_provider_configs, enabled_provider_names
+
+    ensure_provider_configs()
+    names = enabled_provider_names()
+    if not (dj.PAYLOV_CONSUMER_KEY and dj.PAYLOV_API_USERNAME):
+        names = [n for n in names if n != "paylov"]
+    return names
+
+
 class BillingStatusView(APIView):
     """Cabinet billing status; 402 + paywall payload when inactive."""
 
@@ -532,7 +545,7 @@ class BillingStatusView(APIView):
                 "seats": seats,
                 "price_per_operator_uzs": price,
                 "amount_due_uzs": seats * price,
-                "providers": ["payme", "click", "manual"],
+                "providers": _enabled_payment_providers(),
             }
             return Response(body, status=http.HTTP_402_PAYMENT_REQUIRED)
         return Response(body)

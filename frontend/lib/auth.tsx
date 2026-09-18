@@ -31,6 +31,7 @@ interface SessionUser {
 export function homeFor(portal: string | undefined): string {
   if (portal === "admin") return "/admin";
   if (portal === "partner") return "/partner";
+  if (portal === "sales") return "/sales";
   return "/cabinet";
 }
 

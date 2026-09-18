@@ -8,11 +8,13 @@ import {
   BarChart3,
   Contact2,
   LayoutDashboard,
+  MapPin,
   Phone,
   PhoneCall,
   Settings,
   ShieldCheck,
   Smartphone,
+  Sparkles,
 } from "lucide-react";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
@@ -21,6 +23,8 @@ import Link from "next/link";
 import { CabinetMenu } from "@/components/landing/CabinetMenu";
 import { DownloadApp } from "@/components/landing/DownloadApp";
 import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
+import { IntegratorApplyForm } from "@/components/landing/IntegratorApplyForm";
+import { OurIntegratorsSection } from "@/components/landing/OurIntegratorsSection";
 import { LandingLocaleSwitcher } from "@/components/landing/LandingLocaleSwitcher";
 import { RefCapture } from "@/components/landing/RefCapture";
 import { PricingSection } from "@/components/landing/PricingSection";
@@ -62,6 +66,8 @@ export default async function Landing() {
     { icon: BarChart3, title: t.fReports, text: t.fReportsText },
     { icon: Settings, title: t.fSettings, text: t.fSettingsText },
     { icon: ShieldCheck, title: t.fSecurity, text: t.fSecurityText },
+    { icon: Sparkles, title: t.fAi, text: t.fAiText, soon: true },
+    { icon: MapPin, title: t.fMonitoring, text: t.fMonitoringText, soon: true },
   ];
   const steps = [
     { icon: Smartphone, title: t.step1Title, text: t.step1Text },
@@ -89,12 +95,6 @@ export default async function Landing() {
           </span>
         </span>
         <div className="flex items-center gap-3">
-          <Link
-            href="/help/recording"
-            className="hidden text-sm font-medium text-fg-muted hover:text-accent sm:block"
-          >
-            {t.helpNav}
-          </Link>
           <LandingLocaleSwitcher current={locale} />
           <CabinetMenu
             labels={{
@@ -239,8 +239,13 @@ export default async function Landing() {
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="rounded-xl border border-border bg-surface p-5 transition-shadow hover:shadow-md"
+                className="relative rounded-xl border border-border bg-surface p-5 transition-shadow hover:shadow-md"
               >
+                {"soon" in feature && feature.soon && (
+                  <span className="absolute right-3 top-3 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent">
+                    {t.comingSoon}
+                  </span>
+                )}
                 <feature.icon className="size-5 text-accent" />
                 <h3 className="mt-3 text-sm font-semibold">{feature.title}</h3>
                 <p className="mt-1 text-sm text-fg-muted">{feature.text}</p>
@@ -290,7 +295,40 @@ export default async function Landing() {
             </details>
           ))}
         </div>
+        <div className="mt-8 text-center">
+          <Link
+            href="/help/recording"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-5 py-2.5 text-sm font-medium text-fg-muted hover:border-accent hover:text-accent"
+          >
+            {t.guideNav} →
+          </Link>
+        </div>
       </section>
+
+      {/* ── Our integrators (published, public) ────────────────────────── */}
+      <OurIntegratorsSection
+        strings={{
+          title: t.ourIntegratorsTitle,
+          text: t.ourIntegratorsText,
+        }}
+      />
+
+      {/* ── Become an integrator (public application form) ──────────────── */}
+      <IntegratorApplyForm
+        strings={{
+          title: t.applyTitle,
+          subtitle: t.applySubtitle,
+          name: t.applyName,
+          phone: t.applyPhone,
+          email: t.applyEmail,
+          company: t.applyCompany,
+          message: t.applyMessage,
+          submit: t.applySubmit,
+          submitting: t.applySubmitting,
+          success: t.applySuccess,
+          error: t.applyError,
+        }}
+      />
 
       {/* ── Footer ─────────────────────────────────────────────────────── */}
       <footer className="border-t border-border bg-surface">
@@ -301,13 +339,6 @@ export default async function Landing() {
           <span>
             {t.footerContact}:{" "}
             <a
-              href="mailto:hello@doocall.uz"
-              className="text-accent hover:underline"
-            >
-              hello@doocall.uz
-            </a>{" "}
-            ·{" "}
-            <a
               href="tel:+998997980727"
               className="tnum text-accent hover:underline"
             >
@@ -317,6 +348,18 @@ export default async function Landing() {
           <span>
             © {year} dooCall. {t.footerRights}.
           </span>
+        </div>
+        {/* Legal pages required by card acquirers (Visa/Mastercard). */}
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 border-t border-border px-6 py-4 text-xs text-fg-faint">
+          <Link href="/legal/privacy" className="hover:text-fg hover:underline">
+            {t.footerPrivacy}
+          </Link>
+          <Link href="/legal/terms" className="hover:text-fg hover:underline">
+            {t.footerTerms}
+          </Link>
+          <Link href="/legal/refund" className="hover:text-fg hover:underline">
+            {t.footerRefund}
+          </Link>
         </div>
       </footer>
     </div>

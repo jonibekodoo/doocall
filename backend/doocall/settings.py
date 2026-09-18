@@ -167,6 +167,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.billing.tasks.enforce_overdue_payments",
         "schedule": crontab(hour=1, minute=15),  # grace over → block access
     },
+    "balance-warning": {
+        "task": "apps.billing.tasks.balance_warning",
+        "schedule": crontab(hour=6, minute=0),  # warn sales managers 3 days out
+    },
 }
 
 # ── Object storage (MinIO / S3-compatible) ─────────────────────────────────
@@ -288,6 +292,15 @@ CLICK_MERCHANT_ID = env("CLICK_MERCHANT_ID", "")
 CLICK_SERVICE_ID = env("CLICK_SERVICE_ID", "")
 CLICK_SECRET_KEY = env("CLICK_SECRET_KEY", "")
 CLICK_ENDPOINT = env("CLICK_ENDPOINT", "https://api.click.uz/v2")
+# Paylov — direct Merchant API (OAuth2 Bearer, card+OTP). Base:
+#   sandbox https://dev.gw.paylov.uz/merchant/  ·  prod https://gw2.paylov.uz/merchant/
+# Credentials from onboarding (consumer_key/secret) + the username/password set there.
+PAYLOV_MERCHANT_ID = env("PAYLOV_MERCHANT_ID", "")
+PAYLOV_API_BASE = env("PAYLOV_API_BASE", "https://dev.gw.paylov.uz/merchant/")
+PAYLOV_CONSUMER_KEY = env("PAYLOV_CONSUMER_KEY", "")
+PAYLOV_CONSUMER_SECRET = env("PAYLOV_CONSUMER_SECRET", "")
+PAYLOV_API_USERNAME = env("PAYLOV_API_USERNAME", "")
+PAYLOV_API_PASSWORD = env("PAYLOV_API_PASSWORD", "")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "dooCall Mobile API",

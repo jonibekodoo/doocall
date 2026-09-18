@@ -270,6 +270,7 @@ class Payment(TenantModel):
     class Provider(models.TextChoices):
         PAYME = "payme", "Payme"
         CLICK = "click", "Click"
+        PAYLOV = "paylov", "Paylov"
         MANUAL = "manual", "Bank / Naqd"
 
     class Status(models.TextChoices):
@@ -301,3 +302,108 @@ class Payment(TenantModel):
 
     def __str__(self) -> str:
         return f"{self.provider} {self.amount_uzs} UZS ({self.status})"
+
+
+class PaymentProviderConfig(models.Model):
+    """Platform-level on/off switch + logo for each payment provider.
+
+    Admin-managed (one row per :class:`Payment.Provider`). The cabinet paywall
+    only offers providers whose row is ``is_enabled``; the logo is streamed via
+    ``/api/public/provider-logo/<provider>``.
+    """
+
+    # Seed order + default enabled-state used by ``ensure_provider_configs``.
+    DEFAULTS = {
+        "paylov": (True, 0),
+        "manual": (True, 1),
+        "payme": (False, 2),
+        "click": (False, 3),
+    }
+
+    provider = models.CharField(max_length=10, choices=Payment.Provider.choices, unique=True)
+    is_enabled = models.BooleanField(default=False)
+    logo_key = models.CharField(max_length=500, blank=True, default="", help_text="MinIO key")
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "provider"]
+
+    def __str__(self) -> str:
+        return f"{self.provider}: {'on' if self.is_enabled else 'off'}"
+
+
+class PaylovLog(models.Model):
+    """Every Paylov exchange — inbound callback or outbound API call — with the
+    exact request/response bodies and a timestamp, for the admin audit view."""
+
+    class Direction(models.TextChoices):
+        INBOUND = "in", "Paylov → biz"
+        OUTBOUND = "out", "Biz → Paylov"
+
+    direction = models.CharField(max_length=3, choices=Direction.choices)
+    event = models.CharField(max_length=64, help_text="method / endpoint / event name")
+    payment = models.ForeignKey(
+        Payment, null=True, blank=True, on_delete=models.SET_NULL, related_name="paylov_logs"
+    )
+    ok = models.BooleanField(default=True)
+    http_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    request_body = models.JSONField(default=dict, blank=True)
+    response_body = models.JSONField(default=dict, blank=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["-created_at"], name="billing_pay_created_dc9e3f_idx"),
+            models.Index(fields=["event"], name="billing_pay_event_1a2b3c_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"[{self.direction}] {self.event} @ {self.created_at:%Y-%m-%d %H:%M:%S}"
+
+
+def log_paylov(
+    direction: str,
+    event: str,
+    *,
+    payment: "Payment | None" = None,
+    ok: bool = True,
+    http_status: int | None = None,
+    request_body: Any = None,
+    response_body: Any = None,
+    note: str = "",
+) -> None:
+    """Best-effort audit row for a Paylov exchange (never raises)."""
+    try:
+        PaylovLog.objects.create(
+            direction=direction,
+            event=event[:64],
+            payment=payment,
+            ok=ok,
+            http_status=http_status,
+            request_body=request_body if isinstance(request_body, (dict, list)) else {},
+            response_body=response_body if isinstance(response_body, (dict, list)) else {},
+            note=note[:200],
+        )
+    except Exception:  # noqa: BLE001 - logging must never break the payment path
+        pass
+
+
+def ensure_provider_configs() -> None:
+    """Create a config row for every provider that doesn't have one yet."""
+    for name, _label in Payment.Provider.choices:
+        enabled, order = PaymentProviderConfig.DEFAULTS.get(name, (False, 9))
+        PaymentProviderConfig.objects.get_or_create(
+            provider=name, defaults={"is_enabled": enabled, "sort_order": order}
+        )
+
+
+def enabled_provider_names() -> list[str]:
+    """Provider codes the cabinet may offer, in display order."""
+    return list(
+        PaymentProviderConfig.objects.filter(is_enabled=True)
+        .order_by("sort_order")
+        .values_list("provider", flat=True)
+    )

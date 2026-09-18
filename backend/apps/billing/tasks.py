@@ -189,3 +189,45 @@ def purge_company_storage(company_pk: int) -> int:
             logger.warning("purge: could not remove %s", obj.object_name)
     logger.info("purge company %d storage: removed %d object(s)", company_pk, removed)
     return removed
+
+
+def run_balance_warning(now: datetime, *, threshold_days: int = 3) -> int:
+    """Warn the responsible sales manager when a company's prepaid balance will
+    run out within ``threshold_days``. One notification per company per day."""
+    from apps.partners.models import CrmTask, PlatformNotification
+
+    warned = 0
+    companies = Company.objects.filter(status=Company.Status.ACTIVE).exclude(
+        integrator__sales_manager=None
+    )
+    today = now.date()
+    for company in companies.select_related("integrator__sales_manager__user"):
+        left = services.days_of_balance_left(company, day=today)
+        if left is None or left > threshold_days:
+            continue
+        manager = company.integrator.sales_manager
+        msg = f"{company.name}: balans {left} kundan so'ng tugaydi"
+        already = PlatformNotification.objects.filter(
+            user=manager.user, kind=PlatformNotification.Kind.BALANCE_WARNING,
+            message=msg, created_at__date=today,
+        ).exists()
+        if already:
+            continue
+        PlatformNotification.objects.create(
+            user=manager.user, kind=PlatformNotification.Kind.BALANCE_WARNING, message=msg
+        )
+        # Auto CRM task so the manager follows up with the client.
+        task_title = f"Balansni to'ldirish: {company.name} ({left} kun)"
+        if not CrmTask.objects.filter(
+            sales_manager=manager, title=task_title, is_done=False
+        ).exists():
+            CrmTask.objects.create(sales_manager=manager, title=task_title, auto=True)
+        warned += 1
+    return warned
+
+
+@shared_task(name="apps.billing.tasks.balance_warning")
+def balance_warning(now_iso: str | None = None) -> int:
+    count = run_balance_warning(_resolve_now(now_iso))
+    logger.info("balance warning: notified %d company(ies)", count)
+    return count

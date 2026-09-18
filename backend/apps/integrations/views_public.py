@@ -253,6 +253,80 @@ class CrmLogoView(View):
         return response
 
 
+class IntegratorLogoView(View):
+    """Streams an integrator's logo bytes (mirrors CrmLogoView)."""
+
+    def get(self, request: HttpRequest, integrator_id: int) -> HttpResponse:
+        from django.conf import settings as dj_settings
+
+        from apps.partners.models import Integrator
+
+        integrator = Integrator.objects.filter(pk=integrator_id).first()
+        if integrator is None or not integrator.logo_key:
+            return HttpResponse(status=404)
+        try:
+            obj = storage.client().get_object(dj_settings.MINIO_BUCKET, integrator.logo_key)
+            payload = obj.read()
+            obj.close()
+            obj.release_conn()
+        except Exception:  # noqa: BLE001 - missing object → plain 404
+            return HttpResponse(status=404)
+        ext = integrator.logo_key.rsplit(".", 1)[-1].lower()
+        response = HttpResponse(
+            payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream")
+        )
+        response["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
+class SalesLogoView(View):
+    """Streams a sales manager's logo bytes (mirrors IntegratorLogoView)."""
+
+    def get(self, request: HttpRequest, manager_id: int) -> HttpResponse:
+        from django.conf import settings as dj_settings
+
+        from apps.partners.models import SalesManager
+
+        manager = SalesManager.objects.filter(pk=manager_id).first()
+        if manager is None or not manager.logo_key:
+            return HttpResponse(status=404)
+        try:
+            obj = storage.client().get_object(dj_settings.MINIO_BUCKET, manager.logo_key)
+            payload = obj.read()
+            obj.close()
+            obj.release_conn()
+        except Exception:  # noqa: BLE001
+            return HttpResponse(status=404)
+        ext = manager.logo_key.rsplit(".", 1)[-1].lower()
+        response = HttpResponse(payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream"))
+        response["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
+class ProviderLogoView(View):
+    """Streams a payment provider's logo bytes (mirrors IntegratorLogoView)."""
+
+    def get(self, request: HttpRequest, provider: str) -> HttpResponse:
+        from django.conf import settings as dj_settings
+
+        from apps.billing.models import PaymentProviderConfig
+
+        cfg = PaymentProviderConfig.objects.filter(provider=provider).first()
+        if cfg is None or not cfg.logo_key:
+            return HttpResponse(status=404)
+        try:
+            obj = storage.client().get_object(dj_settings.MINIO_BUCKET, cfg.logo_key)
+            payload = obj.read()
+            obj.close()
+            obj.release_conn()
+        except Exception:  # noqa: BLE001
+            return HttpResponse(status=404)
+        ext = cfg.logo_key.rsplit(".", 1)[-1].lower()
+        response = HttpResponse(payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream"))
+        response["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
 class OdooAppDownloadView(View):
     """Zips the bundled DooCall Odoo 19 addon on the fly (no auth —
     the module contains no secrets, only client-side code)."""

@@ -68,9 +68,9 @@ export default function PartnerAccrualsPage() {
           className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
         >
           <option value="">—</option>
-          <option value="accrued">accrued</option>
-          <option value="paid_out">paid_out</option>
-          <option value="reversed">reversed</option>
+          <option value="accrued">{t("acc_accrued")}</option>
+          <option value="paid_out">{t("acc_paid_out")}</option>
+          <option value="reversed">{t("acc_reversed")}</option>
         </select>
         <select
           value={company}
@@ -126,7 +126,7 @@ export default function PartnerAccrualsPage() {
                     </td>
                     <td className="px-3 py-2.5">
                       <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
-                        {r.status}
+                        {t(`acc_${r.status}` as "acc_accrued")}
                       </span>
                     </td>
                   </tr>

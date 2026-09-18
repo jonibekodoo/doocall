@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { CompanyStats } from "@/components/company/CompanyStats";
 import { fetchPartnerCompany } from "@/lib/api/partner";
 import { formatUzs } from "@/lib/format";
 
@@ -37,7 +38,8 @@ export default function PartnerCompanyCard() {
       <div className="rounded-lg border border-border bg-surface p-5">
         <h1 className="text-xl font-semibold">{c.name}</h1>
         <p className="mt-1 text-sm text-fg-muted">
-          {c.status} · {c.acquired_via} · {t("operators").toLowerCase()}:{" "}
+          {t(`st_${c.status}` as "st_active")} · {c.acquired_via} ·{" "}
+          {t("operators").toLowerCase()}:{" "}
           <b className="tnum">{c.seats}</b>
         </p>
         <p className="tnum mt-2 text-sm">
@@ -45,6 +47,10 @@ export default function PartnerCompanyCard() {
           <b className="text-accent">{formatUzs(c.my_cashback_uzs)} UZS</b>
         </p>
       </div>
+
+      {/* Activity infographic — aggregate, non-PII */}
+      {c.stats && <CompanyStats stats={c.stats} />}
+
       <section className="mt-5 rounded-lg border border-border bg-surface">
         <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
           {t("accruals")}
@@ -60,7 +66,7 @@ export default function PartnerCompanyCard() {
               </span>
               <span className="tnum text-xs text-fg-faint">{a.percent}%</span>
               <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
-                {a.status}
+                {t(`acc_${a.status}` as "acc_accrued")}
               </span>
               <span className="tnum text-xs text-fg-faint">
                 {a.created_at.slice(0, 10)}

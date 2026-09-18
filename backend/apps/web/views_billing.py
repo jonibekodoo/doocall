@@ -18,10 +18,36 @@ from apps.billing.models import (
     DailyCharge,
     MonthlyStatement,
     Payment,
+    PaymentProviderConfig,
+    ensure_provider_configs,
 )
 from apps.core.models import AuditLog
 
 from .permissions import CabinetView
+
+
+def _enabled_provider_rows() -> list[dict]:
+    """Enabled providers the cabinet may offer (code, label, logo)."""
+    from django.conf import settings as dj
+
+    ensure_provider_configs()
+    rows = []
+    for cfg in PaymentProviderConfig.objects.filter(is_enabled=True).order_by("sort_order"):
+        # Never offer Paylov to a customer until its API credentials are configured.
+        if cfg.provider == "paylov" and not (dj.PAYLOV_CONSUMER_KEY and dj.PAYLOV_API_USERNAME):
+            continue
+        try:
+            label = Payment.Provider(cfg.provider).label
+        except ValueError:
+            label = cfg.provider
+        rows.append(
+            {
+                "name": cfg.provider,
+                "label": label,
+                "logo_url": f"/api/public/provider-logo/{cfg.provider}" if cfg.logo_key else None,
+            }
+        )
+    return rows
 
 
 def _parse_month(value: str | None) -> date:
@@ -57,6 +83,7 @@ class BillingOverviewView(CabinetView):
                 "daily_rate_uzs": billing.daily_rate(price, today),
                 "seats": billing.seat_count(company),
                 "blocked": company.status == "suspended",
+                "providers": _enabled_provider_rows(),
                 "unpaid_statement": {
                     "month": unpaid.month.isoformat(),
                     "total_uzs": unpaid.total_uzs,
@@ -181,6 +208,141 @@ class BillingPayView(CabinetView):
                 },
             },
             status=201,
+        )
+
+
+# Human-friendly Uzbek messages for Paylov API error codes.
+_PAYLOV_MESSAGES = {
+    "invalid_otp": "OTP kod noto'g'ri",
+    "otp_expired": "OTP muddati o'tgan, qaytadan urinib ko'ring",
+    "insufficient_funds": "Kartada mablag' yetarli emas",
+    "card_is_blocked": "Karta bloklangan",
+    "card_is_blocked_in_processing_center": "Karta bloklangan",
+    "card_expired": "Karta muddati o'tgan",
+    "card_not_found": "Karta topilmadi",
+    "card_not_found_in_processing_center": "Karta topilmadi",
+    "card_has_no_phone": "Kartaga telefon raqam biriktirilmagan",
+    "too_many_attempts": "Juda ko'p urinish — birozdan so'ng qayta urinib ko'ring",
+    "card_is_not_supported": "Bu karta turi qo'llab-quvvatlanmaydi",
+    "invalid_card": "Karta ma'lumoti noto'g'ri",
+    "pan_not_valid": "Karta raqami noto'g'ri",
+    "invalid_amount": "Summa noto'g'ri",
+    "sms_not_active": "Kartada SMS-xabar xizmati yoqilmagan",
+    "transaction_not_found": "Tranzaksiya topilmadi",
+    "transaction_already_payed": "Bu to'lov allaqachon amalga oshirilgan",
+}
+
+
+def _paylov_msg(e) -> str:
+    return _PAYLOV_MESSAGES.get(getattr(e, "code", ""), getattr(e, "message", "") or "To'lovda xatolik")
+
+
+class BillingPaylovPayView(CabinetView):
+    allow_when_suspended = True  # a blocked company must be able to top up
+
+    @extend_schema(summary="Start a Paylov card payment (card → transactionId, OTP sent)")
+    def post(self, request: Request) -> Response:
+        from django.conf import settings as dj
+
+        from apps.billing import paylov_api
+
+        cfg = PaymentProviderConfig.objects.filter(provider="paylov", is_enabled=True).first()
+        if cfg is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "Paylov to'lovi yoqilmagan", 400)
+        if not (dj.PAYLOV_CONSUMER_KEY and dj.PAYLOV_API_USERNAME):
+            raise ApiError(ErrorCode.MISSING_FIELD, "Paylov sozlanmagan", 400)
+        try:
+            amount = int(request.data.get("amount_uzs") or 0)
+        except (TypeError, ValueError):
+            raise ApiError(ErrorCode.MISSING_FIELD, "amount_uzs invalid", 400) from None
+        if amount < 1000:
+            raise ApiError(ErrorCode.MISSING_FIELD, "amount_uzs invalid", 400)
+        card = "".join((request.data.get("card_number") or "").split())
+        expire = (request.data.get("expire_date") or "").strip()
+        if not (card.isdigit() and 12 <= len(card) <= 19):
+            raise ApiError(ErrorCode.MISSING_FIELD, "Karta raqami noto'g'ri", 400)
+        if not (expire.isdigit() and len(expire) == 4):
+            raise ApiError(ErrorCode.MISSING_FIELD, "Amal muddati noto'g'ri (YYMM)", 400)
+
+        payment = Payment.all_objects.create(
+            company=self.company, provider=Payment.Provider.PAYLOV, amount_uzs=amount
+        )
+        try:
+            resp = paylov_api.payment_without_registration(
+                card, expire, amount * 100, {"order_id": str(payment.pk)}, payment=payment
+            )
+        except paylov_api.PaylovError as e:
+            payment.status = Payment.Status.FAILED
+            payment.save(update_fields=["status"])
+            raise ApiError(ErrorCode.MISSING_FIELD, _paylov_msg(e), 400) from None
+
+        result = resp.get("result") or {}
+        txn = result.get("transactionId") or resp.get("transactionId")
+        if not txn:
+            payment.status = Payment.Status.FAILED
+            payment.save(update_fields=["status"])
+            raise ApiError(ErrorCode.MISSING_FIELD, "Paylov javobida transactionId yo'q", 400)
+        payment.external_id = txn
+        payment.save(update_fields=["external_id"])
+        AuditLog.objects.create(
+            company=self.company, actor=request.user, action="billing.paylov_pay_created",
+            target_model="billing.Payment", target_id=str(payment.pk), changes={"amount_uzs": amount},
+        )
+        otp_phone = result.get("otpSentPhone") or resp.get("otp_phone") or ""
+        return Response(
+            {"success": True, "payment_id": payment.pk, "otp_phone": otp_phone, "needs_otp": True},
+            status=201,
+        )
+
+
+class BillingPaylovConfirmView(CabinetView):
+    allow_when_suspended = True
+
+    @extend_schema(summary="Confirm a Paylov card payment with the OTP → credit balance")
+    def post(self, request: Request) -> Response:
+        from apps.billing import paylov_api
+
+        try:
+            pid = int(request.data.get("payment_id") or 0)
+        except (TypeError, ValueError):
+            raise ApiError(ErrorCode.MISSING_FIELD, "payment_id invalid", 400) from None
+        otp = (request.data.get("otp") or "").strip()
+        if not otp:
+            raise ApiError(ErrorCode.MISSING_FIELD, "OTP kiriting", 400)
+        payment = Payment.all_objects.filter(
+            pk=pid, company=self.company, provider=Payment.Provider.PAYLOV
+        ).first()
+        if payment is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "To'lov topilmadi", 404)
+        if payment.status == Payment.Status.APPROVED:
+            return Response({"success": True, "status": payment.status})
+        if payment.status != Payment.Status.PENDING or not payment.external_id:
+            raise ApiError(ErrorCode.MISSING_FIELD, "To'lov tasdiqlash uchun yaroqsiz", 400)
+
+        # ── The ONLY path that credits money: Paylov must confirm the charge. ──
+        try:
+            resp = paylov_api.confirm_payment(payment.external_id, otp, payment=payment)
+        except paylov_api.PaylovError as e:
+            # Paylov itself reporting "already paid" IS a confirmation (e.g. our
+            # earlier confirm crashed after Paylov charged the card).
+            if e.code not in ("transaction_already_payed", "already_confirmed"):
+                raise ApiError(ErrorCode.MISSING_FIELD, _paylov_msg(e), 400) from None
+        else:
+            # A 2xx with no "result" (e.g. otp_required / result:null) is NOT a
+            # completed payment — never credit on it.
+            if not resp.get("result"):
+                raise ApiError(ErrorCode.MISSING_FIELD, "OTP tasdiqlanmadi", 400)
+
+        # Lock the row so two concurrent confirms can never credit twice.
+        from django.db import transaction as db_tx
+
+        with db_tx.atomic():
+            locked = Payment.all_objects.select_for_update().get(pk=payment.pk)
+            if locked.status != Payment.Status.APPROVED:
+                billing.apply_payment(locked, actor=request.user)
+        self.company.refresh_from_db(fields=["balance_uzs"])
+        return Response(
+            {"success": True, "status": Payment.Status.APPROVED, "balance_uzs": self.company.balance_uzs}
         )
 
 

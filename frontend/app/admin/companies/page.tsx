@@ -53,6 +53,7 @@ export default function AdminCompaniesPage() {
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
             <tr>
+              <th className="px-3 py-2 text-left">№</th>
               <th className="px-3 py-2 text-left">{t("common.company")}</th>
               <th className="px-3 py-2 text-left">{t("companies.colPhone")}</th>
               <th className="px-3 py-2 text-left">{t("common.status")}</th>
@@ -72,16 +73,17 @@ export default function AdminCompaniesPage() {
             {isPending
               ? Array.from({ length: 8 }).map((_, index) => (
                   <tr key={index}>
-                    <td colSpan={7} className="px-3 py-2.5">
+                    <td colSpan={8} className="px-3 py-2.5">
                       <div className="h-3.5 animate-pulse rounded bg-surface-3" />
                     </td>
                   </tr>
                 ))
-              : (data?.companies ?? []).map((company) => (
+              : (data?.companies ?? []).map((company, index) => (
                   <tr
                     key={company.id}
                     className="border-t border-border hover:bg-surface-2/60"
                   >
+                    <td className="px-3 py-2.5 text-fg-faint">{index + 1}</td>
                     <td className="px-3 py-2.5">
                       <Link
                         href={`/admin/companies/${company.id}`}
@@ -140,8 +142,16 @@ export default function AdminCompaniesPage() {
                     <td className="px-3 py-2.5 text-xs text-fg-muted">
                       {company.acquired_via}
                       {company.integrator_id && (
-                        <span className="ml-1.5 rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">
-                          INT #{company.integrator_id}
+                        <span
+                          title={`Integrator #${company.integrator_id}`}
+                          className="ml-1.5 rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent"
+                        >
+                          {company.integrator_name ?? `INT #${company.integrator_id}`}
+                          {company.integrator_company && (
+                            <span className="font-normal opacity-80">
+                              {" "}· {company.integrator_company}
+                            </span>
+                          )}
                         </span>
                       )}
                     </td>

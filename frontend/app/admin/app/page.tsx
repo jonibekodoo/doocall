@@ -124,6 +124,7 @@ export default function AdminAppPage() {
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
             <tr>
+              <th className="px-3 py-2 text-left">№</th>
               <th className="px-3 py-2 text-left">{t("version")}</th>
               <th className="px-3 py-2 text-right">{t("size")}</th>
               <th className="px-3 py-2 text-left">{t("notes")}</th>
@@ -135,13 +136,14 @@ export default function AdminAppPage() {
           <tbody data-testid="apk-list">
             {isPending ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6">
+                <td colSpan={7} className="px-3 py-6">
                   <div className="h-4 animate-pulse rounded bg-surface-2" />
                 </td>
               </tr>
             ) : (
               (data?.releases ?? []).map((release, index) => (
                 <tr key={release.id} className="border-t border-border">
+                  <td className="px-3 py-2 text-fg-faint">{index + 1}</td>
                   <td className="tnum px-3 py-2 font-medium">
                     {release.version}
                     {index === 0 && (
@@ -182,7 +184,7 @@ export default function AdminAppPage() {
             {!isPending && (data?.releases ?? []).length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-8 text-center text-xs text-fg-faint"
                 >
                   {t("empty")}

@@ -285,6 +285,12 @@ export const saveAccountSettings = (payload: Partial<AccountSettings>) =>
     payload,
   );
 
+export interface PaymentProviderOption {
+  name: string;
+  label: string;
+  logo_url: string | null;
+}
+
 export interface BillingOverview extends ApiEnvelope {
   balance_uzs: number;
   month_accrued_uzs: number;
@@ -292,6 +298,7 @@ export interface BillingOverview extends ApiEnvelope {
   daily_rate_uzs: number;
   seats: number;
   blocked: boolean;
+  providers: PaymentProviderOption[];
   unpaid_statement: {
     month: string;
     total_uzs: number;
@@ -354,6 +361,24 @@ export const submitManualPayment = (amount_uzs: number) =>
     success: boolean;
     payment: { id: number; amount_uzs: number; status: string };
   }>("/billing/pay", { provider: "manual", amount_uzs });
+
+export const paylovPay = (
+  amount_uzs: number,
+  card_number: string,
+  expire_date: string,
+) =>
+  post<{
+    success: boolean;
+    payment_id: number;
+    otp_phone: string;
+    needs_otp: boolean;
+  }>("/billing/paylov/pay", { amount_uzs, card_number, expire_date });
+
+export const paylovConfirm = (payment_id: number, otp: string) =>
+  post<{ success: boolean; status: string; balance_uzs: number }>(
+    "/billing/paylov/confirm",
+    { payment_id, otp },
+  );
 
 export const fetchApiKey = () =>
   get<{ success: boolean; api_key_masked: string | null }>("/settings/api-key");

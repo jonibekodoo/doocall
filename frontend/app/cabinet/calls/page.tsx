@@ -12,6 +12,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import { DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
+import { CallMapButton } from "@/components/CallMapButton";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import {
   DateRangePicker,
@@ -235,8 +236,12 @@ function CallsInner() {
     {
       key: "audio",
       header: "▶",
-      cell: (row) =>
-        row.status === "answered" ? <CallAudioButton callId={row.id} /> : null,
+      cell: (row) => (
+        <div className="flex items-center gap-1.5">
+          {row.status === "answered" && <CallAudioButton callId={row.id} />}
+          {row.has_location && <CallMapButton callId={row.id} />}
+        </div>
+      ),
     },
   ];
 

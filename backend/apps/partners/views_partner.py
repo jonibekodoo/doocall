@@ -15,6 +15,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
 from rest_framework import status as http
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -185,6 +186,11 @@ class PartnerCompanyDetailView(PartnerView):
                 :50
             ]
         ]
+        # Aggregate, non-PII activity stats only — never individual CallRecords,
+        # contacts or operator identities (partner boundary, see module docstring).
+        from apps.calls.stats import company_call_stats
+
+        body["stats"] = company_call_stats(company, include_operators=False)
         return Response({"success": True, "company": body})
 
 
@@ -264,21 +270,92 @@ class PartnerProfileView(PartnerView):
             {
                 "success": True,
                 "name": i.name,
+                "company_name": i.company_name,
+                "logo_url": f"/api/public/integrator-logo/{i.pk}" if i.logo_key else None,
+                "is_public": i.is_public,
                 "phone": i.phone,
                 "email": cast(User, self.request.user).email,
                 "referral_code": i.referral_code,
                 "payout_details": i.payout_details,
+                "bank_card": i.bank_card,
+                "bank_mfo": i.bank_mfo,
+                "bank_inn": i.bank_inn,
+                "bank_transit": i.bank_transit,
+                "offer": self._offer_body(i),
             }
         )
+
+    @staticmethod
+    def _offer_body(i: Integrator) -> dict[str, Any]:
+        from .models import get_offer_document
+
+        offer = get_offer_document()
+        return {
+            "content": offer.content,
+            "version": offer.version,
+            "accepted": i.offer_accepted_version >= offer.version and offer.version > 0,
+            "accepted_at": i.offer_accepted_at.isoformat() if i.offer_accepted_at else None,
+        }
 
     @extend_schema(summary="Update profile / payout details")
     def put(self, request: Request) -> Response:
         i = self.integrator
         if "name" in request.data:
             i.name = (request.data["name"] or "").strip() or i.name
+        if "company_name" in request.data:
+            i.company_name = (request.data["company_name"] or "").strip()
         if "phone" in request.data:
             i.phone = request.data["phone"] or ""
         if "payout_details" in request.data and isinstance(request.data["payout_details"], dict):
             i.payout_details = request.data["payout_details"]
+        if "is_public" in request.data:
+            i.is_public = bool(request.data["is_public"])
+        for bank_field in ("bank_card", "bank_mfo", "bank_inn", "bank_transit"):
+            if bank_field in request.data:
+                setattr(i, bank_field, (request.data[bank_field] or "").strip())
+        if request.data.get("accept_offer"):
+            from .models import get_offer_document
+
+            offer = get_offer_document()
+            i.offer_accepted_version = offer.version
+            i.offer_accepted_at = timezone.now()
         i.save()
         return Response({"success": True})
+
+
+class PartnerLogoView(PartnerView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(summary="Upload own company logo")
+    def post(self, request: Request) -> Response:
+        import io
+        import uuid
+
+        from django.conf import settings as dj
+
+        from apps.api import storage
+
+        i = self.integrator
+        upload = request.FILES.get("logo")
+        if upload is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "logo file required", 400)
+        if upload.size > 2 * 1024 * 1024:
+            raise ApiError(ErrorCode.MISSING_FIELD, "logo too large (max 2MB)", 400)
+        types = {
+            "image/png": "png",
+            "image/jpeg": "jpg",
+            "image/svg+xml": "svg",
+            "image/webp": "webp",
+        }
+        content_type = getattr(upload, "content_type", "") or ""
+        if content_type not in types:
+            raise ApiError(ErrorCode.MISSING_FIELD, "logo must be png/jpeg/svg/webp", 400)
+        key = f"integrator-logos/{uuid.uuid4().hex}.{types[content_type]}"
+        payload = upload.read()
+        storage.ensure_bucket()
+        storage.client().put_object(
+            dj.MINIO_BUCKET, key, io.BytesIO(payload), length=len(payload), content_type=content_type
+        )
+        i.logo_key = key
+        i.save(update_fields=["logo_key", "updated_at"])
+        return Response({"success": True, "logo_url": f"/api/public/integrator-logo/{i.pk}"})

@@ -1,6 +1,9 @@
 /** Typed client for the admin portal API (/api/admin/v1). */
 
+import type { CompanyStatsData } from "@/components/company/CompanyStats";
+
 import { api, del, get, post, put } from "./client";
+import type { LeadCard, LeadDetailData, Pipeline } from "./sales";
 import type { ApiEnvelope } from "./types";
 
 const patchJson = <T>(path: string, data: unknown) =>
@@ -23,6 +26,8 @@ export interface AdminKpis extends ApiEnvelope {
   mrr_uzs: number;
   payments_30d_uzs: number;
   calls_today: number;
+  total_calls: number;
+  total_call_seconds: number;
   integrators: number;
   pending_payments: number;
   pending_payouts: number;
@@ -41,6 +46,8 @@ export interface AdminCompanyRow {
   created_at: string;
   acquired_via: string;
   integrator_id: number | null;
+  integrator_name: string | null;
+  integrator_company: string | null;
   audio_retention_days: number | null;
   seats: number;
   subscription_status: string | null;
@@ -61,6 +68,8 @@ export interface AdminPaymentRow {
 export interface IntegratorRow {
   id: number;
   name: string;
+  company_name: string;
+  logo_url: string | null;
   status: string;
   referral_code: string;
   companies: number;
@@ -72,6 +81,9 @@ export interface IntegratorDetail extends ApiEnvelope {
   integrator: {
     id: number;
     name: string;
+    company_name: string;
+    logo_url: string | null;
+    is_public: boolean;
     email: string;
     phone: string;
     status: string;
@@ -82,6 +94,13 @@ export interface IntegratorDetail extends ApiEnvelope {
     lifetime_cashback_uzs: number;
     balance_uzs: number;
     payout_details: Record<string, string>;
+    bank_card: string;
+    bank_mfo: string;
+    bank_inn: string;
+    bank_transit: string;
+    sales_manager_id: number | null;
+    sales_manager_name: string | null;
+    offer_accepted_at: string | null;
   };
   companies: Array<{
     id: number;
@@ -108,6 +127,21 @@ export interface IntegratorDetail extends ApiEnvelope {
 
 export const fetchKpis = () => g<AdminKpis>("/dashboard");
 
+export type DashboardMetric = "payments" | "calls";
+export type DashboardPeriod = "daily" | "weekly" | "monthly" | "yearly";
+
+export interface DashboardSeries {
+  success: boolean;
+  metric: DashboardMetric;
+  period: DashboardPeriod;
+  series: Array<{ label: string; value: number }>;
+}
+
+export const fetchDashboardSeries = (
+  metric: DashboardMetric,
+  period: DashboardPeriod,
+) => g<DashboardSeries>(`/dashboard/series?metric=${metric}&period=${period}`);
+
 export const fetchAdminCompanies = (params = "") =>
   g<{ success: boolean; companies: AdminCompanyRow[] }>(`/companies${params}`);
 
@@ -129,6 +163,7 @@ export const fetchAdminCompany = (id: number) =>
         is_active: boolean;
         last_login: string | null;
       }>;
+      stats: CompanyStatsData;
     };
   }>(`/companies/${id}`);
 
@@ -205,6 +240,74 @@ export const approvePayment = (id: number) =>
 export const refundPayment = (id: number) =>
   post<ApiEnvelope>(abs(`/payments/${id}/refund`));
 
+// ── Payment providers (on/off + logo) ────────────────────────────────────────
+export interface PaymentProviderRow {
+  provider: string;
+  label: string;
+  is_enabled: boolean;
+  sort_order: number;
+  logo_url: string | null;
+  updated_at: string;
+}
+
+export const fetchPaymentProviders = () =>
+  g<{ success: boolean; providers: PaymentProviderRow[] }>("/payment-providers");
+
+export const updatePaymentProvider = (
+  body: { provider: string; is_enabled?: boolean; sort_order?: number },
+) => patchJson<{ success: boolean; provider: PaymentProviderRow }>(abs("/payment-providers"), body);
+
+export const uploadProviderLogo = (provider: string, file: File) => {
+  const form = new FormData();
+  form.append("logo", file);
+  return api<{ success: boolean; logo_url: string }>(
+    abs(`/payment-providers/${provider}/logo`),
+    { method: "POST", body: form },
+  );
+};
+
+// ── Paylov transactions + logs ───────────────────────────────────────────────
+export interface PaylovTransaction {
+  id: number;
+  company: string;
+  company_id: number;
+  amount_uzs: number;
+  status: string;
+  external_id: string;
+  created_at: string;
+  approved_at: string | null;
+  logs_count: number;
+}
+
+export const fetchPaylovTransactions = (params = "") =>
+  g<{
+    success: boolean;
+    transactions: PaylovTransaction[];
+    total_count: number;
+    total_uzs: number;
+    approved_count: number;
+    approved_uzs: number;
+  }>(`/paylov/transactions${params}`);
+
+export const paylovTransactionAction = (id: number, action: "refund" | "cancel") =>
+  post<{ success: boolean; status: string }>(abs(`/paylov/transactions/${id}/action`), { action });
+
+export interface PaylovLogRow {
+  id: number;
+  direction: "in" | "out";
+  event: string;
+  ok: boolean;
+  http_status: number | null;
+  payment_id: number | null;
+  request_body: unknown;
+  response_body: unknown;
+  note: string;
+  created_at: string;
+}
+
+export const fetchPaylovLogs = (params = "") =>
+  g<{ success: boolean; logs: PaylovLogRow[] }>(`/paylov/logs${params}`);
+
 export const fetchPricing = () =>
   g<{
     success: boolean;
@@ -237,20 +340,345 @@ export const createIntegrator = (body: {
     body,
   );
 
+export interface IntegratorStatRow {
+  id: number;
+  name: string;
+  company_name: string;
+  logo_url: string | null;
+  referral_code: string;
+  status: string;
+  companies: number;
+  company_status: {
+    active: number;
+    trial: number;
+    expired: number;
+    suspended: number;
+  };
+  revenue_uzs: number;
+  cashback_uzs: number;
+  balance_uzs: number;
+  call_seconds: number;
+}
+
+export interface IntegratorStats {
+  success: boolean;
+  integrators: IntegratorStatRow[];
+  totals: {
+    integrators: number;
+    companies: number;
+    revenue_uzs: number;
+    cashback_uzs: number;
+    call_seconds: number;
+  };
+}
+
+export const fetchIntegratorStats = () =>
+  g<IntegratorStats>("/integrators/stats");
+
+export interface IntegratorApplicationRow {
+  id: number;
+  full_name: string;
+  phone: string;
+  email: string;
+  company: string;
+  message: string;
+  status: string;
+  sales_manager_id: number | null;
+  sales_manager_name: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+// ── Sales managers ──────────────────────────────────────────────────────────
+export interface SalesManagerRow {
+  id: number;
+  name: string;
+  company_name: string;
+  logo_url: string | null;
+  email: string;
+  phone: string;
+  status: string;
+  commission_percent: string;
+  balance_uzs: number;
+  integrators: number;
+  bank_card: string;
+  bank_mfo: string;
+  bank_inn: string;
+  bank_transit: string;
+  offer_accepted_at: string | null;
+}
+
+export interface SalesManagerStatRow {
+  id: number;
+  name: string;
+  company_name: string;
+  logo_url: string | null;
+  status: string;
+  commission_percent: string;
+  integrators: number;
+  companies: number;
+  revenue_uzs: number;
+  commission_uzs: number;
+  balance_uzs: number;
+  call_seconds: number;
+}
+
+export const fetchSalesManagers = () =>
+  g<{ success: boolean; managers: SalesManagerRow[] }>("/sales-managers");
+
+export const fetchSalesManagerStats = () =>
+  g<{
+    success: boolean;
+    managers: SalesManagerStatRow[];
+    totals: {
+      managers: number;
+      integrators: number;
+      companies: number;
+      revenue_uzs: number;
+      commission_uzs: number;
+    };
+  }>("/sales-managers/stats");
+
+export const createSalesManager = (body: {
+  email: string;
+  name: string;
+  password: string;
+  phone?: string;
+  commission_percent?: string;
+}) => post<{ success: boolean; manager: SalesManagerRow }>(abs("/sales-managers"), body);
+
+export const fetchSalesManager = (id: number) =>
+  g<{
+    success: boolean;
+    manager: SalesManagerRow & {
+      integrator_list: Array<{ id: number; name: string; status: string; companies: number }>;
+      commissions: Array<{
+        id: number;
+        company: string;
+        amount_uzs: number;
+        percent: string;
+        status: string;
+        created_at: string;
+      }>;
+      payouts: Array<{ id: number; amount_uzs: number; status: string; requested_at: string }>;
+      lifetime_commission_uzs: number;
+    };
+  }>(`/sales-managers/${id}`);
+
+export const updateSalesManager = (
+  id: number,
+  body: Partial<{
+    name: string;
+    company_name: string;
+    phone: string;
+    email: string;
+    status: string;
+    commission_percent: string;
+    bank_card: string;
+    bank_mfo: string;
+    bank_inn: string;
+    bank_transit: string;
+  }>,
+) => patchJson<{ success: boolean; manager: SalesManagerRow }>(abs(`/sales-managers/${id}`), body);
+
+export const resetSalesManagerPassword = (id: number, password: string) =>
+  post<{ success: boolean }>(abs(`/sales-managers/${id}/password`), { password });
+
+export const uploadSalesManagerLogo = (id: number, file: File) => {
+  const form = new FormData();
+  form.append("logo", file);
+  return api<{ success: boolean; logo_url: string }>(abs(`/sales-managers/${id}/logo`), {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const fetchAdminSalesPayouts = (params = "") =>
+  g<{
+    success: boolean;
+    payouts: Array<{
+      id: number;
+      sales_manager: string;
+      sales_manager_id: number;
+      amount_uzs: number;
+      status: string;
+      requested_at: string;
+      bank: { card: string; mfo: string; inn: string; transit: string };
+    }>;
+  }>(`/sales-payouts${params}`);
+
+export const salesPayoutAction = (
+  id: number,
+  action: "approve" | "reject" | "mark-paid",
+) => post<{ success: boolean; status: string }>(abs(`/sales-payouts/${id}/${action}`));
+
+export const fetchOffer = () =>
+  g<{ success: boolean; content: string; version: number }>("/offer");
+
+export const saveOffer = (content: string) =>
+  put<ApiEnvelope>(`${abs("/offer")}`, { content });
+
+// ── Public legal pages (privacy / terms / refund) ────────────────────────────
+export type LegalKind = "privacy" | "terms" | "refund";
+
+export const fetchLegal = (kind: LegalKind) =>
+  g<{ success: boolean; kind: LegalKind; content: string; version: number; updated_at: string }>(
+    `/legal/${kind}`,
+  );
+
+export const saveLegal = (kind: LegalKind, content: string) =>
+  put<ApiEnvelope>(`${abs(`/legal/${kind}`)}`, { content });
+
+export const fetchIntegratorApplications = (params = "") =>
+  g<{
+    success: boolean;
+    applications: IntegratorApplicationRow[];
+    new_count: number;
+  }>(`/integrator-applications${params}`);
+
+export const updateIntegratorApplication = (id: number, status: string) =>
+  patchJson<{ success: boolean; application: IntegratorApplicationRow }>(
+    abs(`/integrator-applications/${id}`),
+    { status },
+  );
+
+export const assignApplication = (id: number, sales_manager_id: number | null) =>
+  patchJson<{ success: boolean; application: IntegratorApplicationRow }>(
+    abs(`/integrator-applications/${id}`),
+    { sales_manager_id },
+  );
+
+export const fetchAdminPipelines = () =>
+  g<{ success: boolean; pipelines: Pipeline[] }>("/crm/pipelines");
+
+export const createAdminPipeline = (name: string) =>
+  post<{ success: boolean; pipeline: Pipeline }>(abs("/crm/pipelines"), { name });
+
+export const renameAdminPipeline = (id: number, name: string) =>
+  patchJson<ApiEnvelope>(abs(`/crm/pipelines/${id}`), { name });
+
+export const deleteAdminPipeline = (id: number) =>
+  del<ApiEnvelope>(abs(`/crm/pipelines/${id}`));
+
+export const addAdminStage = (pipelineId: number, name: string) =>
+  post<ApiEnvelope>(abs(`/crm/pipelines/${pipelineId}`), { name });
+
+export const deleteAdminStage = (stageId: number) =>
+  del<ApiEnvelope>(abs(`/crm/stages/${stageId}`));
+
+export const fetchAdminLeads = (params = "") =>
+  g<{ success: boolean; leads: LeadCard[] }>(`/leads${params}`);
+
+export const fetchAdminBoardStats = (params = "") =>
+  g<{
+    success: boolean;
+    today_tasks: number;
+    no_task_leads: number;
+    overdue_tasks: number;
+    leads_today: number;
+    leads_yesterday: number;
+  }>(`/crm/board-stats${params}`);
+
+export const fetchAdminLead = (id: number) =>
+  g<{ success: boolean; lead: LeadDetailData }>(`/leads/${id}`);
+
+export const createAdminLead = (body: {
+  sales_manager_id: number;
+  full_name: string;
+  phone?: string;
+  company?: string;
+  source?: string;
+}) => post<{ success: boolean; lead: LeadCard }>(abs("/leads"), body);
+
+export const patchAdminLead = (id: number, body: Record<string, unknown>) =>
+  patchJson<{ success: boolean; lead: LeadDetailData }>(abs(`/leads/${id}`), body);
+
+export const deleteAdminLead = (id: number) => del<ApiEnvelope>(abs(`/leads/${id}`));
+
+export const addAdminLeadNote = (id: number, text: string) =>
+  post<ApiEnvelope>(abs(`/leads/${id}/note`), { text });
+
+export const addAdminLeadTask = (id: number, title: string, due_at?: string, type_id?: number) =>
+  post<ApiEnvelope>(abs(`/leads/${id}/task`), { title, due_at, type_id });
+
+export const fetchAdminCrmMeta = () =>
+  g<{
+    success: boolean;
+    tags: Array<{ id: number; name: string; color: string }>;
+    sources: Array<{ id: number; name: string }>;
+    task_types: Array<{ id: number; name: string; icon: string }>;
+  }>("/crm/meta");
+
+export const createCrmMetaItem = (kind: "tag" | "source" | "task_type", name: string, extra?: { color?: string; icon?: string }) =>
+  post<{ success: boolean; id: number }>(abs("/crm/meta"), { kind, name, ...(extra ?? {}) });
+
+export const deleteCrmMetaItem = (kind: "tag" | "source" | "task_type", id: number) =>
+  del<ApiEnvelope>(abs(`/crm/meta/${kind}/${id}`));
+
+export const fetchAdminCrmTasks = (params = "") =>
+  g<{
+    success: boolean;
+    tasks: Array<{
+      id: number;
+      title: string;
+      is_done: boolean;
+      is_cancelled: boolean;
+      auto: boolean;
+      due_at: string | null;
+      sales_manager: string;
+      lead_id: number | null;
+      lead_name: string | null;
+      type: { name: string; icon: string } | null;
+      bucket: string;
+    }>;
+  }>(`/crm-tasks${params}`);
+
+export const completeAdminTask = (id: number) =>
+  patchJson<ApiEnvelope>(abs(`/crm-tasks/${id}`), { action: "complete" });
+
+export const cancelAdminTask = (id: number, reason: string) =>
+  patchJson<ApiEnvelope>(abs(`/crm-tasks/${id}`), { action: "cancel", reason });
+
+export const editAdminTask = (
+  id: number,
+  body: Partial<{ title: string; due_at: string; type_id: number }>,
+) => patchJson<ApiEnvelope>(abs(`/crm-tasks/${id}`), { action: "edit", ...body });
+
+export const deleteAdminTask = (id: number) => del<ApiEnvelope>(abs(`/crm-tasks/${id}`));
+
 export const fetchIntegratorDetail = (id: number) =>
   g<IntegratorDetail>(`/integrators/${id}`);
+
+export const resetIntegratorPassword = (id: number, password: string) =>
+  post<{ success: boolean }>(abs(`/integrators/${id}/password`), { password });
 
 export const patchIntegrator = (
   id: number,
   body: Partial<{
     name: string;
+    company_name: string;
+    is_public: boolean;
     status: string;
     phone: string;
     email: string;
     payout_details: Record<string, string>;
     cashback_percent_override: string | null;
+    sales_manager_id: number | null;
+    bank_card: string;
+    bank_mfo: string;
+    bank_inn: string;
+    bank_transit: string;
   }>,
 ) => patchJson<ApiEnvelope>(abs(`/integrators/${id}`), body);
+
+export const uploadIntegratorLogo = (id: number, file: File) => {
+  const form = new FormData();
+  form.append("logo", file);
+  return api<{ success: boolean; logo_url: string }>(
+    abs(`/integrators/${id}/logo`),
+    { method: "POST", body: form },
+  );
+};
 
 export const fetchCashbackSettings = () =>
   g<{

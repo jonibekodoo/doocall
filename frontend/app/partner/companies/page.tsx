@@ -64,7 +64,7 @@ export default function PartnerCompaniesPage() {
                           TONES[c.status] ?? "bg-surface-3",
                         )}
                       >
-                        {c.status}
+                        {t(`st_${c.status}` as "st_active")}
                       </span>
                     </td>
                     <td className="tnum px-3 py-2.5 text-right">{c.seats}</td>

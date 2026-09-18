@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { CompanyStats } from "@/components/company/CompanyStats";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
@@ -315,6 +316,7 @@ function ResetPasswordDialog({
 
 export default function AdminCompanyDetailPage() {
   const t = useTranslations("admin.companyDetail");
+  const tc = useTranslations("common");
   const params = useParams<{ id: string }>();
   const companyId = Number(params.id);
   const queryClient = useQueryClient();
@@ -553,6 +555,9 @@ export default function AdminCompanyDetailPage() {
         </dl>
       </section>
 
+      {/* Activity infographic */}
+      {company.stats && <CompanyStats stats={company.stats} />}
+
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <section className="rounded-lg border border-border bg-surface">
           <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
@@ -642,7 +647,7 @@ export default function AdminCompanyDetailPage() {
                   {formatUzs(payment.amount_uzs)} UZS
                 </span>
                 <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
-                  {payment.status}
+                  {tc(`payStatus.${payment.status}` as "payStatus.pending")}
                 </span>
               </li>
             ))}

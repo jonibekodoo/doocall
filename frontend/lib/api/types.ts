@@ -56,6 +56,7 @@ export interface CallRow {
   counterparty_name: string | null;
   duration: number;
   start_time: string;
+  has_location: boolean;
 }
 
 export interface CallsListResponse extends ApiEnvelope {

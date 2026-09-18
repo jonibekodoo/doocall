@@ -1,6 +1,8 @@
 /** Typed client for the partner portal API (/api/partner/v1). */
 
-import { get, post, put } from "./client";
+import type { CompanyStatsData } from "@/components/company/CompanyStats";
+
+import { api, get, post, put } from "./client";
 import type { ApiEnvelope } from "./types";
 
 const P = "/api/partner/v1" as const;
@@ -59,6 +61,7 @@ export const fetchPartnerCompany = (id: number) =>
     success: boolean;
     company: PartnerCompany & {
       accruals: Omit<PartnerAccrual, "company" | "company_id">[];
+      stats: CompanyStatsData;
     };
   }>(`${P}/companies/${id}`);
 
@@ -96,17 +99,46 @@ export const fetchPartnerProfile = () =>
   get<{
     success: boolean;
     name: string;
+    company_name: string;
+    logo_url: string | null;
+    is_public: boolean;
     phone: string;
     email: string;
     referral_code: string;
     payout_details: Record<string, string>;
+    bank_card: string;
+    bank_mfo: string;
+    bank_inn: string;
+    bank_transit: string;
+    offer: {
+      content: string;
+      version: number;
+      accepted: boolean;
+      accepted_at: string | null;
+    };
   }>(`${P}/profile`);
 
 export const savePartnerProfile = (body: {
   name?: string;
+  company_name?: string;
   phone?: string;
+  is_public?: boolean;
   payout_details?: Record<string, string>;
+  bank_card?: string;
+  bank_mfo?: string;
+  bank_inn?: string;
+  bank_transit?: string;
+  accept_offer?: boolean;
 }) => put<ApiEnvelope>(`${P}/profile`, body);
+
+export const uploadPartnerLogo = (file: File) => {
+  const form = new FormData();
+  form.append("logo", file);
+  return api<{ success: boolean; logo_url: string }>(`${P}/logo`, {
+    method: "POST",
+    body: form,
+  });
+};
 
 /** Referral link builder — used by the UI and unit-tested.
  * Lands straight on the registration form with the promo code locked in. */

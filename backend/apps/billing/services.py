@@ -236,6 +236,20 @@ def daily_rate(price_per_operator_uzs: int, day: date) -> int:
     return round(price_per_operator_uzs / days_in_month)
 
 
+def days_of_balance_left(company: Company, *, day: date | None = None) -> int | None:
+    """How many days the prepaid balance covers at the current burn rate.
+
+    Returns None when the company is not on a paid daily-billing footing
+    (e.g. trial) or the burn rate is zero (no active operators)."""
+    if company.status != Company.Status.ACTIVE:
+        return None
+    day = day or timezone.now().date()
+    burn = seat_count(company) * daily_rate(effective_price(company), day)
+    if burn <= 0:
+        return None
+    return int(company.balance_uzs // burn)
+
+
 def accrue_operator_day(
     company: Company, operator: OperatorProfile, day: date
 ) -> DailyCharge | None:
@@ -505,7 +519,9 @@ def apply_payment(
 
     # Cashback engine (A.5): one idempotent accrual per successful payment,
     # regardless of provider (manual admin approval, Payme, Click).
-    from apps.partners.services import accrue_cashback
+    from apps.partners.services import accrue_cashback, accrue_sales_commission
 
     accrue_cashback(payment, now=now)
+    # Second tier: sales-manager commission (independent of cashback).
+    accrue_sales_commission(payment, now=now)
     return payment

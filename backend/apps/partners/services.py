@@ -20,11 +20,17 @@ from .models import (
     PLATFORM_ADMIN_PERMS,
     ROLE_INTEGRATOR,
     ROLE_PLATFORM_ADMIN,
+    ROLE_SALES_MANAGER,
     ROLE_SUPERADMIN,
+    SALES_MANAGER_PERMS,
     SUPERADMIN_PERMS,
     CashbackAccrual,
     Integrator,
     PayoutRequest,
+    PlatformNotification,
+    SalesCommission,
+    SalesManager,
+    SalesPayoutRequest,
     get_platform_settings,
 )
 
@@ -32,6 +38,7 @@ _ROLE_PERMS = {
     ROLE_SUPERADMIN: SUPERADMIN_PERMS,
     ROLE_PLATFORM_ADMIN: PLATFORM_ADMIN_PERMS,
     ROLE_INTEGRATOR: INTEGRATOR_PERMS,
+    ROLE_SALES_MANAGER: SALES_MANAGER_PERMS,
 }
 
 
@@ -61,7 +68,13 @@ def portal_for(role: str) -> str:
         ROLE_SUPERADMIN: "admin",
         ROLE_PLATFORM_ADMIN: "admin",
         ROLE_INTEGRATOR: "partner",
+        ROLE_SALES_MANAGER: "sales",
     }.get(role, "cabinet")
+
+
+def notify_user(user: User, kind: str, message: str) -> PlatformNotification:
+    """Create a user-scoped in-app notification (integrators / sales managers)."""
+    return PlatformNotification.objects.create(user=user, kind=kind, message=message)
 
 
 def add_months(moment: datetime, months: int) -> datetime:
@@ -159,6 +172,74 @@ def reverse_cashback(payment: Payment, *, now: datetime | None = None) -> Cashba
 
 
 @transaction.atomic
+def accrue_sales_commission(payment: Payment, *, now: datetime | None = None) -> SalesCommission | None:
+    """Second-tier commission for the sales manager linked to the paying
+    company's integrator. Independent of cashback; same months-limit gate."""
+    now = now or timezone.now()
+    company: Company = payment.company
+    integrator = company.integrator
+    if integrator is None or integrator.status != Integrator.Status.ACTIVE:
+        return None
+    manager = integrator.sales_manager
+    if manager is None or manager.status != SalesManager.Status.ACTIVE:
+        return None
+
+    existing = SalesCommission.objects.filter(payment=payment).first()
+    if existing is not None:
+        return existing
+
+    settings_row = get_platform_settings()
+    cutoff = add_months(company.created_at, settings_row.cashback_months_limit)
+    effective_at = payment.approved_at or now
+    if effective_at >= cutoff:
+        return None
+
+    percent = manager.effective_percent
+    if percent <= 0:
+        return None
+    amount = int(
+        (Decimal(payment.amount_uzs) * percent / Decimal(100)).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
+    )
+    commission = SalesCommission.objects.create(
+        payment=payment,
+        sales_manager=manager,
+        integrator=integrator,
+        company=company,
+        percent=percent,
+        amount_uzs=amount,
+    )
+    AuditLog.objects.create(
+        company=company,
+        action="sales_commission.accrued",
+        target_model="partners.SalesCommission",
+        target_id=str(commission.pk),
+        changes={"amount_uzs": amount, "percent": str(percent), "payment_id": payment.pk},
+    )
+    return commission
+
+
+@transaction.atomic
+def reverse_sales_commission(payment: Payment, *, now: datetime | None = None) -> SalesCommission | None:
+    now = now or timezone.now()
+    commission = SalesCommission.objects.filter(payment=payment).first()
+    if commission is None or commission.status == SalesCommission.Status.REVERSED:
+        return commission
+    commission.status = SalesCommission.Status.REVERSED
+    commission.reversed_at = now
+    commission.save(update_fields=["status", "reversed_at"])
+    AuditLog.objects.create(
+        company=commission.company,
+        action="sales_commission.reversed",
+        target_model="partners.SalesCommission",
+        target_id=str(commission.pk),
+        changes={"payment_id": payment.pk},
+    )
+    return commission
+
+
+@transaction.atomic
 def reassign_integrator(
     company: Company, new_integrator: Integrator | None, *, actor: User
 ) -> Company:
@@ -246,6 +327,74 @@ def _allocate_accruals(payout: PayoutRequest) -> None:
         accrual.payout = payout
         accrual.save(update_fields=["status", "payout"])
         remaining -= accrual.amount_uzs
+
+
+@transaction.atomic
+def request_sales_payout(
+    manager: SalesManager, amount_uzs: int, *, note: str = ""
+) -> SalesPayoutRequest:
+    if amount_uzs <= 0:
+        raise PayoutError("amount must be positive")
+    minimum = get_platform_settings().min_payout_uzs
+    if amount_uzs < minimum:
+        raise PayoutError(f"amount below the minimum of {minimum} UZS")
+    if amount_uzs > manager.balance_uzs:
+        raise PayoutError("amount exceeds available balance")
+    payout = SalesPayoutRequest.objects.create(
+        sales_manager=manager, amount_uzs=amount_uzs, note=note
+    )
+    AuditLog.objects.create(
+        action="sales_payout.requested",
+        target_model="partners.SalesPayoutRequest",
+        target_id=str(payout.pk),
+        changes={"sales_manager_id": manager.pk, "amount_uzs": amount_uzs},
+    )
+    return payout
+
+
+@transaction.atomic
+def process_sales_payout(
+    payout: SalesPayoutRequest, new_status: str, *, actor: User, note: str = ""
+) -> SalesPayoutRequest:
+    if not payout.can_transition(new_status):
+        raise PayoutError(f"{payout.status} → {new_status} is not allowed")
+    payout.status = new_status
+    payout.processed_by = actor
+    payout.processed_at = timezone.now()
+    if note:
+        payout.note = note
+    payout.save()
+    if new_status == SalesPayoutRequest.Status.PAID:
+        _allocate_sales_commissions(payout)
+    AuditLog.objects.create(
+        actor=actor,
+        action=f"sales_payout.{new_status}",
+        target_model="partners.SalesPayoutRequest",
+        target_id=str(payout.pk),
+        changes={"amount_uzs": payout.amount_uzs},
+    )
+    notify_user(
+        payout.sales_manager.user,
+        PlatformNotification.Kind.PAYOUT_STATUS,
+        f"To'lov so'rovingiz holati: {new_status}",
+    )
+    return payout
+
+
+def _allocate_sales_commissions(payout: SalesPayoutRequest) -> None:
+    remaining = payout.amount_uzs
+    rows = (
+        SalesCommission.objects.select_for_update()
+        .filter(sales_manager=payout.sales_manager, status=SalesCommission.Status.ACCRUED)
+        .order_by("created_at")
+    )
+    for row in rows:
+        if remaining <= 0:
+            break
+        row.status = SalesCommission.Status.PAID_OUT
+        row.payout = payout
+        row.save(update_fields=["status", "payout"])
+        remaining -= row.amount_uzs
 
 
 def monthly_accrual_series(integrator: Integrator, months: int = 12) -> list[dict[str, Any]]:

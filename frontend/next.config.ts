@@ -16,6 +16,8 @@ const CSP = [
   "font-src 'self' data:",
   `connect-src 'self' ${PRODUCT_SRC} https://*.doocall.local http://localhost:* http://127.0.0.1:*`,
   `media-src 'self' blob: ${PRODUCT_SRC} http://localhost:9000 https://*.doocall.local`,
+  // Call-location map: the OpenStreetMap embed is loaded in an <iframe>.
+  "frame-src 'self' https://www.openstreetmap.org",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

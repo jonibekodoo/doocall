@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { IntegratorLeaderboard } from "@/components/admin/IntegratorLeaderboard";
 import { useToastStore } from "@/components/ui/Toast";
 import { createIntegrator, fetchIntegrators } from "@/lib/api/admin";
 import { formatUzs } from "@/lib/format";
@@ -145,10 +146,14 @@ export default function AdminIntegratorsPage() {
           {t("integrators.new")}
         </button>
       </div>
+
+      <IntegratorLeaderboard />
+
       <div className="overflow-hidden rounded-lg border border-border bg-surface">
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
             <tr>
+              <th className="px-3 py-2 text-left">№</th>
               <th className="px-3 py-2 text-left">{t("integrators.name")}</th>
               <th className="px-3 py-2 text-left">{t("integrators.code")}</th>
               <th className="px-3 py-2 text-right">
@@ -165,23 +170,47 @@ export default function AdminIntegratorsPage() {
             {isPending
               ? Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i}>
-                    <td colSpan={6} className="px-3 py-2.5">
+                    <td colSpan={7} className="px-3 py-2.5">
                       <div className="h-3.5 animate-pulse rounded bg-surface-3" />
                     </td>
                   </tr>
                 ))
-              : (data?.integrators ?? []).map((row) => (
+              : (data?.integrators ?? []).map((row, index) => (
                   <tr
                     key={row.id}
                     className="border-t border-border hover:bg-surface-2/60"
                   >
+                    <td className="px-3 py-2.5 text-fg-faint">{index + 1}</td>
                     <td className="px-3 py-2.5">
-                      <Link
-                        href={`/admin/integrators/${row.id}`}
-                        className="font-medium text-accent hover:underline"
-                      >
-                        {row.name}
-                      </Link>
+                      <div className="flex items-center gap-2.5">
+                        <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-surface-2 text-xs font-bold text-fg-muted">
+                          {row.logo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={row.logo_url}
+                              alt=""
+                              className="size-full object-contain"
+                            />
+                          ) : (
+                            (row.company_name || row.name)
+                              .slice(0, 1)
+                              .toUpperCase()
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <Link
+                            href={`/admin/integrators/${row.id}`}
+                            className="block truncate font-medium text-accent hover:underline"
+                          >
+                            {row.name}
+                          </Link>
+                          {row.company_name && (
+                            <span className="block truncate text-xs text-fg-faint">
+                              {row.company_name}
+                            </span>
+                          )}
+                        </span>
+                      </div>
                     </td>
                     <td className="tnum px-3 py-2.5 font-mono text-xs">
                       {row.referral_code}
@@ -195,7 +224,9 @@ export default function AdminIntegratorsPage() {
                     <td className="tnum px-3 py-2.5 text-right">
                       {formatUzs(row.balance_uzs)}
                     </td>
-                    <td className="px-3 py-2.5 text-xs">{row.status}</td>
+                    <td className="px-3 py-2.5 text-xs">
+                      {t(`integratorDetail.st_${row.status}` as "integratorDetail.st_active")}
+                    </td>
                   </tr>
                 ))}
           </tbody>

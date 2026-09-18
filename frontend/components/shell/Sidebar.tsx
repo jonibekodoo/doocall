@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   Contact2,
   LayoutDashboard,
+  MapPin,
   Phone,
   PhoneCall,
   Settings,
@@ -22,6 +23,7 @@ const NAV = [
   { key: "contacts", href: "/cabinet/contacts", icon: Contact2 },
   { key: "reports", href: "/cabinet/reports", icon: BarChart3 },
   { key: "aiAnalysis", href: "/cabinet/ai", icon: Sparkles },
+  { key: "monitoring", href: "/cabinet/monitoring", icon: MapPin },
   { key: "settings", href: "/cabinet/settings", icon: Settings },
 ] as const;
 

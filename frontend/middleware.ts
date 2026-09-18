@@ -16,9 +16,12 @@ export function middleware(request: NextRequest) {
   if (pathname.startsWith("/partner") && portal !== "partner") {
     return NextResponse.rewrite(new URL("/403", request.url));
   }
+  if (pathname.startsWith("/sales") && portal !== "sales") {
+    return NextResponse.rewrite(new URL("/403", request.url));
+  }
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/partner/:path*"],
+  matcher: ["/admin/:path*", "/partner/:path*", "/sales/:path*"],
 };

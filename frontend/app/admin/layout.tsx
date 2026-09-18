@@ -5,20 +5,29 @@
  * for platform_admin. */
 
 import {
+  Briefcase,
   Building2,
+  Coins,
   CreditCard,
+  FileText,
   Handshake,
+  Inbox,
+  KanbanSquare,
   LayoutDashboard,
   ListChecks,
+  ListTodo,
   LogOut,
   Percent,
   Plug,
+  Scale,
   ScrollText,
   ShieldCheck,
   Smartphone,
   Tag,
+  Tags,
   UserRound,
   Users,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -48,10 +57,70 @@ const NAV = [
     superOnly: false,
   },
   {
+    href: "/admin/payment-providers",
+    label: "paymentProviders",
+    icon: CreditCard,
+    superOnly: false,
+  },
+  {
+    href: "/admin/paylov",
+    label: "paylov",
+    icon: Wallet,
+    superOnly: false,
+  },
+  {
     href: "/admin/integrators",
     label: "integrators",
     icon: Handshake,
     superOnly: false,
+  },
+  {
+    href: "/admin/integrator-applications",
+    label: "integratorApplications",
+    icon: Inbox,
+    superOnly: false,
+  },
+  {
+    href: "/admin/sales-managers",
+    label: "salesManagers",
+    icon: Briefcase,
+    superOnly: false,
+  },
+  {
+    href: "/admin/sales-payouts",
+    label: "salesPayouts",
+    icon: Coins,
+    superOnly: true,
+  },
+  {
+    href: "/admin/leads",
+    label: "leads",
+    icon: KanbanSquare,
+    superOnly: false,
+  },
+  {
+    href: "/admin/crm-tasks",
+    label: "crmTasks",
+    icon: ListTodo,
+    superOnly: false,
+  },
+  {
+    href: "/admin/crm-settings",
+    label: "crmSettings",
+    icon: Tags,
+    superOnly: false,
+  },
+  {
+    href: "/admin/offer",
+    label: "offer",
+    icon: FileText,
+    superOnly: true,
+  },
+  {
+    href: "/admin/legal",
+    label: "legal",
+    icon: Scale,
+    superOnly: true,
   },
   {
     href: "/admin/app",
@@ -118,7 +187,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             Admin
           </span>
         </div>
-        <nav className="flex-1 space-y-1 p-2">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
           {items.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/admin"
@@ -166,7 +235,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="mx-auto max-w-[1400px] p-4 sm:ml-[236px] md:p-6">
+      <main className="p-4 sm:ml-[236px] md:p-6">
         {children}
       </main>
     </div>
