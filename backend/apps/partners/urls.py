@@ -22,6 +22,8 @@ admin_urlpatterns = [
     path("payments/stats", A.AdminPaymentStatsView.as_view()),
     path("payments/<int:payment_id>/approve", A.AdminPaymentApproveView.as_view()),
     path("payments/<int:payment_id>/refund", A.AdminPaymentRefundView.as_view()),
+    path("payments/<int:payment_id>/reject", A.AdminPaymentRejectView.as_view()),
+    path("payments/<int:payment_id>", A.AdminPaymentDeleteView.as_view()),
     # Payment providers (on/off + logo) and the Paylov admin console.
     path("payment-providers", A.AdminPaymentProvidersView.as_view()),
     path("payment-providers/<str:provider>/logo", A.AdminPaymentProviderLogoView.as_view()),

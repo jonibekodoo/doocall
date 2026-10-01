@@ -64,6 +64,9 @@ export default function AdminCompaniesPage() {
               <th className="px-3 py-2 text-left">
                 {t("companies.colAcquired")}
               </th>
+              <th className="px-3 py-2 text-right">
+                {t("companies.colIntegrations")}
+              </th>
               <th className="px-3 py-2 text-left">
                 {t("companies.colCreated")}
               </th>
@@ -73,7 +76,7 @@ export default function AdminCompaniesPage() {
             {isPending
               ? Array.from({ length: 8 }).map((_, index) => (
                   <tr key={index}>
-                    <td colSpan={8} className="px-3 py-2.5">
+                    <td colSpan={9} className="px-3 py-2.5">
                       <div className="h-3.5 animate-pulse rounded bg-surface-3" />
                     </td>
                   </tr>
@@ -153,6 +156,15 @@ export default function AdminCompaniesPage() {
                             </span>
                           )}
                         </span>
+                      )}
+                    </td>
+                    <td className="tnum px-3 py-2.5 text-right">
+                      {company.integrations_count > 0 ? (
+                        <span className="rounded bg-accent-soft px-1.5 py-0.5 text-xs font-semibold text-accent">
+                          {company.integrations_count}
+                        </span>
+                      ) : (
+                        <span className="text-fg-faint">0</span>
                       )}
                     </td>
                     <td className="tnum px-3 py-2.5 text-xs text-fg-muted">

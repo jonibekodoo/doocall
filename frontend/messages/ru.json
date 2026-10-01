@@ -529,7 +529,8 @@
       "trialExpiredAt": "триал истёк {date}",
       "colSeats": "Операторов",
       "colAcquired": "Привлечение",
-      "colCreated": "Создана"
+      "colCreated": "Создана",
+      "colIntegrations": "Интеграции"
     },
     "payments": {
       "totalRevenue": "Общий доход",
@@ -552,7 +553,14 @@
       "approvedToast": "Платёж подтверждён",
       "cashbackNote": " · кэшбэк {amount} UZS",
       "refundMarked": "Возврат отмечен",
-      "empty": "Платежей нет"
+      "empty": "Платежей нет",
+      "reject": "Отклонить",
+      "confirmReject": "Отклонить запрос на оплату {amount} UZS?",
+      "rejectedToast": "Платёж отклонён",
+      "delete": "Удалить",
+      "confirmDelete": "Удалить запись о платеже? Это действие необратимо.",
+      "deletedToast": "Платёж удалён",
+      "deleteApprovedHint": "Сначала верните подтверждённый платёж"
     },
     "integrators": {
       "title": "Интеграторы",

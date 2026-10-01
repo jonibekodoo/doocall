@@ -529,7 +529,8 @@
       "trialExpiredAt": "trial {date} da tugagan",
       "colSeats": "Operatorlar",
       "colAcquired": "Jalb qilish",
-      "colCreated": "Yaratilgan"
+      "colCreated": "Yaratilgan",
+      "colIntegrations": "Integratsiyalar"
     },
     "payments": {
       "totalRevenue": "Umumiy tushum",
@@ -552,7 +553,14 @@
       "approvedToast": "To'lov tasdiqlandi",
       "cashbackNote": " · keshbek {amount} UZS",
       "refundMarked": "Qaytarish belgilandi",
-      "empty": "To'lovlar yo'q"
+      "empty": "To'lovlar yo'q",
+      "reject": "Bekor qilish",
+      "confirmReject": "{amount} UZS to'lov so'rovi bekor qilinsinmi?",
+      "rejectedToast": "To'lov bekor qilindi",
+      "delete": "O'chirish",
+      "confirmDelete": "To'lov yozuvi o'chirilsinmi? Bu amalni qaytarib bo'lmaydi.",
+      "deletedToast": "To'lov o'chirildi",
+      "deleteApprovedHint": "Tasdiqlangan to'lovni avval qaytaring"
     },
     "integrators": {
       "title": "Integratorlar",

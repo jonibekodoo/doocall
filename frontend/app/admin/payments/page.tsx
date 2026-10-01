@@ -26,6 +26,8 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   approvePayment,
+  deletePayment,
+  rejectPayment,
   fetchAdminPayments,
   fetchPaymentStats,
   refundPayment,
@@ -238,6 +240,30 @@ export default function AdminPaymentsPage() {
         .push({ kind: "success", text: t("payments.refundMarked") });
     },
   });
+  const reject = useMutation({
+    mutationFn: rejectPayment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["a-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["a-payment-stats"] });
+      useToastStore
+        .getState()
+        .push({ kind: "success", text: t("payments.rejectedToast") });
+    },
+    onError: (e: Error) =>
+      useToastStore.getState().push({ kind: "error", text: e.message }),
+  });
+  const remove = useMutation({
+    mutationFn: deletePayment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["a-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["a-payment-stats"] });
+      useToastStore
+        .getState()
+        .push({ kind: "success", text: t("payments.deletedToast") });
+    },
+    onError: (e: Error) =>
+      useToastStore.getState().push({ kind: "error", text: e.message }),
+  });
 
   return (
     <div data-testid="admin-payments">
@@ -254,6 +280,7 @@ export default function AdminPaymentsPage() {
           <option value="manual">Manual</option>
           <option value="payme">Payme</option>
           <option value="click">Click</option>
+          <option value="paylov">Paylov</option>
         </select>
         <select
           value={status}
@@ -340,6 +367,45 @@ export default function AdminPaymentsPage() {
                         >
                           {t("payments.refund")}
                         </button>
+                      )}
+                      {p.status === "pending" && (
+                        <button
+                          type="button"
+                          data-testid={`reject-${p.id}`}
+                          onClick={async () =>
+                            (await confirmDialog(
+                              t("payments.confirmReject", {
+                                amount: formatUzs(p.amount_uzs),
+                              }),
+                              { danger: true },
+                            )) && reject.mutate(p.id)
+                          }
+                          className="ml-1.5 rounded-md border border-danger/40 px-2.5 py-1 text-xs text-danger"
+                        >
+                          {t("payments.reject")}
+                        </button>
+                      )}
+                      {p.status !== "approved" ? (
+                        <button
+                          type="button"
+                          data-testid={`delete-${p.id}`}
+                          title={t("payments.delete")}
+                          onClick={async () =>
+                            (await confirmDialog(t("payments.confirmDelete"), {
+                              danger: true,
+                            })) && remove.mutate(p.id)
+                          }
+                          className="ml-1.5 text-fg-faint hover:text-danger"
+                        >
+                          ✕
+                        </button>
+                      ) : (
+                        <span
+                          className="ml-1.5 cursor-not-allowed text-fg-faint/50"
+                          title={t("payments.deleteApprovedHint")}
+                        >
+                          ✕
+                        </span>
                       )}
                     </td>
                   </tr>

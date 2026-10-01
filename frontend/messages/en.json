@@ -529,7 +529,8 @@
       "trialExpiredAt": "trial expired {date}",
       "colSeats": "Operators",
       "colAcquired": "Acquisition",
-      "colCreated": "Created"
+      "colCreated": "Created",
+      "colIntegrations": "Integrations"
     },
     "payments": {
       "totalRevenue": "Total revenue",
@@ -552,7 +553,14 @@
       "approvedToast": "Payment approved",
       "cashbackNote": " · cashback {amount} UZS",
       "refundMarked": "Refund marked",
-      "empty": "No payments"
+      "empty": "No payments",
+      "reject": "Reject",
+      "confirmReject": "Reject the {amount} UZS payment request?",
+      "rejectedToast": "Payment rejected",
+      "delete": "Delete",
+      "confirmDelete": "Delete this payment record? This cannot be undone.",
+      "deletedToast": "Payment deleted",
+      "deleteApprovedHint": "Refund the approved payment first"
     },
     "integrators": {
       "title": "Integrators",

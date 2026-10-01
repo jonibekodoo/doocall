@@ -88,6 +88,13 @@ def _company_phone(company: Company) -> str:
     )
 
 
+def _integrations_count(company: Company) -> int:
+    """Enabled CRM integrations (amoCRM / Bitrix24 / …) connected to the company."""
+    from apps.integrations.models import CrmIntegration
+
+    return CrmIntegration.all_objects.filter(company=company, is_enabled=True).count()
+
+
 def _company_body(company: Company) -> dict[str, Any]:
     subscription = Subscription.all_objects.filter(company=company).first()
     return {
@@ -107,6 +114,7 @@ def _company_body(company: Company) -> dict[str, Any]:
         "integrator_id": company.integrator_id,
         "integrator_name": company.integrator.name if company.integrator_id else None,
         "integrator_company": company.integrator.company_name if company.integrator_id else None,
+        "integrations_count": _integrations_count(company),
         "audio_retention_days": company.audio_retention_days,
         "seats": billing.seat_count(company),
         "subscription_status": subscription.status if subscription else None,
@@ -696,6 +704,56 @@ class AdminPaymentRefundView(StaffView):
             target_id=str(payment.pk),
             changes={"amount_uzs": payment.amount_uzs},
         )
+        return Response({"success": True})
+
+
+class AdminPaymentRejectView(StaffView):
+    @extend_schema(summary="Reject a pending payment (bank/cash request or unconfirmed gateway txn)")
+    def post(self, request: Request, payment_id: int) -> Response:
+        payment = Payment.all_objects.filter(pk=payment_id).first()
+        if payment is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "payment not found", 404)
+        if payment.status != Payment.Status.PENDING:
+            raise ApiError(ErrorCode.MISSING_FIELD, "only pending payments can be rejected", 400)
+        payment.status = Payment.Status.REJECTED
+        payment.save(update_fields=["status"])
+        AuditLog.objects.create(
+            company=payment.company,
+            actor=cast(User, request.user),
+            action="admin.payment_rejected",
+            target_model="billing.Payment",
+            target_id=str(payment.pk),
+            changes={"amount_uzs": payment.amount_uzs, "provider": payment.provider},
+        )
+        return Response({"success": True, "status": payment.status})
+
+
+class AdminPaymentDeleteView(StaffView):
+    @extend_schema(summary="Delete a payment record (approved ones must be refunded first)")
+    def delete(self, request: Request, payment_id: int) -> Response:
+        payment = Payment.all_objects.filter(pk=payment_id).first()
+        if payment is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "payment not found", 404)
+        # An approved payment has credited the balance (+ cashback/commission):
+        # it must be refunded first so money never silently disappears.
+        if payment.status == Payment.Status.APPROVED:
+            raise ApiError(
+                ErrorCode.MISSING_FIELD, "refund the approved payment before deleting it", 400
+            )
+        AuditLog.objects.create(
+            company=payment.company,
+            actor=cast(User, request.user),
+            action="admin.payment_deleted",
+            target_model="billing.Payment",
+            target_id=str(payment.pk),
+            changes={
+                "amount_uzs": payment.amount_uzs,
+                "provider": payment.provider,
+                "status": payment.status,
+                "external_id": payment.external_id,
+            },
+        )
+        payment.delete()
         return Response({"success": True})
 
 

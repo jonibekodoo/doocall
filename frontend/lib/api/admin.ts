@@ -48,6 +48,7 @@ export interface AdminCompanyRow {
   integrator_id: number | null;
   integrator_name: string | null;
   integrator_company: string | null;
+  integrations_count: number;
   audio_retention_days: number | null;
   seats: number;
   subscription_status: string | null;
@@ -259,6 +260,12 @@ export const approvePayment = (id: number) =>
 
 export const refundPayment = (id: number) =>
   post<ApiEnvelope>(abs(`/payments/${id}/refund`));
+
+export const rejectPayment = (id: number) =>
+  post<{ success: boolean; status: string }>(abs(`/payments/${id}/reject`));
+
+export const deletePayment = (id: number) =>
+  del<ApiEnvelope>(abs(`/payments/${id}`));
 
 // ── Payment providers (on/off + logo) ────────────────────────────────────────
 export interface PaymentProviderRow {
