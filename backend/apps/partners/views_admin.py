@@ -95,6 +95,58 @@ def _integrations_count(company: Company) -> int:
     return CrmIntegration.all_objects.filter(company=company, is_enabled=True).count()
 
 
+def _integrations_detail(company: Company) -> list[dict[str, Any]]:
+    """Every connector configured for the company, for the admin detail page.
+
+    Ready-made CRM connectors (amoCRM / Bitrix24 / Odoo) come from
+    ``CrmIntegration``; the company-level "custom" webhook and public API key
+    are reported too so staff see the full picture. Secrets never leave here.
+    """
+    from apps.integrations.models import CrmIntegration
+
+    rows: list[dict[str, Any]] = [
+        {
+            "kind": "crm",
+            "provider": i.provider,
+            "label": i.get_provider_display(),
+            "is_enabled": i.is_enabled,
+            "last_status": i.last_status,
+            "last_error": i.last_error,
+            "last_delivery_at": i.last_delivery_at.isoformat() if i.last_delivery_at else None,
+            "updated_at": i.updated_at.isoformat(),
+        }
+        for i in CrmIntegration.all_objects.filter(company=company).order_by("provider")
+    ]
+    if company.webhook_url:
+        rows.append(
+            {
+                "kind": "webhook",
+                "provider": "webhook",
+                "label": "Webhook",
+                "is_enabled": True,
+                "last_status": "",
+                "last_error": "",
+                "last_delivery_at": None,
+                "updated_at": None,
+                "target": company.webhook_url,
+            }
+        )
+    if company.api_key:
+        rows.append(
+            {
+                "kind": "api",
+                "provider": "api",
+                "label": "Public API",
+                "is_enabled": True,
+                "last_status": "",
+                "last_error": "",
+                "last_delivery_at": None,
+                "updated_at": None,
+            }
+        )
+    return rows
+
+
 def _company_body(company: Company) -> dict[str, Any]:
     subscription = Subscription.all_objects.filter(company=company).first()
     return {
@@ -380,6 +432,7 @@ class AdminCompanyDetailView(StaffView):
             }
             for u in User.objects.filter(company=company).order_by("-is_company_admin", "id")
         ]
+        body["integrations"] = _integrations_detail(company)
         from apps.calls.stats import company_call_stats
 
         body["stats"] = company_call_stats(company, include_operators=True)

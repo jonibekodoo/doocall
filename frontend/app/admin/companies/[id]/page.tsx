@@ -3,7 +3,7 @@
 /** Company detail: subscription, seats, payments, actions, edit, impersonation. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Eye, KeyRound, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, KeyRound, Pencil, Plug, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -534,6 +534,15 @@ export default function AdminCompanyDetailPage() {
                   : company.acquired_via,
               ],
               [
+                "integrationsLabel",
+                company.integrations.filter((i) => i.is_enabled).length
+                  ? company.integrations
+                      .filter((i) => i.is_enabled)
+                      .map((i) => i.label)
+                      .join(", ")
+                  : t("noIntegrations"),
+              ],
+              [
                 "trialEnds",
                 company.trial_ends_at ? company.trial_ends_at.slice(0, 10) : "—",
               ],
@@ -553,6 +562,75 @@ export default function AdminCompanyDetailPage() {
             </div>
           ))}
         </dl>
+      </section>
+
+      {/* Connected integrations — CRM connectors + custom webhook / API key */}
+      <section className="mt-6 rounded-lg border border-border bg-surface">
+        <p className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm font-semibold">
+          <Plug className="size-4 text-accent" />
+          {t("integrationsTitle")}
+          <span className="tnum ml-auto rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-fg-muted">
+            {company.integrations.filter((i) => i.is_enabled).length}
+          </span>
+        </p>
+        {company.integrations.length === 0 ? (
+          <p className="px-4 py-6 text-center text-xs text-fg-faint">
+            {t("noIntegrations")}
+          </p>
+        ) : (
+          <ul className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+            {company.integrations.map((integration) => (
+              <li
+                key={`${integration.kind}-${integration.provider}`}
+                data-testid={`integration-${integration.provider}`}
+                className={
+                  integration.is_enabled
+                    ? "rounded-lg border border-accent/30 bg-accent-soft/40 p-3"
+                    : "rounded-lg border border-border bg-surface-2/50 p-3 opacity-70"
+                }
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{integration.label}</span>
+                  <span
+                    className={
+                      integration.is_enabled
+                        ? "rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-fg"
+                        : "rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium"
+                    }
+                  >
+                    {integration.is_enabled ? t("connected") : t("disabled")}
+                  </span>
+                </div>
+                <p className="mt-1.5 space-x-1 text-xs text-fg-muted">
+                  {integration.last_status === "ok" && (
+                    <span className="font-medium text-accent">{t("lastOk")}</span>
+                  )}
+                  {integration.last_status === "error" && (
+                    <span
+                      className="font-medium text-danger"
+                      title={integration.last_error}
+                    >
+                      {t("lastError")}
+                    </span>
+                  )}
+                  {integration.last_delivery_at && (
+                    <span className="tnum">
+                      · {integration.last_delivery_at.slice(0, 16).replace("T", " ")}
+                    </span>
+                  )}
+                  {integration.target && (
+                    <span className="block truncate" title={integration.target}>
+                      {integration.target}
+                    </span>
+                  )}
+                  {!integration.last_status &&
+                    !integration.last_delivery_at &&
+                    !integration.target && <span>—</span>}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Activity infographic */}

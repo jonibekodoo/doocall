@@ -164,9 +164,22 @@ export const fetchAdminCompany = (id: number) =>
         is_active: boolean;
         last_login: string | null;
       }>;
+      integrations: AdminCompanyIntegration[];
       stats: CompanyStatsData;
     };
   }>(`/companies/${id}`);
+
+export interface AdminCompanyIntegration {
+  kind: "crm" | "webhook" | "api";
+  provider: string;
+  label: string;
+  is_enabled: boolean;
+  last_status: string;
+  last_error: string;
+  last_delivery_at: string | null;
+  updated_at: string | null;
+  target?: string;
+}
 
 export const resetCompanyUserPassword = (
   companyId: number,

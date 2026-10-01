@@ -690,7 +690,14 @@
       "resetPassword": "Сменить пароль",
       "newPassword": "Новый пароль (мин. 8 символов)",
       "generatePassword": "Сгенерировать",
-      "passwordSaved": "Пароль обновлён"
+      "passwordSaved": "Пароль обновлён",
+      "integrationsLabel": "Интеграции",
+      "integrationsTitle": "Подключённые интеграции",
+      "noIntegrations": "Интеграции не подключены",
+      "connected": "подключено",
+      "disabled": "выкл.",
+      "lastOk": "последняя отправка: OK",
+      "lastError": "последняя отправка: ошибка"
     },
     "integratorDetail": {
       "back": "Интеграторы",

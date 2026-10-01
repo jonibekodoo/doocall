@@ -690,7 +690,14 @@
       "resetPassword": "Parolni almashtirish",
       "newPassword": "Yangi parol (kamida 8 belgi)",
       "generatePassword": "Yaratish",
-      "passwordSaved": "Parol yangilandi"
+      "passwordSaved": "Parol yangilandi",
+      "integrationsLabel": "Integratsiyalar",
+      "integrationsTitle": "Ulangan integratsiyalar",
+      "noIntegrations": "Integratsiya ulanmagan",
+      "connected": "ulangan",
+      "disabled": "o'chiq",
+      "lastOk": "oxirgi yuborish: OK",
+      "lastError": "oxirgi yuborish: xato"
     },
     "integratorDetail": {
       "back": "Integratorlar",

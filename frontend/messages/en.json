@@ -690,7 +690,14 @@
       "resetPassword": "Change password",
       "newPassword": "New password (min 8 characters)",
       "generatePassword": "Generate",
-      "passwordSaved": "Password updated"
+      "passwordSaved": "Password updated",
+      "integrationsLabel": "Integrations",
+      "integrationsTitle": "Connected integrations",
+      "noIntegrations": "No integrations connected",
+      "connected": "connected",
+      "disabled": "disabled",
+      "lastOk": "last delivery: OK",
+      "lastError": "last delivery: error"
     },
     "integratorDetail": {
       "back": "Integrators",
