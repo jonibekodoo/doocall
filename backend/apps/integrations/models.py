@@ -41,6 +41,35 @@ class CrmIntegration(TenantModel):
         return f"{self.provider} ({self.company})"
 
 
+class CrmDelivery(TenantModel):
+    """One attempt to push one call into one CRM — the per-call audit trail
+    behind "which calls reached amoCRM?". Written by the dispatcher (and by
+    manual retries); never updated, a retry is a new row."""
+
+    class Status(models.TextChoices):
+        OK = "ok", "ok"
+        ERROR = "error", "error"
+
+    call = models.ForeignKey(
+        "calls.CallRecord", on_delete=models.CASCADE, related_name="crm_deliveries"
+    )
+    provider = models.CharField(max_length=20, choices=CrmIntegration.Provider.choices)
+    status = models.CharField(max_length=10, choices=Status.choices)
+    error = models.CharField(max_length=500, blank=True, default="")
+    is_retry = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["company", "provider", "-created_at"], name="crm_deliv_prov_idx"),
+            models.Index(fields=["call", "provider"], name="crm_deliv_call_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider} call={self.call_id} {self.status}"
+
+
 class CrmCatalogEntry(models.Model):
     """Platform-wide CRM tile shown in every cabinet's integration grid.
 

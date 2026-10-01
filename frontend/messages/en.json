@@ -68,7 +68,9 @@
     "answered": "Answered",
     "missed": "Missed",
     "inbound": "Inbound",
-    "outbound": "Outbound"
+    "outbound": "Outbound",
+    "crmSent": "Sent to CRM",
+    "crmFailed": "Not sent to CRM"
   },
   "player": {
     "play": "Play",
@@ -282,7 +284,23 @@
     },
     "disconnect": "Disconnect",
     "disconnectConfirm": "Disconnect the {title} integration? Calls will no longer be sent to this CRM and the stored credentials will be removed.",
-    "disconnected": "Integration disconnected"
+    "disconnected": "Integration disconnected",
+    "log": {
+      "title": "CRM delivery log",
+      "summary": "last 30 days: {ok} ✓ · {error} ✗",
+      "all": "All",
+      "onlyErrors": "Errors only",
+      "sentAt": "Sent at",
+      "call": "Call",
+      "result": "Result",
+      "ok": "sent",
+      "error": "error",
+      "retry": "Resend",
+      "retryTag": "retry",
+      "retryOk": "Resent",
+      "retryFail": "Resend failed",
+      "empty": "No deliveries yet"
+    }
   },
   "myCalls": {
     "title": "My calls"
@@ -535,7 +553,12 @@
       "colSeats": "Operators",
       "colAcquired": "Acquisition",
       "colCreated": "Created",
-      "colIntegrations": "Integrations"
+      "colIntegrations": "Integrations",
+      "stat_total": "Total",
+      "stat_active": "Active",
+      "stat_trial": "On trial",
+      "stat_expired": "Trial expired",
+      "stat_suspended": "Suspended"
     },
     "payments": {
       "totalRevenue": "Total revenue",
@@ -700,7 +723,8 @@
       "connected": "connected",
       "disabled": "disabled",
       "lastOk": "last delivery: OK",
-      "lastError": "last delivery: error"
+      "lastError": "last delivery: error",
+      "deliveries30d": "30 days"
     },
     "integratorDetail": {
       "back": "Integrators",

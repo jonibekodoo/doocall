@@ -30,6 +30,12 @@ import type { CallRow } from "@/lib/api/types";
 import type { CallFilters } from "@/lib/filters";
 import { formatDuration, formatPhone } from "@/lib/format";
 
+const CRM_LABEL: Record<string, string> = {
+  amocrm: "amoCRM",
+  bitrix24: "Bitrix24",
+  odoo: "Odoo",
+};
+
 function daysAgoIso(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() - days);
@@ -240,6 +246,22 @@ function CallsInner() {
         <div className="flex items-center gap-1.5">
           {row.status === "answered" && <CallAudioButton callId={row.id} />}
           {row.has_location && <CallMapButton callId={row.id} />}
+          {row.crm.map((mark) => (
+            <span
+              key={mark.provider}
+              data-testid={`crm-mark-${mark.provider}`}
+              title={`${CRM_LABEL[mark.provider] ?? mark.provider} · ${
+                mark.status === "ok" ? t("crmSent") : `${t("crmFailed")}: ${mark.error}`
+              } · ${mark.at.slice(0, 16).replace("T", " ")}`}
+              className={
+                mark.status === "ok"
+                  ? "rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent"
+                  : "rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold text-danger"
+              }
+            >
+              {CRM_LABEL[mark.provider] ?? mark.provider} {mark.status === "ok" ? "✓" : "✗"}
+            </span>
+          ))}
         </div>
       ),
     },

@@ -14,7 +14,9 @@ from apps.core.models import AuditLog
 from apps.web.permissions import AdminCabinetView, CabinetView
 
 from . import providers
-from .models import CrmCatalogEntry, CrmIntegration
+from .models import CrmCatalogEntry, CrmDelivery, CrmIntegration
+
+DELIVERIES_PAGE = 50
 
 PROVIDERS = tuple(CrmIntegration.Provider.values)
 
@@ -156,6 +158,86 @@ class CrmCatalogListView(CabinetView):
             for e in CrmCatalogEntry.objects.filter(is_active=True)
         ]
         return Response({"success": True, "entries": rows})
+
+
+def _delivery_row(delivery: CrmDelivery) -> dict[str, Any]:
+    call = delivery.call
+    return {
+        "id": delivery.pk,
+        "call_id": call.pk,
+        "counterparty_number": call.counterparty_number,
+        "counterparty_name": call.resolved_name or call.counterparty_name,
+        "direction": call.call_type,
+        "call_status": call.call_status,
+        "start_time": call.start_time.isoformat(),
+        "status": delivery.status,
+        "error": delivery.error,
+        "is_retry": delivery.is_retry,
+        "created_at": delivery.created_at.isoformat(),
+    }
+
+
+class IntegrationDeliveriesView(AdminCabinetView):
+    @extend_schema(summary="Per-call delivery log for one CRM (?status=error&page=N)")
+    def get(self, request: Request, provider: str) -> Response:
+        if provider not in PROVIDERS:
+            raise ApiError(ErrorCode.MISSING_FIELD, f"unknown provider {provider}", 404)
+        qs = CrmDelivery.objects.filter(provider=provider).select_related("call")
+        status = request.query_params.get("status", "")
+        if status in CrmDelivery.Status.values:
+            qs = qs.filter(status=status)
+        try:
+            page = max(1, int(request.query_params.get("page", "1")))
+        except ValueError:
+            page = 1
+        total = qs.count()
+        offset = (page - 1) * DELIVERIES_PAGE
+        rows = [_delivery_row(d) for d in qs[offset : offset + DELIVERIES_PAGE]]
+
+        from django.utils import timezone
+
+        since = timezone.now() - timezone.timedelta(days=30)
+        recent = CrmDelivery.objects.filter(provider=provider, created_at__gte=since)
+        return Response(
+            {
+                "success": True,
+                "count": total,
+                "page": page,
+                "pages": max(1, -(-total // DELIVERIES_PAGE)),
+                "summary": {
+                    "ok_30d": recent.filter(status=CrmDelivery.Status.OK).count(),
+                    "error_30d": recent.filter(status=CrmDelivery.Status.ERROR).count(),
+                },
+                "deliveries": rows,
+            }
+        )
+
+
+class IntegrationRetryView(AdminCabinetView):
+    @extend_schema(summary="Re-send one call to this CRM now (sync; writes a retry row)")
+    def post(self, request: Request, provider: str, call_id: int) -> Response:
+        from apps.calls.models import CallRecord
+
+        from .tasks import deliver, public_record_url
+
+        if provider not in PROVIDERS:
+            raise ApiError(ErrorCode.MISSING_FIELD, f"unknown provider {provider}", 404)
+        integration = CrmIntegration.objects.filter(provider=provider).first()
+        if integration is None or not integration.is_enabled or not integration.config:
+            raise ApiError(ErrorCode.MISSING_FIELD, "integration not connected", 400)
+        record = CallRecord.objects.filter(pk=call_id).first()
+        if record is None:
+            raise ApiError(ErrorCode.MISSING_FIELD, "call not found", 404)
+        delivery = deliver(integration, record, public_record_url(record), is_retry=True)
+        # Always 200: the outcome (incl. the CRM's error text) is in the body,
+        # so the UI can show it instead of a generic transport error.
+        return Response(
+            {
+                "success": delivery.status == CrmDelivery.Status.OK,
+                "error": delivery.error,
+                "delivery": _delivery_row(delivery),
+            }
+        )
 
 
 class IntegrationTestView(AdminCabinetView):

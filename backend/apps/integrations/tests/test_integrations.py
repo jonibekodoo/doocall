@@ -11,7 +11,7 @@ from apps.accounts.models import User
 from apps.calls.models import CallRecord
 from apps.companies.models import Company
 from apps.integrations import providers, tasks
-from apps.integrations.models import CrmIntegration
+from apps.integrations.models import CrmDelivery, CrmIntegration
 
 pytestmark = pytest.mark.django_db
 
@@ -136,6 +136,59 @@ class TestDispatch:
         assert sent == ["amocrm"]
         assert ok.last_status == "ok" and ok.last_error == ""
         assert bad.last_status == "error" and "boom" in bad.last_error
+        # Per-call audit trail: one row per CRM, with the outcome.
+        rows = {
+            d.provider: d for d in CrmDelivery.all_objects.filter(company=company, call=call)
+        }
+        assert set(rows) == {"amocrm", "odoo"}
+        assert rows["amocrm"].status == "ok" and rows["odoo"].error == "boom"
+
+    def test_delivery_log_retry_and_call_marks(
+        self,
+        client: APIClient,
+        company: Company,
+        call: CallRecord,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        CrmIntegration.all_objects.create(
+            company=company,
+            provider="amocrm",
+            is_enabled=True,
+            config={"base_url": "https://x.amocrm.ru", "access_token": "t" * 20},
+        )
+        attempts: list[int] = []
+
+        def flaky_send(provider: str, config: dict[str, Any], record: Any, url: Any) -> None:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise providers.ProviderError("HTTP 401")
+
+        monkeypatch.setattr(providers, "send_call", flaky_send)
+        tasks.dispatch_call(call.pk)
+
+        log = client.get(f"{BASE}/amocrm/deliveries?status=error").json()
+        assert log["count"] == 1 and log["summary"] == {"ok_30d": 0, "error_30d": 1}
+        assert log["deliveries"][0]["call_id"] == call.pk
+        assert log["deliveries"][0]["error"] == "HTTP 401"
+
+        # Calls list shows the latest outcome per CRM.
+        marks = client.get("/api/web/v1/calls").json()["results"][0]["crm"]
+        assert marks == [
+            {"provider": "amocrm", "status": "error", "error": "HTTP 401", "at": marks[0]["at"]}
+        ]
+
+        # Manual retry → new row (not an update), success this time.
+        retry = client.post(f"{BASE}/amocrm/deliveries/{call.pk}/retry")
+        assert retry.status_code == 200 and retry.json()["delivery"]["is_retry"] is True
+        assert CrmDelivery.all_objects.filter(company=company, call=call).count() == 2
+        marks = client.get("/api/web/v1/calls").json()["results"][0]["crm"]
+        assert marks[0]["status"] == "ok"
+        log = client.get(f"{BASE}/amocrm/deliveries").json()
+        assert log["summary"] == {"ok_30d": 1, "error_30d": 1}
+
+        # Retry refuses when the integration is disconnected.
+        client.delete(f"{BASE}/amocrm")
+        assert client.post(f"{BASE}/amocrm/deliveries/{call.pk}/retry").status_code == 400
 
     def test_public_record_url_is_permanent_and_signed(
         self, call: CallRecord, monkeypatch: pytest.MonkeyPatch, client: APIClient

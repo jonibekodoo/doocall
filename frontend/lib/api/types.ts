@@ -57,6 +57,15 @@ export interface CallRow {
   duration: number;
   start_time: string;
   has_location: boolean;
+  /** Latest delivery outcome per connected CRM (empty when none configured). */
+  crm: CrmMark[];
+}
+
+export interface CrmMark {
+  provider: "amocrm" | "bitrix24" | "odoo";
+  status: "ok" | "error";
+  error: string;
+  at: string;
 }
 
 export interface CallsListResponse extends ApiEnvelope {

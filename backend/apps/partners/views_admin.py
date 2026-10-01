@@ -102,8 +102,17 @@ def _integrations_detail(company: Company) -> list[dict[str, Any]]:
     ``CrmIntegration``; the company-level "custom" webhook and public API key
     are reported too so staff see the full picture. Secrets never leave here.
     """
-    from apps.integrations.models import CrmIntegration
+    from django.db.models import Count, Q
 
+    from apps.integrations.models import CrmDelivery, CrmIntegration
+
+    since = timezone.now() - timedelta(days=30)
+    stats = {
+        row["provider"]: row
+        for row in CrmDelivery.all_objects.filter(company=company, created_at__gte=since)
+        .values("provider")
+        .annotate(ok=Count("id", filter=Q(status="ok")), error=Count("id", filter=Q(status="error")))
+    }
     rows: list[dict[str, Any]] = [
         {
             "kind": "crm",
@@ -114,6 +123,8 @@ def _integrations_detail(company: Company) -> list[dict[str, Any]]:
             "last_error": i.last_error,
             "last_delivery_at": i.last_delivery_at.isoformat() if i.last_delivery_at else None,
             "updated_at": i.updated_at.isoformat(),
+            "ok_30d": stats.get(i.provider, {}).get("ok", 0),
+            "error_30d": stats.get(i.provider, {}).get("error", 0),
         }
         for i in CrmIntegration.all_objects.filter(company=company).order_by("provider")
     ]
@@ -389,15 +400,31 @@ class AdminDashboardSeriesView(StaffView):
 class AdminCompaniesView(StaffView):
     @extend_schema(summary="Companies list (status/q filters; status=expired → lapsed trials)")
     def get(self, request: Request) -> Response:
+        now = timezone.now()
+        expired_q = Q(status=Company.Status.TRIAL, trial_ends_at__lt=now)
         qs = Company.objects.select_related("integrator").order_by("-created_at")
         if status_f := request.query_params.get("status"):
             if status_f == "expired":
-                qs = qs.filter(status=Company.Status.TRIAL, trial_ends_at__lt=timezone.now())
+                qs = qs.filter(expired_q)
+            elif status_f == Company.Status.TRIAL:
+                qs = qs.filter(status=Company.Status.TRIAL).exclude(expired_q)  # live trials only
             else:
                 qs = qs.filter(status=status_f)
         if q := request.query_params.get("q", "").strip():
             qs = qs.filter(Q(name__icontains=q) | Q(slug__icontains=q))
-        return Response({"success": True, "companies": [_company_body(c) for c in qs[:200]]})
+        # Platform-wide headline counts (independent of the filters) — the
+        # cards above the table; active + trial + expired + suspended = total.
+        everyone = Company.objects.all()
+        stats = {
+            "total": everyone.count(),
+            "active": everyone.filter(status=Company.Status.ACTIVE).count(),
+            "trial": everyone.filter(status=Company.Status.TRIAL).exclude(expired_q).count(),
+            "expired": everyone.filter(expired_q).count(),
+            "suspended": everyone.filter(status=Company.Status.SUSPENDED).count(),
+        }
+        return Response(
+            {"success": True, "stats": stats, "companies": [_company_body(c) for c in qs[:200]]}
+        )
 
 
 class AdminCompanyDetailView(StaffView):

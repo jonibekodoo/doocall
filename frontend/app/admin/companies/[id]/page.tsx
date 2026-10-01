@@ -618,6 +618,13 @@ export default function AdminCompanyDetailPage() {
                       · {integration.last_delivery_at.slice(0, 16).replace("T", " ")}
                     </span>
                   )}
+                  {integration.kind === "crm" && (
+                    <span className="tnum block pt-1">
+                      {t("deliveries30d")}:{" "}
+                      <b className="text-accent">{integration.ok_30d ?? 0} ✓</b>{" "}
+                      <b className="text-danger">{integration.error_30d ?? 0} ✗</b>
+                    </span>
+                  )}
                   {integration.target && (
                     <span className="block truncate" title={integration.target}>
                       {integration.target}

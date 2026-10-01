@@ -1,11 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import {
+  Building2,
+  CheckCircle2,
+  Hourglass,
+  PauseCircle,
+  TimerOff,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { fetchAdminCompanies } from "@/lib/api/admin";
+import { type AdminCompanyStats, fetchAdminCompanies } from "@/lib/api/admin";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONES: Record<string, string> = {
@@ -13,6 +20,21 @@ const STATUS_TONES: Record<string, string> = {
   trial: "bg-warning/15 text-warning",
   suspended: "bg-danger/10 text-danger",
 };
+
+/** Headline cards: one per status; clicking one filters the table below
+ * (click again — or "all" — to clear). */
+const STAT_CARDS: Array<{
+  key: keyof AdminCompanyStats;
+  filter: string;
+  icon: typeof Building2;
+  tone: string;
+}> = [
+  { key: "total", filter: "", icon: Building2, tone: "text-fg" },
+  { key: "active", filter: "active", icon: CheckCircle2, tone: "text-accent" },
+  { key: "trial", filter: "trial", icon: Hourglass, tone: "text-warning" },
+  { key: "expired", filter: "expired", icon: TimerOff, tone: "text-danger" },
+  { key: "suspended", filter: "suspended", icon: PauseCircle, tone: "text-danger" },
+];
 
 export default function AdminCompaniesPage() {
   const t = useTranslations("admin");
@@ -23,10 +45,43 @@ export default function AdminCompaniesPage() {
     queryKey: ["a-companies", q, status],
     queryFn: () => fetchAdminCompanies(params),
   });
+  const stats = data?.stats;
 
   return (
     <div data-testid="admin-companies">
       <h1 className="mb-4 text-xl font-semibold">{t("companies.title")}</h1>
+
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {STAT_CARDS.map(({ key, filter, icon: Icon, tone }) => {
+          const selected = status === filter;
+          return (
+            <button
+              key={key}
+              type="button"
+              data-testid={`companies-stat-${key}`}
+              aria-pressed={selected}
+              onClick={() => setStatus(selected && filter ? "" : filter)}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border bg-surface px-3.5 py-3 text-left transition hover:bg-surface-2",
+                selected
+                  ? "border-accent ring-2 ring-accent/30"
+                  : "border-border",
+              )}
+            >
+              <Icon className={cn("size-5 shrink-0", tone)} />
+              <span className="min-w-0">
+                <span className="block truncate text-[11px] font-medium uppercase tracking-wide text-fg-muted">
+                  {t(`companies.stat_${key}`)}
+                </span>
+                <span className={cn("tnum block text-xl font-semibold", tone)}>
+                  {stats ? stats[key] : "—"}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mb-3 flex gap-2">
         <input
           type="search"

@@ -438,6 +438,40 @@ export const disconnectIntegration = (provider: string) =>
     `/settings/integrations/${provider}`,
   );
 
+export interface CrmDeliveryRow {
+  id: number;
+  call_id: number;
+  counterparty_number: string;
+  counterparty_name: string | null;
+  direction: string;
+  call_status: string;
+  start_time: string;
+  status: "ok" | "error";
+  error: string;
+  is_retry: boolean;
+  created_at: string;
+}
+
+export const fetchIntegrationDeliveries = (
+  provider: string,
+  params: { status?: "" | "ok" | "error"; page?: number } = {},
+) =>
+  get<{
+    success: boolean;
+    count: number;
+    page: number;
+    pages: number;
+    summary: { ok_30d: number; error_30d: number };
+    deliveries: CrmDeliveryRow[];
+  }>(
+    `/settings/integrations/${provider}/deliveries?status=${params.status ?? ""}&page=${params.page ?? 1}`,
+  );
+
+export const retryIntegrationDelivery = (provider: string, callId: number) =>
+  post<{ success: boolean; error: string; delivery: CrmDeliveryRow }>(
+    `/settings/integrations/${provider}/deliveries/${callId}/retry`,
+  );
+
 export const testIntegration = (provider: string) =>
   post<{ success: boolean; detail?: string; error?: string }>(
     `/settings/integrations/${provider}/test`,

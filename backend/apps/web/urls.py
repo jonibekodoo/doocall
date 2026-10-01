@@ -101,6 +101,16 @@ urlpatterns = [
         integration_views.IntegrationTestView.as_view(),
         name="integration-test",
     ),
+    path(
+        "settings/integrations/<str:provider>/deliveries",
+        integration_views.IntegrationDeliveriesView.as_view(),
+        name="integration-deliveries",
+    ),
+    path(
+        "settings/integrations/<str:provider>/deliveries/<int:call_id>/retry",
+        integration_views.IntegrationRetryView.as_view(),
+        name="integration-retry",
+    ),
     path("auth/register", views.RegisterView.as_view(), name="register"),
     path("auth/login", views.LoginView.as_view(), name="login"),
     path("auth/refresh", views.RefreshView.as_view(), name="refresh"),

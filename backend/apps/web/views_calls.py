@@ -91,7 +91,10 @@ class CallsListView(CabinetView):
         total = qs.count()
         pages = max(1, -(-total // PAGE_SIZE))
         offset = (page - 1) * PAGE_SIZE
-        rows = [call_row(r) for r in qs[offset : offset + PAGE_SIZE]]
+        rows = [
+            call_row(r)
+            for r in qs.prefetch_related("crm_deliveries")[offset : offset + PAGE_SIZE]
+        ]
 
         return Response(
             {

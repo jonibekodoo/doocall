@@ -68,7 +68,9 @@
     "answered": "Javob berilgan",
     "missed": "O'tkazib yuborilgan",
     "inbound": "Kiruvchi",
-    "outbound": "Chiquvchi"
+    "outbound": "Chiquvchi",
+    "crmSent": "CRM'ga yuborildi",
+    "crmFailed": "CRM'ga yuborilmadi"
   },
   "player": {
     "play": "Tinglash",
@@ -282,7 +284,23 @@
     },
     "disconnect": "Uzish",
     "disconnectConfirm": "{title} integratsiyasi uzilsinmi? Qo'ng'iroqlar bu CRM'ga boshqa yuborilmaydi va saqlangan kirish ma'lumotlari o'chiriladi.",
-    "disconnected": "Integratsiya uzildi"
+    "disconnected": "Integratsiya uzildi",
+    "log": {
+      "title": "CRM'ga yuborishlar jurnali",
+      "summary": "oxirgi 30 kun: {ok} ✓ · {error} ✗",
+      "all": "Barchasi",
+      "onlyErrors": "Faqat xatolar",
+      "sentAt": "Yuborilgan",
+      "call": "Qo'ng'iroq",
+      "result": "Natija",
+      "ok": "yuborildi",
+      "error": "xato",
+      "retry": "Qayta yuborish",
+      "retryTag": "qayta",
+      "retryOk": "Qayta yuborildi",
+      "retryFail": "Qayta yuborib bo'lmadi",
+      "empty": "Hali yuborishlar yo'q"
+    }
   },
   "myCalls": {
     "title": "Mening qo'ng'iroqlarim"
@@ -535,7 +553,12 @@
       "colSeats": "Operatorlar",
       "colAcquired": "Jalb qilish",
       "colCreated": "Yaratilgan",
-      "colIntegrations": "Integratsiyalar"
+      "colIntegrations": "Integratsiyalar",
+      "stat_total": "Jami",
+      "stat_active": "Faol",
+      "stat_trial": "Sinovda",
+      "stat_expired": "Sinov tugagan",
+      "stat_suspended": "To'xtatilgan"
     },
     "payments": {
       "totalRevenue": "Umumiy tushum",
@@ -700,7 +723,8 @@
       "connected": "ulangan",
       "disabled": "o'chiq",
       "lastOk": "oxirgi yuborish: OK",
-      "lastError": "oxirgi yuborish: xato"
+      "lastError": "oxirgi yuborish: xato",
+      "deliveries30d": "30 kun"
     },
     "integratorDetail": {
       "back": "Integratorlar",

@@ -23,8 +23,24 @@ def _int_or_none(value: str | None) -> int | None:
         return None
 
 
+def crm_marks(record: CallRecord) -> list[dict[str, Any]]:
+    """Latest delivery outcome per CRM for this call (uses the prefetch when
+    the list view provides one; model ordering is newest-first)."""
+    marks: dict[str, dict[str, Any]] = {}
+    for delivery in record.crm_deliveries.all():
+        if delivery.provider not in marks:
+            marks[delivery.provider] = {
+                "provider": delivery.provider,
+                "status": delivery.status,
+                "error": delivery.error,
+                "at": delivery.created_at.isoformat(),
+            }
+    return list(marks.values())
+
+
 def call_row(record: CallRecord) -> dict[str, Any]:
     return {
+        "crm": crm_marks(record),
         "id": record.pk,
         "call_id": record.call_id,
         "direction": record.call_type,

@@ -68,7 +68,9 @@
     "answered": "Отвечен",
     "missed": "Пропущен",
     "inbound": "Входящий",
-    "outbound": "Исходящий"
+    "outbound": "Исходящий",
+    "crmSent": "Отправлено в CRM",
+    "crmFailed": "Не отправлено в CRM"
   },
   "player": {
     "play": "Слушать",
@@ -282,7 +284,23 @@
     },
     "disconnect": "Отключить",
     "disconnectConfirm": "Отключить интеграцию {title}? Звонки больше не будут отправляться в эту CRM, сохранённые данные доступа будут удалены.",
-    "disconnected": "Интеграция отключена"
+    "disconnected": "Интеграция отключена",
+    "log": {
+      "title": "Журнал отправок в CRM",
+      "summary": "за 30 дней: {ok} ✓ · {error} ✗",
+      "all": "Все",
+      "onlyErrors": "Только ошибки",
+      "sentAt": "Отправлено",
+      "call": "Звонок",
+      "result": "Результат",
+      "ok": "отправлено",
+      "error": "ошибка",
+      "retry": "Отправить снова",
+      "retryTag": "повтор",
+      "retryOk": "Отправлено повторно",
+      "retryFail": "Не удалось отправить",
+      "empty": "Отправок пока нет"
+    }
   },
   "myCalls": {
     "title": "Мои звонки"
@@ -535,7 +553,12 @@
       "colSeats": "Операторов",
       "colAcquired": "Привлечение",
       "colCreated": "Создана",
-      "colIntegrations": "Интеграции"
+      "colIntegrations": "Интеграции",
+      "stat_total": "Всего",
+      "stat_active": "Активные",
+      "stat_trial": "Пробный",
+      "stat_expired": "Пробный истёк",
+      "stat_suspended": "Приостановлены"
     },
     "payments": {
       "totalRevenue": "Общий доход",
@@ -700,7 +723,8 @@
       "connected": "подключено",
       "disabled": "выкл.",
       "lastOk": "последняя отправка: OK",
-      "lastError": "последняя отправка: ошибка"
+      "lastError": "последняя отправка: ошибка",
+      "deliveries30d": "30 дней"
     },
     "integratorDetail": {
       "back": "Интеграторы",

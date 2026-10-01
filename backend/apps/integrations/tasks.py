@@ -13,9 +13,48 @@ from django.utils import timezone
 from apps.calls.models import CallRecord
 
 from . import providers
-from .models import CrmIntegration
+from .models import CrmDelivery, CrmIntegration
 
 logger = logging.getLogger(__name__)
+
+
+def deliver(
+    integration: CrmIntegration,
+    record: CallRecord,
+    record_url: str | None,
+    *,
+    is_retry: bool = False,
+) -> CrmDelivery:
+    """Push one call into one CRM and write the per-call audit row.
+
+    The integration's ``last_*`` fields keep the quick "is it healthy?"
+    summary; ``CrmDelivery`` is the full history. Exceptions are swallowed
+    into the row — callers never see them, so one failing CRM can't stop
+    delivery to the others."""
+    try:
+        providers.send_call(integration.provider, integration.config, record, record_url)
+        status, error = CrmDelivery.Status.OK, ""
+    except Exception as exc:  # noqa: BLE001 - keep other CRMs delivering
+        status, error = CrmDelivery.Status.ERROR, str(exc)[:500]
+        logger.warning(
+            "integration %s/%s failed for call %s: %s",
+            record.company_id,
+            integration.provider,
+            record.pk,
+            exc,
+        )
+    integration.last_status = status
+    integration.last_error = error
+    integration.last_delivery_at = timezone.now()
+    integration.save(update_fields=["last_status", "last_error", "last_delivery_at"])
+    return CrmDelivery.all_objects.create(
+        company=record.company,
+        call=record,
+        provider=integration.provider,
+        status=status,
+        error=error,
+        is_retry=is_retry,
+    )
 
 
 def record_signature(server_id_hex: str) -> str:
@@ -51,21 +90,6 @@ def dispatch_call(record_id: int) -> int:
     record_url = public_record_url(record)
     sent = 0
     for integration in integrations:
-        try:
-            providers.send_call(integration.provider, integration.config, record, record_url)
-            integration.last_status = "ok"
-            integration.last_error = ""
+        if deliver(integration, record, record_url).status == CrmDelivery.Status.OK:
             sent += 1
-        except Exception as exc:  # noqa: BLE001 - keep other CRMs delivering
-            integration.last_status = "error"
-            integration.last_error = str(exc)[:500]
-            logger.warning(
-                "integration %s/%s failed for call %s: %s",
-                record.company_id,
-                integration.provider,
-                record_id,
-                exc,
-            )
-        integration.last_delivery_at = timezone.now()
-        integration.save(update_fields=["last_status", "last_error", "last_delivery_at"])
     return sent

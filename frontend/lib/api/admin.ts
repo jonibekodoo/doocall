@@ -143,8 +143,18 @@ export const fetchDashboardSeries = (
   period: DashboardPeriod,
 ) => g<DashboardSeries>(`/dashboard/series?metric=${metric}&period=${period}`);
 
+export interface AdminCompanyStats {
+  total: number;
+  active: number;
+  trial: number;
+  expired: number;
+  suspended: number;
+}
+
 export const fetchAdminCompanies = (params = "") =>
-  g<{ success: boolean; companies: AdminCompanyRow[] }>(`/companies${params}`);
+  g<{ success: boolean; stats: AdminCompanyStats; companies: AdminCompanyRow[] }>(
+    `/companies${params}`,
+  );
 
 export const fetchAdminCompany = (id: number) =>
   g<{
@@ -179,6 +189,8 @@ export interface AdminCompanyIntegration {
   last_delivery_at: string | null;
   updated_at: string | null;
   target?: string;
+  ok_30d?: number;
+  error_30d?: number;
 }
 
 export const resetCompanyUserPassword = (
