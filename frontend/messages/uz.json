@@ -532,15 +532,12 @@
       "periodYearly": "Yillik",
       "totalCalls": "Umumiy qo‘ng‘iroqlar",
       "salesManagersTitle": "Sotuv menejerlari",
-      "callsTodayTitle": "Bugungi qo'ng'iroqlar — TOP 10 tashkilot",
-      "callsTodayTotal": "jami {n} ta",
-      "ctCompany": "Tashkilot / operator",
+      "callsTodayTitle": "Qo'ng'iroqlar — TOP 10 tashkilot",
+      "ctCompany": "Tashkilot",
       "ctTotal": "Jami",
-      "ctAnswered": "Javob berilgan",
-      "ctMissed": "O'tkazib yuborilgan",
-      "callsTodayEmpty": "Bugun hali qo'ng'iroqlar yo'q",
-      "callsTodayCompanies": "{n} ta tashkilot qo'ng'iroq qilgan",
-      "callsTodayOthers": "Boshqa tashkilotlar ({n} ta)"
+      "callsTodayEmpty": "Hali qo'ng'iroqlar yo'q",
+      "callsTodayCompanies": "jami {n} ta tashkilot",
+      "ctToday": "Bugun"
     },
     "companies": {
       "title": "Kompaniyalar",

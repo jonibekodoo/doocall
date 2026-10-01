@@ -44,7 +44,6 @@ import {
   fetchKpis,
   fetchSalesManagerStats,
   fetchAdminCallsToday,
-  type CallsTodayCompany,
 } from "@/lib/api/admin";
 import { formatUzs } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -240,42 +239,13 @@ function SalesManagersSummary() {
   );
 }
 
-/** Today's calls: which company (and which operator) made how many. */
-function CallsTodayRow({ c }: { c: CallsTodayCompany }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <tr className="border-t border-border hover:bg-surface-2/60">
-        <td className="px-3 py-2.5">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex items-center gap-1.5 font-medium text-accent hover:underline"
-          >
-            <span className={cn("text-[10px] transition-transform", open && "rotate-90")}>▶</span>
-            {c.name}
-          </button>
-        </td>
-        <td className="tnum px-3 py-2.5 text-right font-semibold">{c.total}</td>
-        <td className="tnum px-3 py-2.5 text-right text-success">{c.answered}</td>
-        <td className="tnum px-3 py-2.5 text-right text-danger">{c.missed}</td>
-      </tr>
-      {open &&
-        c.operators.map((o) => (
-          <tr key={`${c.id}-${o.id ?? "none"}`} className="bg-surface-2/40 text-xs">
-            <td className="py-1.5 pl-9 pr-3 text-fg-muted">{o.name}</td>
-            <td className="tnum px-3 py-1.5 text-right">{o.total}</td>
-            <td className="tnum px-3 py-1.5 text-right text-success">{o.answered}</td>
-            <td className="tnum px-3 py-1.5 text-right text-danger">{o.total - o.answered}</td>
-          </tr>
-        ))}
-    </>
-  );
-}
-
+/** Leaderboard: ten busiest companies over the whole period — all-time total
+ * and today's count, with a share bar against the leader. */
 function CallsTodayReport() {
   const t = useTranslations("admin");
   const { data } = useQuery({ queryKey: ["a-calls-today"], queryFn: fetchAdminCallsToday, refetchInterval: 60_000 });
+  const rows = data?.companies ?? [];
+  const max = Math.max(1, ...rows.map((c) => c.total));
   return (
     <div className="rounded-xl border border-border bg-surface" data-testid="calls-today-report">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-3">
@@ -283,23 +253,19 @@ function CallsTodayReport() {
           <h2 className="text-sm font-semibold">{t("dashboard.callsTodayTitle")}</h2>
           {data && (
             <p className="tnum text-xs text-fg-faint">
-              {data.date} · {t("dashboard.callsTodayCompanies", { n: data.companies_count })}
+              {t("dashboard.callsTodayCompanies", { n: data.companies_count })} · {data.date}
             </p>
           )}
         </div>
         {data && (
-          <div className="ml-auto flex items-center gap-4 text-xs">
+          <div className="ml-auto flex items-center gap-5 text-xs">
             <span>
               <span className="block uppercase text-fg-faint">{t("dashboard.ctTotal")}</span>
-              <b className="tnum text-lg" data-testid="calls-today-total">{data.total}</b>
+              <b className="tnum text-lg" data-testid="calls-total-all">{data.total.toLocaleString()}</b>
             </span>
             <span>
-              <span className="block uppercase text-fg-faint">{t("dashboard.ctAnswered")}</span>
-              <b className="tnum text-lg text-success">{data.answered}</b>
-            </span>
-            <span>
-              <span className="block uppercase text-fg-faint">{t("dashboard.ctMissed")}</span>
-              <b className="tnum text-lg text-danger">{data.missed}</b>
+              <span className="block uppercase text-fg-faint">{t("dashboard.ctToday")}</span>
+              <b className="tnum text-lg text-accent" data-testid="calls-today-total">{data.today.toLocaleString()}</b>
             </span>
           </div>
         )}
@@ -308,24 +274,31 @@ function CallsTodayReport() {
         <table className="w-full text-sm">
           <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
             <tr>
+              <th className="w-8 px-3 py-2 text-left">№</th>
               <th className="px-3 py-2 text-left">{t("dashboard.ctCompany")}</th>
               <th className="px-3 py-2 text-right">{t("dashboard.ctTotal")}</th>
-              <th className="px-3 py-2 text-right">{t("dashboard.ctAnswered")}</th>
-              <th className="px-3 py-2 text-right">{t("dashboard.ctMissed")}</th>
+              <th className="px-3 py-2 text-right">{t("dashboard.ctToday")}</th>
             </tr>
           </thead>
           <tbody>
-            {(data?.companies ?? []).map((c) => <CallsTodayRow key={c.id} c={c} />)}
-            {data && data.others_total > 0 && (
-              <tr className="border-t border-border text-xs text-fg-muted">
-                <td className="px-3 py-2">
-                  {t("dashboard.callsTodayOthers", { n: data.companies_count - data.companies.length })}
+            {rows.map((c, index) => (
+              <tr key={c.id} className="border-t border-border hover:bg-surface-2/60">
+                <td className="tnum px-3 py-2.5 text-fg-faint">{index + 1}</td>
+                <td className="px-3 py-2.5">
+                  <Link href={`/admin/companies/${c.id}`} className="font-medium text-accent hover:underline">
+                    {c.name}
+                  </Link>
+                  <div className="mt-1 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-surface-2">
+                    <div className="h-full rounded-full bg-accent/70" style={{ width: `${(c.total / max) * 100}%` }} />
+                  </div>
                 </td>
-                <td className="tnum px-3 py-2 text-right font-semibold">{data.others_total}</td>
-                <td colSpan={2} />
+                <td className="tnum px-3 py-2.5 text-right font-semibold">{c.total.toLocaleString()}</td>
+                <td className={cn("tnum px-3 py-2.5 text-right", c.today > 0 ? "font-semibold text-accent" : "text-fg-faint")}>
+                  {c.today.toLocaleString()}
+                </td>
               </tr>
-            )}
-            {data && data.companies.length === 0 && (
+            ))}
+            {data && rows.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-3 py-8 text-center text-xs text-fg-faint">
                   {t("dashboard.callsTodayEmpty")}

@@ -260,66 +260,35 @@ class AdminDashboardView(StaffView):
 
 
 class AdminCallsTodayView(StaffView):
-    """Today's calls broken down by company and operator (dashboard report)."""
+    """Dashboard leaderboard: the ten companies with the most calls over the
+    whole period, each with its all-time and today's counts."""
 
-    @extend_schema(summary="Today's calls per company / operator")
+    @extend_schema(summary="Top-10 companies by total calls (+ today's count)")
     def get(self, request: Request) -> Response:
         from apps.calls.models import CallRecord
 
         now = timezone.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         rows = (
-            CallRecord.all_objects.filter(start_time__gte=today_start)
-            .values(
-                "company_id",
-                "company__name",
-                "operator_id",
-                "operator__full_name",
-                "operator__user_name",
-                "call_status",
+            CallRecord.all_objects.values("company_id", "company__name")
+            .annotate(
+                total=Count("id"),
+                today=Count("id", filter=Q(start_time__gte=today_start)),
             )
-            .annotate(n=Count("id"))
-            .order_by("company__name")
+            .order_by("-total", "company__name")
         )
-        companies: dict[int, dict[str, Any]] = {}
-        for r in rows:
-            c = companies.setdefault(
-                r["company_id"],
-                {"id": r["company_id"], "name": r["company__name"], "total": 0,
-                 "answered": 0, "missed": 0, "operators": {}},
-            )
-            n = int(r["n"])
-            c["total"] += n
-            if r["call_status"] == "answered":
-                c["answered"] += n
-            else:
-                c["missed"] += n
-            op_key = r["operator_id"] or 0
-            op = c["operators"].setdefault(
-                op_key,
-                {"id": r["operator_id"],
-                 "name": r["operator__full_name"] or r["operator__user_name"] or "—",
-                 "total": 0, "answered": 0},
-            )
-            op["total"] += n
-            if r["call_status"] == "answered":
-                op["answered"] += n
-        out = []
-        for c in companies.values():
-            c["operators"] = sorted(c["operators"].values(), key=lambda o: -o["total"])
-            out.append(c)
-        out.sort(key=lambda c: -c["total"])
-        top = out[:10]  # dashboard shows the ten busiest companies only
+        companies = [
+            {"id": r["company_id"], "name": r["company__name"], "total": r["total"], "today": r["today"]}
+            for r in rows
+        ]
         return Response(
             {
                 "success": True,
                 "date": today_start.date().isoformat(),
-                "total": sum(c["total"] for c in out),
-                "answered": sum(c["answered"] for c in out),
-                "missed": sum(c["missed"] for c in out),
-                "companies_count": len(out),
-                "others_total": sum(c["total"] for c in out[10:]),
-                "companies": top,
+                "total": sum(c["total"] for c in companies),
+                "today": sum(c["today"] for c in companies),
+                "companies_count": len(companies),
+                "companies": companies[:10],
             }
         )
 
