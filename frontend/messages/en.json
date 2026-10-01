@@ -447,7 +447,9 @@
     "offerEmpty": "The offer is not published yet.",
     "offerAccepted": "Offer accepted",
     "offerAcceptedOn": "Offer accepted on {date}",
-    "acceptOffer": "Accept the offer"
+    "acceptOffer": "Accept the offer",
+    "st_expired": "Trial expired",
+    "companiesByStatus": "Companies by status"
   },
   "admin": {
     "nav": {

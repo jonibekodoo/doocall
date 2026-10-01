@@ -71,6 +71,32 @@ export default function PartnerOverview() {
             />
           </div>
 
+          {/* Companies by status (trial split into running / expired) */}
+          <div className="mt-4 rounded-lg border border-border bg-surface p-4" data-testid="companies-by-status">
+            <p className="mb-3 text-xs font-semibold uppercase text-fg-faint">
+              {t("companiesByStatus")}
+            </p>
+            <div className="grid gap-2 sm:grid-cols-4">
+              {(
+                [
+                  ["active", "bg-accent-soft text-accent"],
+                  ["trial", "bg-warning/15 text-warning"],
+                  ["trial_expired", "bg-danger/15 text-danger"],
+                  ["suspended", "bg-danger/10 text-danger"],
+                ] as const
+              ).map(([key, tone]) => (
+                <div key={key} className={`rounded-md px-3 py-2 ${tone}`}>
+                  <p className="text-[11px] font-semibold uppercase opacity-80">
+                    {t(key === "trial_expired" ? "st_expired" : `st_${key}`)}
+                  </p>
+                  <p className="tnum text-2xl font-bold">
+                    {data.companies_by_status?.[key] ?? 0}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="mt-6">
             <p className="mb-2 text-xs font-semibold uppercase text-fg-faint">
               {t("chartTitle")}

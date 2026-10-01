@@ -76,7 +76,17 @@ export default function SalesIntegratorDetailPage() {
                   <td className="px-3 py-2.5 font-medium">{c.name}</td>
                   <td className="px-3 py-2.5">
                     <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", STATUS_TONE[c.status] ?? "bg-surface-3")}>
-                      {t(`st_${c.status === "active" ? "active" : c.status === "trial" ? "trial" : "suspended"}`)}
+                      {t(
+                        `st_${
+                          c.status === "active"
+                            ? "active"
+                            : c.status === "trial"
+                              ? c.trial_ends_at && new Date(c.trial_ends_at) < new Date()
+                                ? "expired"
+                                : "trial"
+                              : "suspended"
+                        }`,
+                      )}
                     </span>
                   </td>
                   <td className="tnum px-3 py-2.5 text-right">{c.seats}</td>

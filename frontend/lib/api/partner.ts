@@ -8,6 +8,7 @@ import type { ApiEnvelope } from "./types";
 const P = "/api/partner/v1" as const;
 
 export interface PartnerDashboard extends ApiEnvelope {
+  companies_by_status: CompaniesByStatus;
   month_cashback_uzs: number;
   min_payout_uzs: number;
   referral_code: string;
@@ -20,7 +21,16 @@ export interface PartnerDashboard extends ApiEnvelope {
   monthly_series: Array<{ month: string; amount_uzs: number }>;
 }
 
+export interface CompaniesByStatus {
+  active: number;
+  trial: number;
+  trial_expired: number;
+  suspended: number;
+}
+
 export interface PartnerCompany {
+  trial_expired: boolean;
+  trial_ends_at: string | null;
   id: number;
   name: string;
   status: string;

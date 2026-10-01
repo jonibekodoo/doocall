@@ -433,7 +433,7 @@
     "acc_paid_out": "Выплачено",
     "st_active": "Активна",
     "st_trial": "Пробный",
-    "st_suspended": "Заблокирована",
+    "st_suspended": "Приостановлена",
     "companyBrand": "Бренд компании",
     "companyName": "Название компании",
     "companyNamePlaceholder": "Ваша компания / бренд",
@@ -447,7 +447,9 @@
     "offerEmpty": "Оферта ещё не опубликована.",
     "offerAccepted": "Оферта принята",
     "offerAcceptedOn": "Оферта принята {date}",
-    "acceptOffer": "Принять оферту"
+    "acceptOffer": "Принять оферту",
+    "st_expired": "Пробный период истёк",
+    "companiesByStatus": "Статус компаний"
   },
   "admin": {
     "nav": {

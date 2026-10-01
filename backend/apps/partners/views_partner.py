@@ -49,10 +49,21 @@ def _partner_company_body(company: Company, integrator: Integrator) -> dict[str,
         .aggregate(s=Sum("amount_uzs"))["s"]
         or 0
     )
+    from django.utils import timezone as _tz
+
+    trial_expired = (
+        company.status == Company.Status.TRIAL
+        and company.trial_ends_at is not None
+        and company.trial_ends_at < _tz.now()
+    )
     return {
         "id": company.pk,
         "name": company.name,
         "status": company.status,
+        # Trial whose end date has passed (suspended by the hourly task; shown
+        # as "trial expired" immediately so the partner sees the real state).
+        "trial_expired": trial_expired,
+        "trial_ends_at": company.trial_ends_at.isoformat() if company.trial_ends_at else None,
         "acquired_via": company.acquired_via,
         "created_at": company.created_at.isoformat(),
         "seats": billing.seat_count(company),
@@ -95,6 +106,17 @@ class PartnerDashboardView(PartnerView):
                 "effective_percent": str(integrator.effective_percent),
                 "companies_total": companies.count(),
                 "companies_active": companies.filter(status="active").count(),
+                # Status breakdown (trial split into running / expired).
+                "companies_by_status": {
+                    "active": companies.filter(status=Company.Status.ACTIVE).count(),
+                    "trial": companies.filter(
+                        status=Company.Status.TRIAL, trial_ends_at__gte=tz.now()
+                    ).count(),
+                    "trial_expired": companies.filter(
+                        status=Company.Status.TRIAL, trial_ends_at__lt=tz.now()
+                    ).count(),
+                    "suspended": companies.filter(status=Company.Status.SUSPENDED).count(),
+                },
                 "balance_uzs": integrator.balance_uzs,
                 "paid_out_uzs": int(paid),
                 "accrued_total_uzs": int(totals["accrued"] or 0),

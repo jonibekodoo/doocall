@@ -145,7 +145,7 @@ from celery.schedules import crontab  # noqa: E402
 CELERY_BEAT_SCHEDULE = {
     "suspend-expired-trials": {
         "task": "apps.billing.tasks.suspend_expired_trials",
-        "schedule": crontab(hour=0, minute=15),  # nightly
+        "schedule": crontab(minute=15),  # hourly — a trial ending at 10:00 is blocked by 10:15
     },
     "generate-due-invoices": {
         "task": "apps.billing.tasks.generate_due_invoices",

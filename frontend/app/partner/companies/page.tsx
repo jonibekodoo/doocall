@@ -61,10 +61,14 @@ export default function PartnerCompaniesPage() {
                       <span
                         className={cn(
                           "rounded-full px-2 py-0.5 text-xs font-medium",
-                          TONES[c.status] ?? "bg-surface-3",
+                          c.trial_expired
+                            ? "bg-danger/15 text-danger"
+                            : (TONES[c.status] ?? "bg-surface-3"),
                         )}
                       >
-                        {t(`st_${c.status}` as "st_active")}
+                        {c.trial_expired
+                          ? t("st_expired")
+                          : t(`st_${c.status}` as "st_active")}
                       </span>
                     </td>
                     <td className="tnum px-3 py-2.5 text-right">{c.seats}</td>

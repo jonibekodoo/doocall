@@ -433,7 +433,7 @@
     "acc_paid_out": "To‘langan",
     "st_active": "Faol",
     "st_trial": "Sinov",
-    "st_suspended": "Bloklangan",
+    "st_suspended": "To'xtatilgan",
     "companyBrand": "Kompaniya brendi",
     "companyName": "Kompaniya nomi",
     "companyNamePlaceholder": "Kompaniyangiz / brend",
@@ -447,7 +447,9 @@
     "offerEmpty": "Oferta hali e’lon qilinmagan.",
     "offerAccepted": "Oferta qabul qilindi",
     "offerAcceptedOn": "Oferta {date} da qabul qilingan",
-    "acceptOffer": "Ofertani qabul qilish"
+    "acceptOffer": "Ofertani qabul qilish",
+    "st_expired": "Sinov tugagan",
+    "companiesByStatus": "Kompaniyalar holati"
   },
   "admin": {
     "nav": {
