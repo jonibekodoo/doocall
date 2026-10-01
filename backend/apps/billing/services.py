@@ -321,13 +321,18 @@ def month_accrued(company: Company, month: date) -> int:
 
 
 def _reactivate_if_clear(company: Company, now: datetime) -> None:
-    """Bring a suspended company back once nothing is owed."""
+    """Bring a suspended company back once nothing is owed AND the balance
+    covers at least one more day at the current burn rate (a top-up that only
+    partly clears the debt keeps the company suspended)."""
     owes = (
         MonthlyStatement.all_objects.filter(company=company)
         .exclude(status=MonthlyStatement.Status.PAID)
         .exists()
     )
     if owes or company.status != Company.Status.SUSPENDED:
+        return
+    burn = seat_count(company) * daily_rate(effective_price(company), now.date())
+    if company.balance_uzs <= 0 or company.balance_uzs < burn:
         return
     subscription = Subscription.all_objects.filter(company=company).first()
     if subscription is not None and subscription.status == Subscription.Status.SUSPENDED:
@@ -367,55 +372,128 @@ def settle_statement(statement: MonthlyStatement, *, now: datetime) -> bool:
 
 # ── Billing cycles (payment date → same day next month) ───────────────────────
 def unbilled_charges(company: Company, *, before: date | None = None):
-    """Daily charges not yet deducted by any statement (optionally only those
-    dated before ``before``, exclusive)."""
-    qs = DailyCharge.all_objects.filter(company=company, statement__isnull=True)
+    """Daily charges whose cost has NOT been taken from the balance yet
+    (optionally only those dated before ``before``, exclusive)."""
+    qs = DailyCharge.all_objects.filter(company=company, deducted_at__isnull=True)
     if before is not None:
         qs = qs.filter(date__lt=before)
     return qs
 
 
 def cycle_accrued(company: Company) -> int:
-    """Usage accrued since the last deduction (what the next statement will take)."""
-    total = unbilled_charges(company).aggregate(s=Sum("amount_uzs"))["s"]
-    return int(total or 0)
+    """Usage charged within the current billing cycle so far (deducted day by
+    day; the cycle statement is the summary of these)."""
+    subscription = Subscription.all_objects.filter(company=company).first()
+    qs = DailyCharge.all_objects.filter(company=company)
+    if subscription is not None and subscription.current_period_start is not None:
+        qs = qs.filter(date__gte=subscription.current_period_start.date())
+        if subscription.current_period_end is not None:
+            qs = qs.filter(date__lt=subscription.current_period_end.date())
+    else:
+        qs = qs.filter(deducted_at__isnull=True)
+    return int(qs.aggregate(s=Sum("amount_uzs"))["s"] or 0)
+
+
+LOW_BALANCE_DAYS = 3  # warn the client when the balance covers ≤ this many days
+
+
+@transaction.atomic
+def deduct_pending_charges(company: Company, *, now: datetime, upto: date) -> int:
+    """Prepaid daily billing: take every undeducted operator-day dated ≤ ``upto``
+    from the balance. Runs nightly for the finished day (and catches up any
+    backlog). The balance may dip below zero — that is the debt for the day
+    already used — and the company is suspended the moment it is ≤ 0; a top-up
+    that clears it reactivates the company (see ``_reactivate_if_clear``)."""
+    locked = Company.objects.select_for_update().get(pk=company.pk)
+    charges = DailyCharge.all_objects.filter(
+        company=locked, deducted_at__isnull=True, date__lte=upto
+    )
+    total = int(charges.aggregate(s=Sum("amount_uzs"))["s"] or 0)
+    if total <= 0:
+        return 0
+    locked.balance_uzs -= total
+    locked.save(update_fields=["balance_uzs", "updated_at"])
+    charges.update(deducted_at=now)
+    _audit(locked, "billing.daily_deducted", total_uzs=total, upto=upto.isoformat())
+    if locked.balance_uzs <= 0 and locked.status == Company.Status.ACTIVE:
+        subscription = Subscription.all_objects.filter(company=locked).first()
+        if subscription is not None and subscription.status in (
+            Subscription.Status.TRIAL,
+            Subscription.Status.ACTIVE,
+        ):
+            suspend(subscription, reason="balance_exhausted")
+        else:
+            locked.status = Company.Status.SUSPENDED
+            locked.save(update_fields=["status", "updated_at"])
+        notify(
+            locked,
+            BillingNotification.Kind.BLOCKED,
+            f"Balans tugadi ({locked.balance_uzs:,} UZS). Tizim vaqtincha to'xtatildi — "
+            "balansni to'ldirganingizdan so'ng avtomatik ochiladi.".replace(",", " "),
+            abs(locked.balance_uzs),
+        )
+    company.balance_uzs = locked.balance_uzs
+    company.status = Company.objects.get(pk=locked.pk).status
+    return total
+
+
+def warn_low_balance(company: Company, *, now: datetime, threshold_days: int = LOW_BALANCE_DAYS) -> bool:
+    """One in-app warning per day while the balance covers ≤ ``threshold_days``."""
+    today = now.date()
+    left = days_of_balance_left(company, day=today)
+    if left is None or left > threshold_days:
+        return False
+    if BillingNotification.all_objects.filter(
+        company=company, kind=BillingNotification.Kind.PAYMENT_DUE, created_at__date=today
+    ).exists():
+        return False
+    runs_out = today + timedelta(days=left)
+    notify(
+        company,
+        BillingNotification.Kind.PAYMENT_DUE,
+        f"Balans ≈ {left} kunga yetadi ({runs_out:%d.%m.%Y}). "
+        "Tizim to'xtab qolmasligi uchun balansni to'ldiring.",
+        company.balance_uzs,
+    )
+    return True
 
 
 @transaction.atomic
 def settle_cycle(subscription: Subscription, *, now: datetime) -> MonthlyStatement | None:
-    """Close the subscription's finished cycle: bill every undeducted charge up
-    to the cycle end, deduct it from the balance, then start the next cycle.
-
-    The next cycle starts even when the balance was short — the unpaid
-    statement is what ``run_overdue_enforcement`` acts on."""
+    """Close the subscription's finished cycle: the statement is the SUMMARY of
+    the days already deducted one by one (prepaid daily billing) — it never
+    charges the balance a second time — then the next cycle starts."""
     if subscription.current_period_start is None or subscription.current_period_end is None:
         return None
     company = subscription.company
     period_start = subscription.current_period_start.date()
     period_end = subscription.current_period_end.date()
-    charges = unbilled_charges(company, before=period_end)
-    total = int(charges.aggregate(s=Sum("amount_uzs"))["s"] or 0)
+    # Safety net: any day in the cycle that somehow was not deducted yet.
+    deduct_pending_charges(company, now=now, upto=period_end - timedelta(days=1))
+    charges = DailyCharge.all_objects.filter(
+        company=company, statement__isnull=True, date__gte=period_start, date__lt=period_end
+    )
     statement, _ = MonthlyStatement.all_objects.get_or_create(
         company=company,
         month=period_start,
-        defaults={"period_start": period_start, "period_end": period_end, "total_uzs": total},
+        defaults={"period_start": period_start, "period_end": period_end},
     )
     if statement.status != MonthlyStatement.Status.PAID:
         statement.period_start, statement.period_end = period_start, period_end
-        # Attach the newly billed charges and (re)compute the total from them.
         charges.update(statement=statement)
         statement.total_uzs = int(statement.charges.aggregate(s=Sum("amount_uzs"))["s"] or 0)
-        statement.save(update_fields=["period_start", "period_end", "total_uzs"])
-    if not settle_statement(statement, now=now) and statement.status == (
-        MonthlyStatement.Status.PENDING
-    ):
-        notify(
-            company,
-            BillingNotification.Kind.PAYMENT_DUE,
-            f"{_period_label(statement)} davri uchun {statement.total_uzs:,} UZS to'lov qilish kerak. "
-            f"{GRACE_DAYS} kun ichida to'lanmasa tizim bloklanadi.".replace(",", " "),
-            statement.total_uzs,
-        )
+        statement.status = MonthlyStatement.Status.PAID  # already taken day by day
+        statement.settled_at = now
+        statement.save(update_fields=["period_start", "period_end", "total_uzs", "status", "settled_at"])
+        if statement.total_uzs:
+            company.refresh_from_db(fields=["balance_uzs"])
+            notify(
+                company,
+                BillingNotification.Kind.CHARGE_SETTLED,
+                f"{_period_label(statement)} davri: jami {statement.total_uzs:,} UZS "
+                f"(kunlik yechilgan). Balans: {company.balance_uzs:,} UZS".replace(",", " "),
+                statement.total_uzs,
+            )
     # Roll to the next cycle (same day next month).
     subscription.current_period_start = subscription.current_period_end
     subscription.current_period_end = _add_month_dt(subscription.current_period_end)
@@ -576,20 +654,6 @@ def apply_payment(
         payment.invoice.status = Invoice.Status.PAID
         payment.invoice.save(update_fields=["status"])
 
-    subscription = Subscription.all_objects.filter(company=payment.company).first()
-    if subscription is not None:
-        if subscription.status in (
-            Subscription.Status.TRIAL,
-            Subscription.Status.SUSPENDED,
-        ):
-            activate(subscription, now=now, actor=actor)
-        else:
-            # Already active: a prepaid top-up only raises the balance — it does
-            # NOT move the billing cycle (the cycle rolls at its own end).
-            if subscription.company.status != Company.Status.ACTIVE:
-                subscription.company.status = Company.Status.ACTIVE
-                subscription.company.save(update_fields=["status", "updated_at"])
-
     _audit(
         payment.company,
         "payment.applied",
@@ -599,9 +663,22 @@ def apply_payment(
         payment_id=payment.pk,
     )
 
-    # Daily-billing model: every approved payment tops up the prepaid balance
-    # and auto-settles unpaid monthly statements (unblocking if cleared).
+    # Prepaid daily billing: top up the balance FIRST. For a suspended company
+    # this also decides reactivation (only when the debt is cleared and at
+    # least one more day is covered — see _reactivate_if_clear).
     credit_balance(payment.company, payment.amount_uzs, now=now)
+
+    subscription = Subscription.all_objects.filter(company=payment.company).first()
+    if subscription is not None:
+        subscription.refresh_from_db(fields=["status"])
+        if subscription.status == Subscription.Status.TRIAL:
+            # First payment ends the trial: the billing cycle starts today.
+            activate(subscription, now=now, actor=actor)
+        elif subscription.status == Subscription.Status.ACTIVE:
+            # A top-up only raises the balance — it does NOT move the cycle.
+            if subscription.company.status != Company.Status.ACTIVE:
+                subscription.company.status = Company.Status.ACTIVE
+                subscription.company.save(update_fields=["status", "updated_at"])
 
     # Cashback engine (A.5): one idempotent accrual per successful payment,
     # regardless of provider (manual admin approval, Payme, Click).

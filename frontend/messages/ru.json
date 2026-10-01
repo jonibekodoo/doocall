@@ -218,7 +218,7 @@
     "paylovConfirm": "Оплатить",
     "payOnline": "Оплатить онлайн",
     "cycleAccrued": "Начислено за текущий период",
-    "nextCharge": "Дата списания с баланса",
+    "nextCharge": "Дата отчёта",
     "stmtSettledOn": "Списано",
     "balanceDays": "Баланса хватит ≈ на {days} дн."
   },

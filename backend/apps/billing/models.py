@@ -209,6 +209,9 @@ class DailyCharge(TenantModel):
         on_delete=models.SET_NULL,
         related_name="charges",
     )
+    # Prepaid daily billing: when this day's cost was taken from the balance
+    # (NULL = not yet). The nightly task deducts every undeducted day.
+    deducted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta(TenantModel.Meta):

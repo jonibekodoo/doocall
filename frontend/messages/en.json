@@ -218,7 +218,7 @@
     "paylovConfirm": "Pay",
     "payOnline": "Pay online",
     "cycleAccrued": "Accrued this cycle",
-    "nextCharge": "Next balance charge",
+    "nextCharge": "Statement date",
     "stmtSettledOn": "Charged on",
     "balanceDays": "Balance lasts ≈ {days} days"
   },

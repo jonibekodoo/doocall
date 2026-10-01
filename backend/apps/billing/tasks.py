@@ -61,6 +61,11 @@ def run_daily_accrual(now: datetime) -> int:
     total = 0
     for company in Company.objects.filter(status=Company.Status.ACTIVE):
         total += services.accrue_company_day(company, day)
+        # Prepaid: take the finished day (and any backlog) from the balance now;
+        # suspends the company the day the money runs out.
+        services.deduct_pending_charges(company, now=now, upto=day)
+        if company.status == Company.Status.ACTIVE:
+            services.warn_low_balance(company, now=now)
     return total
 
 
