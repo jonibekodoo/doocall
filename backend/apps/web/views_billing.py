@@ -211,30 +211,222 @@ class BillingPayView(CabinetView):
         )
 
 
-# Human-friendly Uzbek messages for Paylov API error codes.
-_PAYLOV_MESSAGES = {
-    "invalid_otp": "OTP kod noto'g'ri",
-    "otp_expired": "OTP muddati o'tgan, qaytadan urinib ko'ring",
-    "insufficient_funds": "Kartada mablag' yetarli emas",
-    "card_is_blocked": "Karta bloklangan",
-    "card_is_blocked_in_processing_center": "Karta bloklangan",
-    "card_expired": "Karta muddati o'tgan",
-    "card_not_found": "Karta topilmadi",
-    "card_not_found_in_processing_center": "Karta topilmadi",
-    "card_has_no_phone": "Kartaga telefon raqam biriktirilmagan",
-    "too_many_attempts": "Juda ko'p urinish — birozdan so'ng qayta urinib ko'ring",
-    "card_is_not_supported": "Bu karta turi qo'llab-quvvatlanmaydi",
-    "invalid_card": "Karta ma'lumoti noto'g'ri",
-    "pan_not_valid": "Karta raqami noto'g'ri",
-    "invalid_amount": "Summa noto'g'ri",
-    "sms_not_active": "Kartada SMS-xabar xizmati yoqilmagan",
-    "transaction_not_found": "Tranzaksiya topilmadi",
-    "transaction_already_payed": "Bu to'lov allaqachon amalga oshirilgan",
+# ── Localised user-facing payment messages (uz / ru / en) ───────────────────
+# The cabinet UI language lives in the `doocall_locale` cookie, which the
+# browser sends with every same-origin API call; fall back to Accept-Language,
+# then Uzbek. Keys cover both our own validation and Paylov's error codes.
+_LOCALES = ("uz", "ru", "en")
+_MSG: dict[str, dict[str, str]] = {
+    # ── our own validation / state ──
+    "provider_disabled": {
+        "uz": "Paylov orqali to'lov hozircha yoqilmagan",
+        "ru": "Оплата через Paylov пока недоступна",
+        "en": "Paylov payments are not enabled yet",
+    },
+    "not_configured": {
+        "uz": "Paylov sozlanmagan — administratorga murojaat qiling",
+        "ru": "Paylov не настроен — обратитесь к администратору",
+        "en": "Paylov is not configured — contact the administrator",
+    },
+    "amount_invalid": {
+        "uz": "Summa noto'g'ri (kamida 1 000 so'm)",
+        "ru": "Неверная сумма (минимум 1 000 сум)",
+        "en": "Invalid amount (minimum 1,000 UZS)",
+    },
+    "card_invalid": {
+        "uz": "Karta raqami noto'g'ri",
+        "ru": "Неверный номер карты",
+        "en": "Invalid card number",
+    },
+    "expire_invalid": {
+        "uz": "Amal muddati noto'g'ri (OO/YY)",
+        "ru": "Неверный срок действия (ММ/ГГ)",
+        "en": "Invalid expiry date (MM/YY)",
+    },
+    "no_transaction": {
+        "uz": "Paylov tranzaksiya yaratmadi — qaytadan urinib ko'ring",
+        "ru": "Paylov не создал транзакцию — попробуйте ещё раз",
+        "en": "Paylov did not create a transaction — please try again",
+    },
+    "payment_id_invalid": {
+        "uz": "To'lov identifikatori noto'g'ri",
+        "ru": "Неверный идентификатор платежа",
+        "en": "Invalid payment id",
+    },
+    "otp_required": {
+        "uz": "SMS kodini (OTP) kiriting",
+        "ru": "Введите SMS-код (OTP)",
+        "en": "Enter the SMS code (OTP)",
+    },
+    "payment_not_found": {
+        "uz": "To'lov topilmadi",
+        "ru": "Платёж не найден",
+        "en": "Payment not found",
+    },
+    "not_confirmable": {
+        "uz": "Bu to'lovni tasdiqlab bo'lmaydi — qaytadan boshlang",
+        "ru": "Этот платёж нельзя подтвердить — начните заново",
+        "en": "This payment cannot be confirmed — please start again",
+    },
+    "otp_not_confirmed": {
+        "uz": "OTP tasdiqlanmadi — kodni tekshirib qayta kiriting",
+        "ru": "OTP не подтверждён — проверьте код и введите снова",
+        "en": "OTP not confirmed — check the code and try again",
+    },
+    "generic": {
+        "uz": "To'lovda xatolik yuz berdi — birozdan so'ng qayta urinib ko'ring",
+        "ru": "Ошибка при оплате — попробуйте позже",
+        "en": "Payment error — please try again later",
+    },
+    # ── Paylov API error codes ──
+    "invalid_otp": {
+        "uz": "SMS kod (OTP) noto'g'ri",
+        "ru": "Неверный SMS-код (OTP)",
+        "en": "Incorrect SMS code (OTP)",
+    },
+    "otp_expired": {
+        "uz": "SMS kod muddati o'tgan — to'lovni qaytadan boshlang",
+        "ru": "Срок действия SMS-кода истёк — начните оплату заново",
+        "en": "The SMS code has expired — please start the payment again",
+    },
+    "insufficient_funds": {
+        "uz": "Kartada mablag' yetarli emas",
+        "ru": "Недостаточно средств на карте",
+        "en": "Insufficient funds on the card",
+    },
+    "card_is_blocked": {
+        "uz": "Karta bloklangan",
+        "ru": "Карта заблокирована",
+        "en": "The card is blocked",
+    },
+    "card_expired": {
+        "uz": "Karta muddati tugagan",
+        "ru": "Срок действия карты истёк",
+        "en": "The card has expired",
+    },
+    "card_not_found": {
+        "uz": "Karta topilmadi — raqam va muddatni tekshiring",
+        "ru": "Карта не найдена — проверьте номер и срок действия",
+        "en": "Card not found — check the number and expiry date",
+    },
+    "card_has_no_phone": {
+        "uz": "Kartaga telefon raqam biriktirilmagan (SMS-xabar xizmati kerak)",
+        "ru": "К карте не привязан номер телефона (нужна услуга SMS-информирования)",
+        "en": "No phone number is linked to this card (SMS notifications required)",
+    },
+    "too_many_attempts": {
+        "uz": "Juda ko'p urinish — birozdan so'ng qayta urinib ko'ring",
+        "ru": "Слишком много попыток — попробуйте позже",
+        "en": "Too many attempts — please try again later",
+    },
+    "card_is_not_supported": {
+        "uz": "Bu karta turi qo'llab-quvvatlanmaydi (UzCard yoki Humo kiriting)",
+        "ru": "Этот тип карты не поддерживается (введите UzCard или Humo)",
+        "en": "This card type is not supported (use UzCard or Humo)",
+    },
+    "invalid_card": {
+        "uz": "Karta ma'lumotlari noto'g'ri",
+        "ru": "Неверные данные карты",
+        "en": "Invalid card details",
+    },
+    "pan_not_valid": {
+        "uz": "Karta raqami noto'g'ri",
+        "ru": "Неверный номер карты",
+        "en": "Invalid card number",
+    },
+    "invalid_amount": {
+        "uz": "Summa noto'g'ri",
+        "ru": "Неверная сумма",
+        "en": "Invalid amount",
+    },
+    "sms_not_active": {
+        "uz": "Kartada SMS-xabar xizmati yoqilmagan",
+        "ru": "На карте не подключено SMS-информирование",
+        "en": "SMS notifications are not enabled for this card",
+    },
+    "transaction_not_found": {
+        "uz": "Tranzaksiya topilmadi — to'lovni qaytadan boshlang",
+        "ru": "Транзакция не найдена — начните оплату заново",
+        "en": "Transaction not found — please start the payment again",
+    },
+    "transaction_already_payed": {
+        "uz": "Bu to'lov allaqachon amalga oshirilgan",
+        "ru": "Этот платёж уже выполнен",
+        "en": "This payment has already been completed",
+    },
+    "validation_error": {
+        "uz": "Kiritilgan ma'lumotlar noto'g'ri — karta raqami va muddatni tekshiring",
+        "ru": "Введённые данные неверны — проверьте номер карты и срок действия",
+        "en": "The entered data is invalid — check the card number and expiry date",
+    },
+    "connection_failed": {
+        "uz": "To'lov tizimi bilan aloqa yo'q — birozdan so'ng qayta urinib ko'ring",
+        "ru": "Нет связи с платёжной системой — попробуйте позже",
+        "en": "Cannot reach the payment provider — please try again later",
+    },
+    "http_error": {
+        "uz": "To'lov tizimi vaqtincha ishlamayapti — birozdan so'ng qayta urinib ko'ring",
+        "ru": "Платёжная система временно недоступна — попробуйте позже",
+        "en": "The payment provider is temporarily unavailable — please try again later",
+    },
+    "auth_failed": {
+        "uz": "To'lov tizimiga ulanishda xatolik — administratorga murojaat qiling",
+        "ru": "Ошибка подключения к платёжной системе — обратитесь к администратору",
+        "en": "Payment provider authentication failed — contact the administrator",
+    },
+    "ip_not_allowed": {
+        "uz": "To'lov tizimi so'rovni rad etdi — administratorga murojaat qiling",
+        "ru": "Платёжная система отклонила запрос — обратитесь к администратору",
+        "en": "The payment provider rejected the request — contact the administrator",
+    },
+    "merchant_not_available": {
+        "uz": "To'lov qabul qilish vaqtincha to'xtatilgan",
+        "ru": "Приём платежей временно приостановлен",
+        "en": "Payments are temporarily unavailable",
+    },
+    "processing_error": {
+        "uz": "Bank tomonida xatolik — birozdan so'ng qayta urinib ko'ring",
+        "ru": "Ошибка на стороне банка — попробуйте позже",
+        "en": "Bank processing error — please try again later",
+    },
+}
+# Paylov codes that map onto an existing message key.
+_CODE_ALIASES = {
+    "card_is_blocked_in_processing_center": "card_is_blocked",
+    "card_not_found_in_processing_center": "card_not_found",
+    "already_confirmed": "transaction_already_payed",
+    "transaction_not_available_for_payment": "not_confirmable",
+    "error_at_pay": "processing_error",
+    "gateway_not_working": "http_error",
+    "server_error": "http_error",
+    "unknown_error": "generic",
+    "field_required": "validation_error",
+    "field_not_valid": "validation_error",
 }
 
 
-def _paylov_msg(e) -> str:
-    return _PAYLOV_MESSAGES.get(getattr(e, "code", ""), getattr(e, "message", "") or "To'lovda xatolik")
+def _locale(request: Request) -> str:
+    cookie = (request.COOKIES.get("doocall_locale") or "").lower()
+    if cookie in _LOCALES:
+        return cookie
+    accept = (request.headers.get("Accept-Language") or "").lower()
+    for loc in _LOCALES:
+        if accept.startswith(loc):
+            return loc
+    return "uz"
+
+
+def _t(request: Request, key: str) -> str:
+    msg = _MSG.get(key) or _MSG["generic"]
+    return msg.get(_locale(request)) or msg["uz"]
+
+
+def _paylov_error(request: Request, e: Exception) -> ApiError:
+    """Translate a PaylovError into a localised ApiError (keeps the raw code)."""
+    code = getattr(e, "code", "") or ""
+    key = _CODE_ALIASES.get(code, code)
+    text = _t(request, key) if key in _MSG else (getattr(e, "message", "") or _t(request, "generic"))
+    return ApiError(ErrorCode.MISSING_FIELD, text, 400, extra={"paylov_code": code})
 
 
 class BillingPaylovPayView(CabinetView):
@@ -248,21 +440,21 @@ class BillingPaylovPayView(CabinetView):
 
         cfg = PaymentProviderConfig.objects.filter(provider="paylov", is_enabled=True).first()
         if cfg is None:
-            raise ApiError(ErrorCode.MISSING_FIELD, "Paylov to'lovi yoqilmagan", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "provider_disabled"), 400)
         if not (dj.PAYLOV_CONSUMER_KEY and dj.PAYLOV_API_USERNAME):
-            raise ApiError(ErrorCode.MISSING_FIELD, "Paylov sozlanmagan", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "not_configured"), 400)
         try:
             amount = int(request.data.get("amount_uzs") or 0)
         except (TypeError, ValueError):
-            raise ApiError(ErrorCode.MISSING_FIELD, "amount_uzs invalid", 400) from None
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "amount_invalid"), 400) from None
         if amount < 1000:
-            raise ApiError(ErrorCode.MISSING_FIELD, "amount_uzs invalid", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "amount_invalid"), 400)
         card = "".join((request.data.get("card_number") or "").split())
         expire = (request.data.get("expire_date") or "").strip()
         if not (card.isdigit() and 12 <= len(card) <= 19):
-            raise ApiError(ErrorCode.MISSING_FIELD, "Karta raqami noto'g'ri", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "card_invalid"), 400)
         if not (expire.isdigit() and len(expire) == 4):
-            raise ApiError(ErrorCode.MISSING_FIELD, "Amal muddati noto'g'ri (YYMM)", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "expire_invalid"), 400)
 
         payment = Payment.all_objects.create(
             company=self.company, provider=Payment.Provider.PAYLOV, amount_uzs=amount
@@ -274,14 +466,14 @@ class BillingPaylovPayView(CabinetView):
         except paylov_api.PaylovError as e:
             payment.status = Payment.Status.FAILED
             payment.save(update_fields=["status"])
-            raise ApiError(ErrorCode.MISSING_FIELD, _paylov_msg(e), 400) from None
+            raise _paylov_error(request, e) from None
 
         result = resp.get("result") or {}
         txn = result.get("transactionId") or resp.get("transactionId")
         if not txn:
             payment.status = Payment.Status.FAILED
             payment.save(update_fields=["status"])
-            raise ApiError(ErrorCode.MISSING_FIELD, "Paylov javobida transactionId yo'q", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "no_transaction"), 400)
         payment.external_id = txn
         payment.save(update_fields=["external_id"])
         AuditLog.objects.create(
@@ -305,19 +497,19 @@ class BillingPaylovConfirmView(CabinetView):
         try:
             pid = int(request.data.get("payment_id") or 0)
         except (TypeError, ValueError):
-            raise ApiError(ErrorCode.MISSING_FIELD, "payment_id invalid", 400) from None
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "payment_id_invalid"), 400) from None
         otp = (request.data.get("otp") or "").strip()
         if not otp:
-            raise ApiError(ErrorCode.MISSING_FIELD, "OTP kiriting", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "otp_required"), 400)
         payment = Payment.all_objects.filter(
             pk=pid, company=self.company, provider=Payment.Provider.PAYLOV
         ).first()
         if payment is None:
-            raise ApiError(ErrorCode.MISSING_FIELD, "To'lov topilmadi", 404)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "payment_not_found"), 404)
         if payment.status == Payment.Status.APPROVED:
             return Response({"success": True, "status": payment.status})
         if payment.status != Payment.Status.PENDING or not payment.external_id:
-            raise ApiError(ErrorCode.MISSING_FIELD, "To'lov tasdiqlash uchun yaroqsiz", 400)
+            raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "not_confirmable"), 400)
 
         # ── The ONLY path that credits money: Paylov must confirm the charge. ──
         try:
@@ -326,12 +518,12 @@ class BillingPaylovConfirmView(CabinetView):
             # Paylov itself reporting "already paid" IS a confirmation (e.g. our
             # earlier confirm crashed after Paylov charged the card).
             if e.code not in ("transaction_already_payed", "already_confirmed"):
-                raise ApiError(ErrorCode.MISSING_FIELD, _paylov_msg(e), 400) from None
+                raise _paylov_error(request, e) from None
         else:
             # A 2xx with no "result" (e.g. otp_required / result:null) is NOT a
             # completed payment — never credit on it.
             if not resp.get("result"):
-                raise ApiError(ErrorCode.MISSING_FIELD, "OTP tasdiqlanmadi", 400)
+                raise ApiError(ErrorCode.MISSING_FIELD, _t(request, "otp_not_confirmed"), 400)
 
         # Lock the row so two concurrent confirms can never credit twice.
         from django.db import transaction as db_tx
