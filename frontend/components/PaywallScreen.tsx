@@ -5,6 +5,7 @@ import { Banknote, CreditCard, PhoneCall } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { PaylovPayDialog } from "@/components/PaylovPayDialog";
 import { submitManualPayment } from "@/lib/api/endpoints";
 import type { PaywallPayload } from "@/lib/api/types";
 import { formatUzs } from "@/lib/format";
@@ -13,6 +14,7 @@ import { formatUzs } from "@/lib/format";
 export function PaywallScreen({ paywall }: { paywall: PaywallPayload }) {
   const t = useTranslations("paywall");
   const [requested, setRequested] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const request = useMutation({
     mutationFn: () => submitManualPayment(paywall.amount_due_uzs),
@@ -56,18 +58,26 @@ export function PaywallScreen({ paywall }: { paywall: PaywallPayload }) {
         <p className="mt-6 text-xs font-medium uppercase tracking-wide text-fg-faint">
           {t("payWith")}
         </p>
+        {payOpen && (
+          <PaylovPayDialog
+            initialAmount={paywall.amount_due_uzs}
+            onClose={() => setPayOpen(false)}
+            // Paylov confirmed → balance credited → subscription (re)activated
+            // server-side; reload so the cabinet replaces the paywall.
+            onDone={() => window.location.reload()}
+          />
+        )}
         <div className="mt-2 flex gap-2">
-          {paywall.providers
-            .filter((provider) => provider !== "manual")
-            .map((provider) => (
-              <button
-                key={provider}
-                type="button"
-                className="flex flex-1 items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold capitalize text-accent-fg hover:opacity-90"
-              >
-                <CreditCard className="size-4" /> {provider}
-              </button>
-            ))}
+          {paywall.providers.includes("paylov") && (
+            <button
+              type="button"
+              data-testid="paywall-online-btn"
+              onClick={() => setPayOpen(true)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg hover:opacity-90"
+            >
+              <CreditCard className="size-4" /> {t("payOnline")}
+            </button>
+          )}
           <button
             type="button"
             data-testid="paywall-bank-btn"

@@ -49,7 +49,8 @@
     "perOperator": "har bir operator uchun",
     "total": "Oyiga jami",
     "payWith": "To'lash",
-    "manualNote": "Yoki bank o'tkazmasi orqali to'lang — tasdiqlangach faollashadi."
+    "manualNote": "Yoki bank o'tkazmasi orqali to'lang — tasdiqlangach faollashadi.",
+    "payOnline": "Online to'lov qilish"
   },
   "table": {
     "empty": "Hozircha ma'lumot yo'q",
@@ -215,7 +216,11 @@
     "paylovOtp": "SMS kod (OTP)",
     "paylovOtpNote": "{phone} raqamiga yuborilgan kodni kiriting",
     "paylovConfirm": "To'lash",
-    "payOnline": "Online to'lov qilish"
+    "payOnline": "Online to'lov qilish",
+    "cycleAccrued": "Joriy davr hisoblangan",
+    "nextCharge": "Balansdan yechish sanasi",
+    "stmtSettledOn": "Yechildi",
+    "balanceDays": "Balans ≈ {days} kunga yetadi"
   },
   "ai": {
     "badge": "Sun'iy intellekt",
@@ -503,7 +508,14 @@
       "periodMonthly": "Oylik",
       "periodYearly": "Yillik",
       "totalCalls": "Umumiy qo‘ng‘iroqlar",
-      "salesManagersTitle": "Sotuv menejerlari"
+      "salesManagersTitle": "Sotuv menejerlari",
+      "callsTodayTitle": "Bugungi qo'ng'iroqlar — tashkilotlar bo'yicha",
+      "callsTodayTotal": "jami {n} ta",
+      "ctCompany": "Tashkilot / operator",
+      "ctTotal": "Jami",
+      "ctAnswered": "Javob berilgan",
+      "ctMissed": "O'tkazib yuborilgan",
+      "callsTodayEmpty": "Bugun hali qo'ng'iroqlar yo'q"
     },
     "companies": {
       "title": "Kompaniyalar",

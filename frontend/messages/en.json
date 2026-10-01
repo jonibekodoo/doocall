@@ -49,7 +49,8 @@
     "perOperator": "per operator",
     "total": "Monthly total",
     "payWith": "Pay with",
-    "manualNote": "Or pay by bank transfer — activated after confirmation."
+    "manualNote": "Or pay by bank transfer — activated after confirmation.",
+    "payOnline": "Pay online"
   },
   "table": {
     "empty": "No data yet",
@@ -215,7 +216,11 @@
     "paylovOtp": "SMS code (OTP)",
     "paylovOtpNote": "Enter the code sent to {phone}",
     "paylovConfirm": "Pay",
-    "payOnline": "Pay online"
+    "payOnline": "Pay online",
+    "cycleAccrued": "Accrued this cycle",
+    "nextCharge": "Next balance charge",
+    "stmtSettledOn": "Charged on",
+    "balanceDays": "Balance lasts ≈ {days} days"
   },
   "ai": {
     "badge": "Artificial intelligence",
@@ -503,7 +508,14 @@
       "periodMonthly": "Monthly",
       "periodYearly": "Yearly",
       "totalCalls": "Total calls",
-      "salesManagersTitle": "Sales managers"
+      "salesManagersTitle": "Sales managers",
+      "callsTodayTitle": "Today's calls — by company",
+      "callsTodayTotal": "{n} total",
+      "ctCompany": "Company / operator",
+      "ctTotal": "Total",
+      "ctAnswered": "Answered",
+      "ctMissed": "Missed",
+      "callsTodayEmpty": "No calls yet today"
     },
     "companies": {
       "title": "Companies",

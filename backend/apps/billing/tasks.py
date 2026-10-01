@@ -48,15 +48,9 @@ def run_trial_expiry(now: datetime) -> int:
 
 
 def run_invoice_generation(now: datetime) -> int:
-    """Roll every subscription whose paid period has ended. Returns invoices made."""
-    due = Subscription.all_objects.filter(
-        status=Subscription.Status.ACTIVE, current_period_end__lte=now
-    )
-    count = 0
-    for subscription in due:
-        services.roll_period(subscription, now=now)
-        count += 1
-    return count
+    """Superseded by the daily-billing cycle model (see ``run_monthly_settlement``):
+    cycles are settled from the prepaid balance, no invoices are issued."""
+    return 0
 
 
 def run_daily_accrual(now: datetime) -> int:
@@ -71,22 +65,10 @@ def run_daily_accrual(now: datetime) -> int:
 
 
 def run_monthly_settlement(now: datetime) -> int:
-    """On the 1st: bill the previous month for every company that used it."""
-    if now.day != 1:
-        return 0
-    from apps.billing.models import DailyCharge
-
-    prev_month = services._prev_month_start(now.date())
-    company_ids = (
-        DailyCharge.all_objects.filter(date__gte=prev_month, date__lt=now.date())
-        .values_list("company_id", flat=True)
-        .distinct()
-    )
-    count = 0
-    for company in Company.objects.filter(pk__in=list(company_ids)):
-        services.settle_month(company, prev_month, now=now)
-        count += 1
-    return count
+    """Daily sweep: settle every subscription whose billing cycle (payment date →
+    same day next month) has ended — deducts the cycle's usage from the balance
+    and starts the next cycle. (Task name kept for the beat schedule.)"""
+    return services.run_cycle_settlement(now)
 
 
 @shared_task(name="apps.billing.tasks.accrue_daily_charges")

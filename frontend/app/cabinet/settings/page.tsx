@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { CredentialsDialog } from "@/components/CredentialsDialog";
+import { PaylovPayDialog } from "@/components/PaylovPayDialog";
 import { confirmDialog, promptDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
@@ -33,8 +34,6 @@ import {
   patchSim,
   rotateApiKey,
   saveAccountSettings,
-  paylovConfirm,
-  paylovPay,
   saveWebhook,
   submitManualPayment,
   testWebhook,
@@ -962,181 +961,11 @@ function PayRequestDialog({
   );
 }
 
-function PaylovPayDialog({
-  initialAmount,
-  onClose,
-  onDone,
-}: {
-  initialAmount: number;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const t = useTranslations("settings");
-  const [step, setStep] = useState<"card" | "otp">("card");
-  const [amount, setAmount] = useState(
-    initialAmount > 0 ? String(initialAmount) : "",
-  );
-  const [card, setCard] = useState("");
-  const [expiry, setExpiry] = useState("");
-  const [otp, setOtp] = useState("");
-  const [paymentId, setPaymentId] = useState<number | null>(null);
-  const [otpPhone, setOtpPhone] = useState("");
-
-  const cardDigits = card.replace(/\D/g, "");
-  const expDigits = expiry.replace(/\D/g, "");
-  // Paylov wants YYMM. Input is MM/YY, but accept YY/MM too: pick the ordering
-  // whose month part is 01-12. Returns "" when neither is valid.
-  const toYYMM = (d: string): string => {
-    if (d.length !== 4) return "";
-    const a = d.slice(0, 2);
-    const b = d.slice(2, 4);
-    const ai = Number(a);
-    const bi = Number(b);
-    if (ai >= 1 && ai <= 12) return `${b}${a}`; // MM/YY (label) → YYMM
-    if (bi >= 1 && bi <= 12) return `${a}${b}`; // YY/MM → YYMM
-    return "";
-  };
-  const yymm = toYYMM(expDigits);
-  const canPay =
-    Number(amount) >= 1000 &&
-    cardDigits.length >= 12 &&
-    cardDigits.length <= 19 &&
-    yymm !== "";
-
-  const pay = useMutation({
-    mutationFn: () => paylovPay(Number(amount), cardDigits, yymm),
-    onSuccess: (res) => {
-      setPaymentId(res.payment_id);
-      setOtpPhone(res.otp_phone);
-      setStep("otp");
-    },
-    onError: (e: Error) =>
-      useToastStore.getState().push({ kind: "error", text: e.message }),
-  });
-  const confirm = useMutation({
-    mutationFn: () => paylovConfirm(paymentId as number, otp.trim()),
-    onSuccess: onDone,
-    onError: (e: Error) =>
-      useToastStore.getState().push({ kind: "error", text: e.message }),
-  });
-
-  const fmtCard = (v: string) =>
-    v
-      .replace(/\D/g, "")
-      .slice(0, 19)
-      .replace(/(.{4})/g, "$1 ")
-      .trim();
-  const fmtExp = (v: string) => {
-    const d = v.replace(/\D/g, "").slice(0, 4);
-    return d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-4"
-      role="dialog"
-    >
-      <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-5 shadow-lg">
-        <h2 className="mb-1 text-base font-semibold">Paylov</h2>
-        {step === "card" ? (
-          <>
-            <p className="mb-3 text-xs text-fg-muted">{t("paylovCardNote")}</p>
-            <label className="mb-2 block text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">
-                {t("payAmount")}
-              </span>
-              <input
-                type="number"
-                min={1000}
-                step={1000}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="tnum w-full rounded-md border border-border bg-surface px-3 py-2"
-              />
-            </label>
-            <label className="mb-2 block text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">
-                {t("paylovCard")}
-              </span>
-              <input
-                inputMode="numeric"
-                placeholder="8600 0000 0000 0000"
-                value={fmtCard(card)}
-                onChange={(e) => setCard(e.target.value)}
-                className="tnum w-full rounded-md border border-border bg-surface px-3 py-2"
-              />
-            </label>
-            <label className="mb-2 block text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">
-                {t("paylovExpiry")}
-              </span>
-              <input
-                inputMode="numeric"
-                placeholder="MM/YY"
-                value={fmtExp(expiry)}
-                onChange={(e) => setExpiry(e.target.value)}
-                className="tnum w-full rounded-md border border-border bg-surface px-3 py-2"
-              />
-            </label>
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md border border-border px-3 py-1.5 text-sm"
-              >
-                {t("payCancel")}
-              </button>
-              <button
-                type="button"
-                disabled={!canPay || pay.isPending}
-                onClick={() => pay.mutate()}
-                className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
-              >
-                {pay.isPending ? "…" : t("paylovGetOtp")}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="mb-3 text-xs text-fg-muted">
-              {t("paylovOtpNote", { phone: otpPhone || "" })}
-            </p>
-            <label className="mb-2 block text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">
-                {t("paylovOtp")}
-              </span>
-              <input
-                inputMode="numeric"
-                autoFocus
-                value={otp}
-                onChange={(e) =>
-                  setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
-                className="tnum w-full rounded-md border border-border bg-surface px-3 py-2 text-center text-lg tracking-widest"
-              />
-            </label>
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md border border-border px-3 py-1.5 text-sm"
-              >
-                {t("payCancel")}
-              </button>
-              <button
-                type="button"
-                disabled={otp.length < 4 || confirm.isPending}
-                onClick={() => confirm.mutate()}
-                className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
-              >
-                {confirm.isPending ? "…" : t("paylovConfirm")}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+/** "2026-10-01T…" / "2026-10-01" → "01.10.2026" */
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}.${m}.${y}`;
 }
 
 function LicenseTab() {
@@ -1231,15 +1060,32 @@ function LicenseTab() {
             {formatUzs(overview?.balance_uzs ?? 0)}
             <span className="ml-1 text-sm font-medium text-fg-muted">UZS</span>
           </p>
+          {overview?.days_left != null && (
+            <p
+              className={cn(
+                "tnum mt-1.5 text-xs",
+                overview.days_left <= 3 ? "font-semibold text-danger" : "text-fg-muted",
+              )}
+              data-testid="balance-days-left"
+            >
+              {t("balanceDays", { days: overview.days_left })}
+              {overview.runs_out_on && ` · ${fmtDate(overview.runs_out_on)}`}
+            </p>
+          )}
         </div>
         <div className="rounded-lg border border-border bg-surface p-4">
           <p className="text-xs font-semibold uppercase text-fg-faint">
-            {t("monthAccrued")}
+            {t("cycleAccrued")}
           </p>
           <p className="tnum mt-2 text-3xl font-bold">
-            {formatUzs(overview?.month_accrued_uzs ?? 0)}
+            {formatUzs(overview?.cycle_accrued_uzs ?? 0)}
             <span className="ml-1 text-sm font-medium text-fg-muted">UZS</span>
           </p>
+          {overview?.cycle_start && overview?.cycle_end && (
+            <p className="tnum mt-1 text-xs text-fg-muted">
+              {fmtDate(overview.cycle_start)} — {fmtDate(overview.cycle_end)}
+            </p>
+          )}
           <p className="tnum mt-1.5 text-xs text-fg-faint">
             {t("dailyRate")}: {formatUzs(overview?.daily_rate_uzs ?? 0)} UZS ×{" "}
             {overview?.seats ?? 0}
@@ -1252,10 +1098,17 @@ function LicenseTab() {
               <b className="tnum text-fg">{data.trial_days_left}</b>
             </p>
           ) : (
-            <p className="tnum text-xs font-semibold uppercase text-fg-faint">
-              {t("period")}: {data.current_period_start?.slice(0, 10)} —{" "}
-              {data.current_period_end?.slice(0, 10)}
-            </p>
+            <div>
+              <p className="tnum text-xs font-semibold uppercase text-fg-faint">
+                {t("period")}: {fmtDate(data.current_period_start)} —{" "}
+                {fmtDate(data.current_period_end)}
+              </p>
+              {overview?.cycle_end && (
+                <p className="tnum mt-1 text-xs font-medium text-accent">
+                  {t("nextCharge")}: {fmtDate(overview.cycle_end)}
+                </p>
+              )}
+            </div>
           )}
           <dl className="tnum mt-2 space-y-1 text-sm">
             <div className="flex justify-between">
@@ -1320,7 +1173,16 @@ function LicenseTab() {
                   key={statement.month}
                   className="flex items-center gap-2 px-4 py-2 text-sm"
                 >
-                  <span className="tnum flex-1">{statement.month}</span>
+                  <span className="tnum flex-1">
+                    {statement.period_start && statement.period_end
+                      ? `${fmtDate(statement.period_start)} — ${fmtDate(statement.period_end)}`
+                      : statement.month}
+                    {statement.settled_at && (
+                      <span className="block text-[11px] text-fg-faint">
+                        {t("stmtSettledOn")}: {fmtDate(statement.settled_at)}
+                      </span>
+                    )}
+                  </span>
                   <span className="tnum">
                     {formatUzs(statement.total_uzs)} UZS
                   </span>

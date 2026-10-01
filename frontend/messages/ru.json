@@ -49,7 +49,8 @@
     "perOperator": "за оператора",
     "total": "Итого в месяц",
     "payWith": "Оплатить через",
-    "manualNote": "Или оплатите банковским переводом — активация после подтверждения."
+    "manualNote": "Или оплатите банковским переводом — активация после подтверждения.",
+    "payOnline": "Оплатить онлайн"
   },
   "table": {
     "empty": "Данных пока нет",
@@ -215,7 +216,11 @@
     "paylovOtp": "SMS-код (OTP)",
     "paylovOtpNote": "Введите код, отправленный на {phone}",
     "paylovConfirm": "Оплатить",
-    "payOnline": "Оплатить онлайн"
+    "payOnline": "Оплатить онлайн",
+    "cycleAccrued": "Начислено за текущий период",
+    "nextCharge": "Дата списания с баланса",
+    "stmtSettledOn": "Списано",
+    "balanceDays": "Баланса хватит ≈ на {days} дн."
   },
   "ai": {
     "badge": "Искусственный интеллект",
@@ -503,7 +508,14 @@
       "periodMonthly": "По месяцам",
       "periodYearly": "По годам",
       "totalCalls": "Всего звонков",
-      "salesManagersTitle": "Менеджеры продаж"
+      "salesManagersTitle": "Менеджеры продаж",
+      "callsTodayTitle": "Звонки сегодня — по организациям",
+      "callsTodayTotal": "всего {n}",
+      "ctCompany": "Организация / оператор",
+      "ctTotal": "Всего",
+      "ctAnswered": "Отвечено",
+      "ctMissed": "Пропущено",
+      "callsTodayEmpty": "Сегодня звонков пока нет"
     },
     "companies": {
       "title": "Компании",

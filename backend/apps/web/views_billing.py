@@ -3,7 +3,7 @@ in-app notifications. All reachable while the company is payment-blocked."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from django.db.models import Count, Sum
 from django.utils import timezone
@@ -19,6 +19,7 @@ from apps.billing.models import (
     MonthlyStatement,
     Payment,
     PaymentProviderConfig,
+    Subscription,
     ensure_provider_configs,
 )
 from apps.core.models import AuditLog
@@ -74,11 +75,33 @@ class BillingOverviewView(CabinetView):
             .first()
         )
         price = billing.effective_price(company)
+        subscription = Subscription.all_objects.filter(company=company).first()
+        cycle_start = (
+            subscription.current_period_start.date().isoformat()
+            if subscription and subscription.current_period_start
+            else None
+        )
+        cycle_end = (
+            subscription.current_period_end.date().isoformat()
+            if subscription and subscription.current_period_end
+            else None
+        )
         return Response(
             {
                 "success": True,
                 "balance_uzs": company.balance_uzs,
                 "month_accrued_uzs": billing.month_accrued(company, month_start),
+                # Billing cycle: usage accrued since the last deduction and the
+                # date the balance will next be charged (cycle end).
+                "cycle_accrued_uzs": billing.cycle_accrued(company),
+                "cycle_start": cycle_start,
+                "cycle_end": cycle_end,
+                # How long the prepaid balance lasts at the CURRENT burn rate
+                # (active operators × daily rate) — reacts to adding/removing operators.
+                "days_left": (days_left := billing.days_of_balance_left(company, day=today)),
+                "runs_out_on": (today + timedelta(days=days_left)).isoformat()
+                if days_left is not None
+                else None,
                 "price_per_operator_uzs": price,
                 "daily_rate_uzs": billing.daily_rate(price, today),
                 "seats": billing.seat_count(company),
@@ -145,6 +168,9 @@ class BillingStatementsView(CabinetView):
         rows = [
             {
                 "month": s.month.strftime("%Y-%m"),
+                "period_start": s.period_start.isoformat() if s.period_start else None,
+                # Inclusive last day for display (stored end is exclusive).
+                "period_end": (s.period_end - timedelta(days=1)).isoformat() if s.period_end else None,
                 "total_uzs": s.total_uzs,
                 "status": s.status,
                 "settled_at": s.settled_at.isoformat() if s.settled_at else None,

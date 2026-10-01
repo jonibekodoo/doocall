@@ -113,8 +113,9 @@ def activate(
     now = now or timezone.now()
     _transition(subscription, Subscription.Status.ACTIVE)
     subscription.price_per_operator_uzs = effective_price(subscription.company)
+    # A billing cycle = payment/activation date → the same day next month.
     subscription.current_period_start = now
-    subscription.current_period_end = now + timedelta(days=period_days)
+    subscription.current_period_end = _add_month_dt(now)
     subscription.save()
 
     subscription.company.status = Company.Status.ACTIVE
@@ -289,6 +290,24 @@ def _prev_month_start(day: date) -> date:
     return (day.replace(day=1) - timedelta(days=1)).replace(day=1)
 
 
+def add_month(day: date) -> date:
+    """Same day next month (clamped to that month's length): 31 Jan → 28/29 Feb."""
+    year, month = (day.year + 1, 1) if day.month == 12 else (day.year, day.month + 1)
+    return day.replace(year=year, month=month, day=min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def _add_month_dt(moment: datetime) -> datetime:
+    nd = add_month(moment.date())
+    return moment.replace(year=nd.year, month=nd.month, day=nd.day)
+
+
+def _period_label(statement: MonthlyStatement) -> str:
+    if statement.period_start and statement.period_end:
+        last = statement.period_end - timedelta(days=1)
+        return f"{statement.period_start:%d.%m.%Y} — {last:%d.%m.%Y}"
+    return f"{statement.month:%Y-%m}"
+
+
 def month_accrued(company: Company, month: date) -> int:
     month = _month_start(month)
     if month.month == 12:
@@ -338,12 +357,82 @@ def settle_statement(statement: MonthlyStatement, *, now: datetime) -> bool:
     notify(
         company,
         BillingNotification.Kind.CHARGE_SETTLED,
-        f"{statement.month:%Y-%m} oyi uchun {statement.total_uzs:,} UZS balansdan yechildi. "
+        f"{_period_label(statement)} davri uchun {statement.total_uzs:,} UZS balansdan yechildi. "
         f"Qoldiq: {company.balance_uzs:,} UZS".replace(",", " "),
         statement.total_uzs,
     )
     _audit(company, "billing.statement_settled", total_uzs=statement.total_uzs)
     return True
+
+
+# ── Billing cycles (payment date → same day next month) ───────────────────────
+def unbilled_charges(company: Company, *, before: date | None = None):
+    """Daily charges not yet deducted by any statement (optionally only those
+    dated before ``before``, exclusive)."""
+    qs = DailyCharge.all_objects.filter(company=company, statement__isnull=True)
+    if before is not None:
+        qs = qs.filter(date__lt=before)
+    return qs
+
+
+def cycle_accrued(company: Company) -> int:
+    """Usage accrued since the last deduction (what the next statement will take)."""
+    total = unbilled_charges(company).aggregate(s=Sum("amount_uzs"))["s"]
+    return int(total or 0)
+
+
+@transaction.atomic
+def settle_cycle(subscription: Subscription, *, now: datetime) -> MonthlyStatement | None:
+    """Close the subscription's finished cycle: bill every undeducted charge up
+    to the cycle end, deduct it from the balance, then start the next cycle.
+
+    The next cycle starts even when the balance was short — the unpaid
+    statement is what ``run_overdue_enforcement`` acts on."""
+    if subscription.current_period_start is None or subscription.current_period_end is None:
+        return None
+    company = subscription.company
+    period_start = subscription.current_period_start.date()
+    period_end = subscription.current_period_end.date()
+    charges = unbilled_charges(company, before=period_end)
+    total = int(charges.aggregate(s=Sum("amount_uzs"))["s"] or 0)
+    statement, _ = MonthlyStatement.all_objects.get_or_create(
+        company=company,
+        month=period_start,
+        defaults={"period_start": period_start, "period_end": period_end, "total_uzs": total},
+    )
+    if statement.status != MonthlyStatement.Status.PAID:
+        statement.period_start, statement.period_end = period_start, period_end
+        # Attach the newly billed charges and (re)compute the total from them.
+        charges.update(statement=statement)
+        statement.total_uzs = int(statement.charges.aggregate(s=Sum("amount_uzs"))["s"] or 0)
+        statement.save(update_fields=["period_start", "period_end", "total_uzs"])
+    if not settle_statement(statement, now=now) and statement.status == (
+        MonthlyStatement.Status.PENDING
+    ):
+        notify(
+            company,
+            BillingNotification.Kind.PAYMENT_DUE,
+            f"{_period_label(statement)} davri uchun {statement.total_uzs:,} UZS to'lov qilish kerak. "
+            f"{GRACE_DAYS} kun ichida to'lanmasa tizim bloklanadi.".replace(",", " "),
+            statement.total_uzs,
+        )
+    # Roll to the next cycle (same day next month).
+    subscription.current_period_start = subscription.current_period_end
+    subscription.current_period_end = _add_month_dt(subscription.current_period_end)
+    subscription.save(update_fields=["current_period_start", "current_period_end", "updated_at"])
+    return cast(MonthlyStatement, statement)
+
+
+def run_cycle_settlement(now: datetime) -> int:
+    """Daily sweep: settle every ACTIVE subscription whose cycle has ended."""
+    due = Subscription.all_objects.select_related("company").filter(
+        status=Subscription.Status.ACTIVE, current_period_end__lte=now
+    )
+    count = 0
+    for subscription in due:
+        if settle_cycle(subscription, now=now) is not None:
+            count += 1
+    return count
 
 
 def settle_month(company: Company, month: date, *, now: datetime) -> MonthlyStatement:
@@ -433,10 +522,8 @@ def run_overdue_enforcement(now: datetime) -> int:
         status=MonthlyStatement.Status.PENDING
     ).select_related("company")
     for statement in unpaid:
-        if statement.month.month == 12:
-            due_from = statement.month.replace(year=statement.month.year + 1, month=1)
-        else:
-            due_from = statement.month.replace(month=statement.month.month + 1)
+        # Grace counts from the cycle end (legacy rows: the following month).
+        due_from = statement.period_end or add_month(statement.month.replace(day=1))
         if today < due_from + timedelta(days=GRACE_DAYS):
             continue
         statement.status = MonthlyStatement.Status.OVERDUE
@@ -455,7 +542,7 @@ def run_overdue_enforcement(now: datetime) -> int:
             notify(
                 company,
                 BillingNotification.Kind.BLOCKED,
-                f"{statement.month:%Y-%m} oyi to'lovi kechikkani uchun tizim bloklandi. "
+                f"{_period_label(statement)} davri to'lovi kechikkani uchun tizim bloklandi. "
                 f"To'lovdan so'ng avtomatik ochiladi ({statement.total_uzs:,} UZS)".replace(
                     ",", " "
                 ),
@@ -497,12 +584,11 @@ def apply_payment(
         ):
             activate(subscription, now=now, actor=actor)
         else:
-            # Already active → extend the running period by one billing cycle.
-            base = subscription.current_period_end or now
-            subscription.current_period_end = max(base, now) + timedelta(days=PERIOD_DAYS)
-            subscription.save(update_fields=["current_period_end", "updated_at"])
-            subscription.company.status = Company.Status.ACTIVE
-            subscription.company.save(update_fields=["status", "updated_at"])
+            # Already active: a prepaid top-up only raises the balance — it does
+            # NOT move the billing cycle (the cycle rolls at its own end).
+            if subscription.company.status != Company.Status.ACTIVE:
+                subscription.company.status = Company.Status.ACTIVE
+                subscription.company.save(update_fields=["status", "updated_at"])
 
     _audit(
         payment.company,

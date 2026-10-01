@@ -188,6 +188,66 @@ class AdminDashboardView(StaffView):
         )
 
 
+class AdminCallsTodayView(StaffView):
+    """Today's calls broken down by company and operator (dashboard report)."""
+
+    @extend_schema(summary="Today's calls per company / operator")
+    def get(self, request: Request) -> Response:
+        from apps.calls.models import CallRecord
+
+        now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        rows = (
+            CallRecord.all_objects.filter(start_time__gte=today_start)
+            .values(
+                "company_id",
+                "company__name",
+                "operator_id",
+                "operator__full_name",
+                "operator__user_name",
+                "call_status",
+            )
+            .annotate(n=Count("id"))
+            .order_by("company__name")
+        )
+        companies: dict[int, dict[str, Any]] = {}
+        for r in rows:
+            c = companies.setdefault(
+                r["company_id"],
+                {"id": r["company_id"], "name": r["company__name"], "total": 0,
+                 "answered": 0, "missed": 0, "operators": {}},
+            )
+            n = int(r["n"])
+            c["total"] += n
+            if r["call_status"] == "answered":
+                c["answered"] += n
+            else:
+                c["missed"] += n
+            op_key = r["operator_id"] or 0
+            op = c["operators"].setdefault(
+                op_key,
+                {"id": r["operator_id"],
+                 "name": r["operator__full_name"] or r["operator__user_name"] or "—",
+                 "total": 0, "answered": 0},
+            )
+            op["total"] += n
+            if r["call_status"] == "answered":
+                op["answered"] += n
+        out = []
+        for c in companies.values():
+            c["operators"] = sorted(c["operators"].values(), key=lambda o: -o["total"])
+            out.append(c)
+        out.sort(key=lambda c: -c["total"])
+        return Response(
+            {
+                "success": True,
+                "date": today_start.date().isoformat(),
+                "total": sum(c["total"] for c in out),
+                "companies": out,
+            }
+        )
+
+
 class AdminDashboardSeriesView(StaffView):
     """Time series for the dashboard charts at a chosen granularity.
 

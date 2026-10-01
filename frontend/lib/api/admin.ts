@@ -230,6 +230,26 @@ export interface AdminPaymentStats {
 export const fetchPaymentStats = () =>
   g<AdminPaymentStats>("/payments/stats");
 
+// ── Dashboard: today's calls per company / operator ─────────────────────────
+export interface CallsTodayOperator {
+  id: number | null;
+  name: string;
+  total: number;
+  answered: number;
+}
+export interface CallsTodayCompany {
+  id: number;
+  name: string;
+  total: number;
+  answered: number;
+  missed: number;
+  operators: CallsTodayOperator[];
+}
+export const fetchAdminCallsToday = () =>
+  g<{ success: boolean; date: string; total: number; companies: CallsTodayCompany[] }>(
+    "/dashboard/calls-today",
+  );
+
 export const approvePayment = (id: number) =>
   post<{
     success: boolean;

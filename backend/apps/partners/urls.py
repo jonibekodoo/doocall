@@ -9,6 +9,7 @@ from . import views_sales as S
 admin_urlpatterns = [
     path("dashboard", A.AdminDashboardView.as_view()),
     path("dashboard/series", A.AdminDashboardSeriesView.as_view()),
+    path("dashboard/calls-today", A.AdminCallsTodayView.as_view()),
     path("companies", A.AdminCompaniesView.as_view()),
     path("companies/<int:company_id>", A.AdminCompanyDetailView.as_view()),
     path("companies/<int:company_id>/reassign", A.AdminCompanyReassignView.as_view()),

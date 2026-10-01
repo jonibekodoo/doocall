@@ -200,6 +200,15 @@ class DailyCharge(TenantModel):
     price_per_operator_uzs = models.PositiveIntegerField(
         help_text="Monthly tariff in force on that day (rate = tariff / days in month)"
     )
+    # The statement that billed this day (NULL = not yet deducted). Guarantees a
+    # charge is deducted exactly once whatever the cycle boundaries are.
+    statement = models.ForeignKey(
+        "billing.MonthlyStatement",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="charges",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta(TenantModel.Meta):
@@ -217,14 +226,19 @@ class DailyCharge(TenantModel):
 
 
 class MonthlyStatement(TenantModel):
-    """Previous-month usage total, settled from the balance on the 1st."""
+    """Usage total for one billing cycle, deducted from the balance when the
+    cycle ends. A cycle runs from the (re)activation / payment date to the same
+    day of the next month (``period_start`` → ``period_end``); legacy rows were
+    calendar months. ``month`` keeps the cycle start for uniqueness/ordering."""
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         PAID = "paid", "Paid"
         OVERDUE = "overdue", "Overdue"
 
-    month = models.DateField(help_text="First day of the billed month")
+    month = models.DateField(help_text="Cycle start date (legacy: first day of the month)")
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True, help_text="Exclusive")
     total_uzs = models.PositiveBigIntegerField(default=0)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     settled_at = models.DateTimeField(null=True, blank=True)

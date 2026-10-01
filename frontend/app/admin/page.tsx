@@ -43,6 +43,8 @@ import {
   fetchDashboardSeries,
   fetchKpis,
   fetchSalesManagerStats,
+  fetchAdminCallsToday,
+  type CallsTodayCompany,
 } from "@/lib/api/admin";
 import { formatUzs } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -238,6 +240,78 @@ function SalesManagersSummary() {
   );
 }
 
+/** Today's calls: which company (and which operator) made how many. */
+function CallsTodayRow({ c }: { c: CallsTodayCompany }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <tr className="border-t border-border hover:bg-surface-2/60">
+        <td className="px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex items-center gap-1.5 font-medium text-accent hover:underline"
+          >
+            <span className={cn("text-[10px] transition-transform", open && "rotate-90")}>▶</span>
+            {c.name}
+          </button>
+        </td>
+        <td className="tnum px-3 py-2.5 text-right font-semibold">{c.total}</td>
+        <td className="tnum px-3 py-2.5 text-right text-success">{c.answered}</td>
+        <td className="tnum px-3 py-2.5 text-right text-danger">{c.missed}</td>
+      </tr>
+      {open &&
+        c.operators.map((o) => (
+          <tr key={`${c.id}-${o.id ?? "none"}`} className="bg-surface-2/40 text-xs">
+            <td className="py-1.5 pl-9 pr-3 text-fg-muted">{o.name}</td>
+            <td className="tnum px-3 py-1.5 text-right">{o.total}</td>
+            <td className="tnum px-3 py-1.5 text-right text-success">{o.answered}</td>
+            <td className="tnum px-3 py-1.5 text-right text-danger">{o.total - o.answered}</td>
+          </tr>
+        ))}
+    </>
+  );
+}
+
+function CallsTodayReport() {
+  const t = useTranslations("admin");
+  const { data } = useQuery({ queryKey: ["a-calls-today"], queryFn: fetchAdminCallsToday, refetchInterval: 60_000 });
+  return (
+    <div className="rounded-xl border border-border bg-surface" data-testid="calls-today-report">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+        <h2 className="text-sm font-semibold">{t("dashboard.callsTodayTitle")}</h2>
+        {data && (
+          <span className="tnum text-xs text-fg-faint">
+            {data.date} · {t("dashboard.callsTodayTotal", { n: data.total })}
+          </span>
+        )}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
+            <tr>
+              <th className="px-3 py-2 text-left">{t("dashboard.ctCompany")}</th>
+              <th className="px-3 py-2 text-right">{t("dashboard.ctTotal")}</th>
+              <th className="px-3 py-2 text-right">{t("dashboard.ctAnswered")}</th>
+              <th className="px-3 py-2 text-right">{t("dashboard.ctMissed")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data?.companies ?? []).map((c) => <CallsTodayRow key={c.id} c={c} />)}
+            {data && data.companies.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-3 py-8 text-center text-xs text-fg-faint">
+                  {t("dashboard.callsTodayEmpty")}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const t = useTranslations("admin");
   const tc = useTranslations("admin.companies");
@@ -396,6 +470,9 @@ export default function AdminDashboard() {
 
       {/* Sales managers */}
       <SalesManagersSummary />
+
+      {/* Today's calls by company / operator */}
+      <CallsTodayReport />
     </div>
   );
 }

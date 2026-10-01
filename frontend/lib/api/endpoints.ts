@@ -294,6 +294,14 @@ export interface PaymentProviderOption {
 export interface BillingOverview extends ApiEnvelope {
   balance_uzs: number;
   month_accrued_uzs: number;
+  /** Usage accrued since the last deduction (next statement amount so far). */
+  cycle_accrued_uzs: number;
+  /** Billing cycle: payment date → same day next month (balance charged on cycle_end). */
+  cycle_start: string | null;
+  cycle_end: string | null;
+  /** Days the balance covers at the current burn rate (null: trial / no operators). */
+  days_left: number | null;
+  runs_out_on: string | null;
   price_per_operator_uzs: number;
   daily_rate_uzs: number;
   seats: number;
@@ -328,6 +336,8 @@ export const fetchBillingStatements = () =>
     success: boolean;
     statements: Array<{
       month: string;
+      period_start: string | null;
+      period_end: string | null;
       total_uzs: number;
       status: string;
       settled_at: string | null;
