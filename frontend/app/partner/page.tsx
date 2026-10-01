@@ -3,6 +3,8 @@
 /** A.4 Overview — KPI cards, 12-month bar chart, latest accruals feed. */
 
 import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Bar, BarChart, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -96,6 +98,61 @@ export default function PartnerOverview() {
               ))}
             </div>
           </div>
+
+          {/* Companies going offline within 3 days (trial end / balance out) */}
+          <section
+            className={`mt-4 rounded-lg border bg-surface ${
+              data.expiring.length ? "border-warning/50" : "border-border"
+            }`}
+            data-testid="expiring-companies"
+          >
+            <p className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm font-semibold">
+              <AlertTriangle
+                className={`size-4 ${data.expiring.length ? "text-warning" : "text-fg-faint"}`}
+              />
+              {t("expiringTitle")}
+              {data.expiring.length > 0 && (
+                <span className="tnum ml-auto rounded-full bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning">
+                  {data.expiring.length}
+                </span>
+              )}
+            </p>
+            <ul className="divide-y divide-border">
+              {data.expiring.map((c) => (
+                <li
+                  key={`${c.reason}-${c.id}`}
+                  className="flex items-center gap-3 px-4 py-2.5 text-sm"
+                >
+                  <Link
+                    href={`/partner/companies/${c.id}`}
+                    className="min-w-0 flex-1 truncate font-medium text-accent hover:underline"
+                  >
+                    {c.name}
+                  </Link>
+                  <span className="hidden text-xs text-fg-muted sm:inline">
+                    {t(c.reason === "trial" ? "expiringTrial" : "expiringBalance")}
+                  </span>
+                  <span className="tnum text-xs text-fg-faint">{c.ends_on}</span>
+                  <span
+                    className={`tnum rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      c.days_left <= 1
+                        ? "bg-danger/10 text-danger"
+                        : "bg-warning/15 text-warning"
+                    }`}
+                  >
+                    {c.days_left === 0
+                      ? t("expiringToday")
+                      : t("expiringDays", { n: c.days_left })}
+                  </span>
+                </li>
+              ))}
+              {data.expiring.length === 0 && (
+                <li className="px-4 py-5 text-center text-xs text-fg-faint">
+                  {t("expiringNone")}
+                </li>
+              )}
+            </ul>
+          </section>
 
           <div className="mt-6">
             <p className="mb-2 text-xs font-semibold uppercase text-fg-faint">

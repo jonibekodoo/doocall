@@ -7,7 +7,17 @@ import type { ApiEnvelope } from "./types";
 
 const P = "/api/partner/v1" as const;
 
+export interface ExpiringCompany {
+  id: number;
+  name: string;
+  /** "trial" — trial ends; "balance" — prepaid balance runs out. */
+  reason: "trial" | "balance";
+  days_left: number;
+  ends_on: string;
+}
+
 export interface PartnerDashboard extends ApiEnvelope {
+  expiring: ExpiringCompany[];
   companies_by_status: CompaniesByStatus;
   month_cashback_uzs: number;
   min_payout_uzs: number;

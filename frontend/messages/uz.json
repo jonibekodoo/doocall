@@ -470,7 +470,13 @@
     "offerAcceptedOn": "Oferta {date} da qabul qilingan",
     "acceptOffer": "Ofertani qabul qilish",
     "st_expired": "Sinov tugagan",
-    "companiesByStatus": "Kompaniyalar holati"
+    "companiesByStatus": "Kompaniyalar holati",
+    "expiringTitle": "3 kun ichida o'chadigan kompaniyalar",
+    "expiringTrial": "sinov muddati tugaydi",
+    "expiringBalance": "balans tugaydi",
+    "expiringToday": "bugun",
+    "expiringDays": "{n} kun qoldi",
+    "expiringNone": "Yaqin 3 kunda o'chadigan kompaniya yo'q"
   },
   "admin": {
     "nav": {

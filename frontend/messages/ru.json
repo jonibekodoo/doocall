@@ -470,7 +470,13 @@
     "offerAcceptedOn": "Оферта принята {date}",
     "acceptOffer": "Принять оферту",
     "st_expired": "Пробный период истёк",
-    "companiesByStatus": "Статус компаний"
+    "companiesByStatus": "Статус компаний",
+    "expiringTitle": "Компании, которые отключатся в течение 3 дней",
+    "expiringTrial": "заканчивается пробный период",
+    "expiringBalance": "заканчивается баланс",
+    "expiringToday": "сегодня",
+    "expiringDays": "осталось {n} дн.",
+    "expiringNone": "В ближайшие 3 дня отключений нет"
   },
   "admin": {
     "nav": {

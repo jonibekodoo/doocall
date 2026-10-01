@@ -470,7 +470,13 @@
     "offerAcceptedOn": "Offer accepted on {date}",
     "acceptOffer": "Accept the offer",
     "st_expired": "Trial expired",
-    "companiesByStatus": "Companies by status"
+    "companiesByStatus": "Companies by status",
+    "expiringTitle": "Companies going offline within 3 days",
+    "expiringTrial": "trial ends",
+    "expiringBalance": "balance runs out",
+    "expiringToday": "today",
+    "expiringDays": "{n} days left",
+    "expiringNone": "Nothing goes offline in the next 3 days"
   },
   "admin": {
     "nav": {

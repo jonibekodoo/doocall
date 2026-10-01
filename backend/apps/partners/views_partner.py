@@ -72,6 +72,43 @@ def _partner_company_body(company: Company, integrator: Integrator) -> dict[str,
     }
 
 
+EXPIRING_WITHIN_DAYS = 3
+
+
+def expiring_companies(companies: Any, *, now: Any) -> list[dict[str, Any]]:
+    """Companies that will go offline within the next few days — either a
+    trial about to end or a prepaid balance about to run out — so the partner
+    can chase the payment before the cabinet locks. Sorted soonest first."""
+    rows: list[dict[str, Any]] = []
+    horizon = now + timedelta(days=EXPIRING_WITHIN_DAYS)
+    for c in companies.filter(
+        status=Company.Status.TRIAL, trial_ends_at__gte=now, trial_ends_at__lte=horizon
+    ):
+        rows.append(
+            {
+                "id": c.pk,
+                "name": c.name,
+                "reason": "trial",
+                "days_left": (c.trial_ends_at - now).days,
+                "ends_on": c.trial_ends_at.date().isoformat(),
+            }
+        )
+    for c in companies.filter(status=Company.Status.ACTIVE):
+        left = billing.days_of_balance_left(c)
+        if left is not None and left <= EXPIRING_WITHIN_DAYS:
+            rows.append(
+                {
+                    "id": c.pk,
+                    "name": c.name,
+                    "reason": "balance",
+                    "days_left": left,
+                    "ends_on": (now + timedelta(days=left)).date().isoformat(),
+                }
+            )
+    rows.sort(key=lambda r: (r["days_left"], r["name"]))
+    return rows
+
+
 class PartnerDashboardView(PartnerView):
     @extend_schema(summary="Partner KPIs + 12-month accrual series")
     def get(self, request: Request) -> Response:
@@ -100,6 +137,7 @@ class PartnerDashboardView(PartnerView):
         return Response(
             {
                 "success": True,
+                "expiring": expiring_companies(companies, now=tz.now()),
                 "month_cashback_uzs": int(month_sum),
                 "min_payout_uzs": get_platform_settings().min_payout_uzs,
                 "referral_code": integrator.referral_code,
