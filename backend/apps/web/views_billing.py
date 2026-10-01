@@ -425,7 +425,12 @@ def _paylov_error(request: Request, e: Exception) -> ApiError:
     """Translate a PaylovError into a localised ApiError (keeps the raw code)."""
     code = getattr(e, "code", "") or ""
     key = _CODE_ALIASES.get(code, code)
-    text = _t(request, key) if key in _MSG else (getattr(e, "message", "") or _t(request, "generic"))
+    # PaylovError stores the bare code as its message when Paylov sent none —
+    # never show a raw code to the user; prefer the localised generic text.
+    raw = getattr(e, "message", "") or ""
+    if raw == code:
+        raw = ""
+    text = _t(request, key) if key in _MSG else (raw or _t(request, "generic"))
     return ApiError(ErrorCode.MISSING_FIELD, text, 400, extra={"paylov_code": code})
 
 
