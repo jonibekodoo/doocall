@@ -465,8 +465,11 @@ class BillingPaylovPayView(CabinetView):
             company=self.company, provider=Payment.Provider.PAYLOV, amount_uzs=amount
         )
         try:
+            # Paylov "Payment Without Registration": amount is in SOM
+            # ("1000 = 1 Thousand SUM"). Sending tiyin (×100) made the gateway
+            # try to charge 100× the top-up → insufficient_funds on real cards.
             resp = paylov_api.payment_without_registration(
-                card, expire, amount * 100, {"order_id": str(payment.pk)}, payment=payment
+                card, expire, amount, {"order_id": str(payment.pk)}, payment=payment
             )
         except paylov_api.PaylovError as e:
             payment.status = Payment.Status.FAILED

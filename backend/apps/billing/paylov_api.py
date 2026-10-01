@@ -127,13 +127,17 @@ def _api_post(
 
 
 def payment_without_registration(
-    card_number: str, expire_date: str, amount_tiyin: int, account: dict[str, Any], *, payment=None
+    card_number: str, expire_date: str, amount_uzs: int, account: dict[str, Any], *, payment=None
 ) -> dict[str, Any]:
-    """Create a guest (unregistered-card) payment. Returns transactionId; OTP is sent to the cardholder."""
+    """Create a guest (unregistered-card) payment. Returns transactionId; OTP is sent to the cardholder.
+
+    ``amount_uzs`` is in SOM — per Paylov's "Payment Without Registration" docs
+    ("1000 = 1 Thousand SUM"). Do NOT convert to tiyin.
+    """
     body = {
         "cardNumber": card_number,
         "expireDate": expire_date,
-        "amount": amount_tiyin,
+        "amount": amount_uzs,
         "account": account,
     }
     return _api_post(
