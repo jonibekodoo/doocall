@@ -279,7 +279,10 @@
       "db": "Ma'lumotlar bazasi nomi",
       "login": "Foydalanuvchi logini (e-mail)",
       "apiKey": "API kalit"
-    }
+    },
+    "disconnect": "Uzish",
+    "disconnectConfirm": "{title} integratsiyasi uzilsinmi? Qo'ng'iroqlar bu CRM'ga boshqa yuborilmaydi va saqlangan kirish ma'lumotlari o'chiriladi.",
+    "disconnected": "Integratsiya uzildi"
   },
   "myCalls": {
     "title": "Mening qo'ng'iroqlarim"

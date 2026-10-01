@@ -73,6 +73,30 @@ class TestCabinetSettings:
         assert row.config["api_key"] == "odoo-key-123456"
         assert row.config["url"] == "https://erp2.x.uz"
 
+    def test_disconnect_disables_and_wipes_config(
+        self, client: APIClient, company: Company
+    ) -> None:
+        CrmIntegration.all_objects.create(
+            company=company,
+            provider="bitrix24",
+            is_enabled=True,
+            config={"webhook_url": "https://b24.x.ru/rest/1/tok/", "user_id": "1"},
+            last_status="error",
+            last_error="HTTP 401",
+        )
+        response = client.delete(f"{BASE}/bitrix24")
+        assert response.status_code == 200
+        body = response.json()["integration"]
+        assert body["is_enabled"] is False
+        assert body["configured"] is False
+        assert body["last_status"] == ""
+        row = CrmIntegration.all_objects.get(company=company, provider="bitrix24")
+        assert row.is_enabled is False and row.config == {}
+        # Disconnected rows are invisible to the dispatcher.
+        assert not CrmIntegration.all_objects.filter(company=company, is_enabled=True).exists()
+        # Idempotent for a provider that was never configured.
+        assert client.delete(f"{BASE}/odoo").status_code == 200
+
     def test_member_cannot_manage(self, company: Company) -> None:
         member = User.objects.create_user(
             username="member@integr-co.uz", company=company, is_company_admin=False

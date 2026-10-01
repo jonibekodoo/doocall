@@ -433,6 +433,11 @@ export const saveIntegration = (
     body,
   );
 
+export const disconnectIntegration = (provider: string) =>
+  del<{ success: boolean; integration: CrmIntegrationRow }>(
+    `/settings/integrations/${provider}`,
+  );
+
 export const testIntegration = (provider: string) =>
   post<{ success: boolean; detail?: string; error?: string }>(
     `/settings/integrations/${provider}/test`,

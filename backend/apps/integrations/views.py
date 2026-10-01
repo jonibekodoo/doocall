@@ -115,6 +115,31 @@ class IntegrationDetailView(AdminCabinetView):
         )
         return Response({"success": True, "integration": _body(integration, provider)})
 
+    @extend_schema(summary="Disconnect a CRM integration (disable + wipe credentials)")
+    def delete(self, request: Request, provider: str) -> Response:
+        """Hard disconnect: nothing is delivered to this CRM any more and the
+        stored credentials are dropped. Dispatch only looks at ``is_enabled``
+        rows, so flipping it off is what actually stops the traffic."""
+        provider = self._provider(provider)
+        integration = CrmIntegration.objects.filter(provider=provider).first()
+        if integration is not None:
+            integration.is_enabled = False
+            integration.config = {}
+            integration.last_status = ""
+            integration.last_error = ""
+            integration.save(
+                update_fields=["is_enabled", "config", "last_status", "last_error", "updated_at"]
+            )
+            AuditLog.objects.create(
+                company=self.company,
+                actor=cast(User, request.user),
+                action="settings.integration_disconnected",
+                target_model="integrations.CrmIntegration",
+                target_id=str(integration.pk),
+                changes={"provider": provider},
+            )
+        return Response({"success": True, "integration": _body(integration, provider)})
+
 
 class CrmCatalogListView(CabinetView):
     @extend_schema(summary="Active CRM catalog tiles for the integration grid")

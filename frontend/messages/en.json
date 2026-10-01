@@ -279,7 +279,10 @@
       "db": "Database name",
       "login": "User login (e-mail)",
       "apiKey": "API key"
-    }
+    },
+    "disconnect": "Disconnect",
+    "disconnectConfirm": "Disconnect the {title} integration? Calls will no longer be sent to this CRM and the stored credentials will be removed.",
+    "disconnected": "Integration disconnected"
   },
   "myCalls": {
     "title": "My calls"

@@ -5,13 +5,15 @@
  * back link, guide note, info box, region radios, config form, connect/test. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Unplug } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
+  disconnectIntegration,
   fetchIntegrations,
   saveIntegration,
   testIntegration,
@@ -86,6 +88,18 @@ export function CrmProviderPage({
           ? `${t("testOk")}: ${body.detail ?? ""}`
           : `${t("testFail")}: ${body.error ?? ""}`,
       });
+    },
+    onError: (error: Error) =>
+      useToastStore.getState().push({ kind: "error", text: error.message }),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: () => disconnectIntegration(provider),
+    onSuccess: () => {
+      setForm({});
+      setEnabled(false);
+      queryClient.invalidateQueries({ queryKey: ["s-integrations"] });
+      useToastStore.getState().push({ kind: "success", text: t("disconnected") });
     },
     onError: (error: Error) =>
       useToastStore.getState().push({ kind: "error", text: error.message }),
@@ -206,6 +220,22 @@ export function CrmProviderPage({
         >
           {t("test")}
         </button>
+        {(row?.configured || row?.is_enabled) && (
+          <button
+            type="button"
+            data-testid="crm-disconnect"
+            disabled={disconnect.isPending}
+            onClick={async () =>
+              (await confirmDialog(t("disconnectConfirm", { title }), {
+                danger: true,
+                confirmLabel: t("disconnect"),
+              })) && disconnect.mutate()
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-4 py-2 text-sm font-medium text-danger hover:bg-danger/5 disabled:opacity-50"
+          >
+            <Unplug className="size-4" /> {t("disconnect")}
+          </button>
+        )}
         {row?.last_status === "ok" && (
           <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">
             {t("statusOk")}
