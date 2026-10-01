@@ -8,12 +8,19 @@
 # Set the real domains in .env for production — nothing else changes.
 # *.localhost resolves to 127.0.0.1 automatically, no /etc/hosts needed.
 
+# `resolve` + Docker DNS (127.0.0.11): service names are re-resolved at run
+# time, so a recreated backend/frontend container (new IP) never leaves nginx
+# pinned to a dead upstream (502 until reload). Requires a shared-memory zone.
 upstream doocall_backend {
-    server backend:8000;
+    zone doocall_backend 64k;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    server backend:8000 resolve;
 }
 
 upstream doocall_frontend {
-    server frontend:3000;
+    zone doocall_frontend 64k;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    server frontend:3000 resolve;
 }
 
 map $http_upgrade $connection_upgrade {

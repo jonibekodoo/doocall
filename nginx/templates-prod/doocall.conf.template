@@ -3,8 +3,10 @@
 # Cert: ONE wildcard certificate covering  doocall.uz + *.doocall.uz
 #   /etc/letsencrypt/live/${DOMAIN_ROOT}/fullchain.pem|privkey.pem
 
-upstream doocall_backend  { server backend:8000; }
-upstream doocall_frontend { server frontend:3000; }
+# `resolve` + Docker DNS: re-resolve service names so a recreated backend/
+# frontend container (new IP) never leaves nginx pinned to a dead upstream (502).
+upstream doocall_backend  { zone doocall_backend 64k;  resolver 127.0.0.11 valid=10s ipv6=off; server backend:8000  resolve; }
+upstream doocall_frontend { zone doocall_frontend 64k; resolver 127.0.0.11 valid=10s ipv6=off; server frontend:3000 resolve; }
 
 map $http_upgrade $connection_upgrade {
     default upgrade;
