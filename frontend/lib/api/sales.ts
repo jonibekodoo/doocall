@@ -1,7 +1,7 @@
 /** Typed client for the sales-manager portal API (/api/sales/v1). */
 
 import { api, get, post, put } from "./client";
-import type { ApiEnvelope } from "./types";
+import type { ApiEnvelope, ExpiringCompany } from "./types";
 
 const S = "/api/sales/v1" as const;
 
@@ -21,7 +21,7 @@ export interface SalesDashboard extends ApiEnvelope {
   accrued_uzs: number;
   lifetime_uzs: number;
   company_status: CompanyStatusBreakdown;
-  expiring_soon: Array<{ id: number; name: string; days_left: number }>;
+  expiring_soon: ExpiringCompany[];
 }
 
 export interface SalesIntegratorRow {

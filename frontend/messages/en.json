@@ -97,6 +97,14 @@
       "approved": "Approved",
       "rejected": "Rejected / refunded",
       "failed": "Failed"
+    },
+    "expiring": {
+      "title": "Companies going offline within 3 days",
+      "trial": "trial ends",
+      "balance": "balance runs out",
+      "today": "today",
+      "days": "{n} days left",
+      "none": "Nothing goes offline in the next 3 days"
     }
   },
   "dashboard": {
@@ -470,13 +478,7 @@
     "offerAcceptedOn": "Offer accepted on {date}",
     "acceptOffer": "Accept the offer",
     "st_expired": "Trial expired",
-    "companiesByStatus": "Companies by status",
-    "expiringTitle": "Companies going offline within 3 days",
-    "expiringTrial": "trial ends",
-    "expiringBalance": "balance runs out",
-    "expiringToday": "today",
-    "expiringDays": "{n} days left",
-    "expiringNone": "Nothing goes offline in the next 3 days"
+    "companiesByStatus": "Companies by status"
   },
   "admin": {
     "nav": {
@@ -1008,9 +1010,6 @@
     "st_expired": "Expired",
     "st_suspended": "Suspended",
     "status": "Status",
-    "expiringTitle": "Balance running out",
-    "expiringEmpty": "No companies running low",
-    "daysLeft": "{n} days left",
     "lifetimeCommission": "Lifetime commission",
     "noIntegrators": "No integrators yet",
     "minPayout": "Minimum {n} UZS",

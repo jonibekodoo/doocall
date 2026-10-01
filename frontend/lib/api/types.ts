@@ -61,6 +61,17 @@ export interface CallRow {
   crm: CrmMark[];
 }
 
+/** A company about to go offline (partner / sales / admin dashboards). */
+export interface ExpiringCompany {
+  id: number;
+  name: string;
+  integrator: string | null;
+  /** "trial" — trial ends; "balance" — prepaid balance runs out. */
+  reason: "trial" | "balance";
+  days_left: number;
+  ends_on: string;
+}
+
 export interface CrmMark {
   provider: "amocrm" | "bitrix24" | "odoo";
   status: "ok" | "error";

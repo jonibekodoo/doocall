@@ -81,13 +81,8 @@ class SalesDashboardView(SalesView):
             or 0
         )
 
-        # Companies whose prepaid balance runs out within 3 days.
-        expiring = []
-        for c in companies.filter(status=Company.Status.ACTIVE):
-            left = billing.days_of_balance_left(c)
-            if left is not None and left <= 3:
-                expiring.append({"id": c.pk, "name": c.name, "days_left": left})
-        expiring.sort(key=lambda r: r["days_left"])
+        # Companies going offline within 3 days (trial end / balance out).
+        expiring = services.expiring_companies(companies, now=now)
 
         return Response(
             {

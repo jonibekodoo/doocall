@@ -97,6 +97,14 @@
       "approved": "Tasdiqlangan",
       "rejected": "Rad etilgan / qaytarilgan",
       "failed": "Xatolik"
+    },
+    "expiring": {
+      "title": "3 kun ichida o'chadigan kompaniyalar",
+      "trial": "sinov muddati tugaydi",
+      "balance": "balans tugaydi",
+      "today": "bugun",
+      "days": "{n} kun qoldi",
+      "none": "Yaqin 3 kunda o'chadigan kompaniya yo'q"
     }
   },
   "dashboard": {
@@ -470,13 +478,7 @@
     "offerAcceptedOn": "Oferta {date} da qabul qilingan",
     "acceptOffer": "Ofertani qabul qilish",
     "st_expired": "Sinov tugagan",
-    "companiesByStatus": "Kompaniyalar holati",
-    "expiringTitle": "3 kun ichida o'chadigan kompaniyalar",
-    "expiringTrial": "sinov muddati tugaydi",
-    "expiringBalance": "balans tugaydi",
-    "expiringToday": "bugun",
-    "expiringDays": "{n} kun qoldi",
-    "expiringNone": "Yaqin 3 kunda o'chadigan kompaniya yo'q"
+    "companiesByStatus": "Kompaniyalar holati"
   },
   "admin": {
     "nav": {
@@ -1008,9 +1010,6 @@
     "st_expired": "Muddati tugagan",
     "st_suspended": "Bloklangan",
     "status": "Holat",
-    "expiringTitle": "Balans tugayapti",
-    "expiringEmpty": "Tugayotgan kompaniyalar yo‘q",
-    "daysLeft": "{n} kun qoldi",
     "lifetimeCommission": "Umumiy komissiya",
     "noIntegrators": "Hozircha integratorlar yo‘q",
     "minPayout": "Eng kami {n} UZS",

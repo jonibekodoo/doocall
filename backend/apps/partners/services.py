@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -419,3 +419,39 @@ def monthly_accrual_series(integrator: Integrator, months: int = 12) -> list[dic
         series.append({"month": key, "amount_uzs": by_month.get(key, 0)})
         cursor = add_months(cursor, 1)
     return series
+
+
+EXPIRING_WITHIN_DAYS = 3
+
+
+def expiring_companies(companies: Any, *, now: datetime) -> list[dict[str, Any]]:
+    """Companies that will go offline within the next few days — a trial about
+    to end or a prepaid balance about to run out — so partner / sales / admin
+    can chase the payment before the cabinet locks. Soonest first. Each row
+    also names the integrator (useful on the platform-wide admin view)."""
+    from apps.billing import services as billing
+
+    rows: list[dict[str, Any]] = []
+    horizon = now + timedelta(days=EXPIRING_WITHIN_DAYS)
+
+    def row(c: Company, reason: str, days_left: int, ends_on: datetime) -> dict[str, Any]:
+        return {
+            "id": c.pk,
+            "name": c.name,
+            "integrator": c.integrator.name if c.integrator_id else None,
+            "reason": reason,
+            "days_left": days_left,
+            "ends_on": ends_on.date().isoformat(),
+        }
+
+    qs = companies.select_related("integrator")
+    for c in qs.filter(
+        status=Company.Status.TRIAL, trial_ends_at__gte=now, trial_ends_at__lte=horizon
+    ):
+        rows.append(row(c, "trial", (c.trial_ends_at - now).days, c.trial_ends_at))
+    for c in qs.filter(status=Company.Status.ACTIVE):
+        left = billing.days_of_balance_left(c)
+        if left is not None and left <= EXPIRING_WITHIN_DAYS:
+            rows.append(row(c, "balance", left, now + timedelta(days=left)))
+    rows.sort(key=lambda r: (r["days_left"], r["name"]))
+    return rows

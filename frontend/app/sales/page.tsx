@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Building2, Coins, Handshake, Users } from "lucide-react";
+import { Building2, Coins, Handshake, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { Cell, Pie, PieChart, Tooltip } from "recharts";
 
 import { ChartBox, ReportCard, chartTooltipStyle } from "@/components/charts/theme";
+import { ExpiringCompanies } from "@/components/ExpiringCompanies";
 import { fetchSalesDashboard } from "@/lib/api/sales";
 import { formatUzs } from "@/lib/format";
 
@@ -95,31 +96,7 @@ export default function SalesDashboardPage() {
           )}
         </ReportCard>
 
-        <ReportCard
-          title={t("expiringTitle")}
-          icon={<AlertTriangle className="size-4 text-warning" />}
-        >
-          {data.expiring_soon.length === 0 ? (
-            <p className="py-10 text-center text-sm text-fg-faint">{t("expiringEmpty")}</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {data.expiring_soon.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                  <span className="truncate">{c.name}</span>
-                  <span
-                    className={
-                      c.days_left <= 1
-                        ? "shrink-0 rounded-full bg-danger/10 px-2 py-0.5 text-xs font-semibold text-danger"
-                        : "shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning"
-                    }
-                  >
-                    {t("daysLeft", { n: c.days_left })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </ReportCard>
+        <ExpiringCompanies rows={data.expiring_soon} showIntegrator />
       </div>
 
       <p className="text-sm text-fg-muted">

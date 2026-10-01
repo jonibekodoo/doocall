@@ -45,6 +45,7 @@ import {
   fetchSalesManagerStats,
   fetchAdminCallsToday,
 } from "@/lib/api/admin";
+import { ExpiringCompanies } from "@/components/ExpiringCompanies";
 import { formatUzs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -406,6 +407,13 @@ export default function AdminDashboard() {
           />
         </Link>
       </div>
+
+      {/* Companies going offline within 3 days — platform-wide, with integrator */}
+      <ExpiringCompanies
+        rows={data.expiring ?? []}
+        hrefFor={(c) => `/admin/companies/${c.id}`}
+        showIntegrator
+      />
 
       {/* Companies status donut + payments area */}
       <div className="grid gap-4 lg:grid-cols-2">

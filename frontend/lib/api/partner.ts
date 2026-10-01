@@ -3,18 +3,9 @@
 import type { CompanyStatsData } from "@/components/company/CompanyStats";
 
 import { api, get, post, put } from "./client";
-import type { ApiEnvelope } from "./types";
+import type { ApiEnvelope, ExpiringCompany } from "./types";
 
 const P = "/api/partner/v1" as const;
-
-export interface ExpiringCompany {
-  id: number;
-  name: string;
-  /** "trial" — trial ends; "balance" — prepaid balance runs out. */
-  reason: "trial" | "balance";
-  days_left: number;
-  ends_on: string;
-}
 
 export interface PartnerDashboard extends ApiEnvelope {
   expiring: ExpiringCompany[];

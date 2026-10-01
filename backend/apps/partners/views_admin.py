@@ -241,6 +241,7 @@ class AdminDashboardView(StaffView):
             {
                 "success": True,
                 "companies": companies,
+                "expiring": services.expiring_companies(Company.objects.all(), now=now),
                 "mrr_uzs": mrr,
                 "payments_30d_uzs": int(payments_30d),
                 "calls_today": calls_today,

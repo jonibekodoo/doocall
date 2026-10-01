@@ -4,7 +4,7 @@ import type { CompanyStatsData } from "@/components/company/CompanyStats";
 
 import { api, del, get, post, put } from "./client";
 import type { LeadCard, LeadDetailData, Pipeline } from "./sales";
-import type { ApiEnvelope } from "./types";
+import type { ApiEnvelope, ExpiringCompany } from "./types";
 
 const patchJson = <T>(path: string, data: unknown) =>
   api<T>(path, { method: "PATCH", body: JSON.stringify(data) });
@@ -33,6 +33,7 @@ export interface AdminKpis extends ApiEnvelope {
   pending_payouts: number;
   payments_series: number[];
   calls_series: number[];
+  expiring: ExpiringCompany[];
 }
 
 export interface AdminCompanyRow {

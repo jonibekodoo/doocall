@@ -97,6 +97,14 @@
       "approved": "Подтверждён",
       "rejected": "Отклонён / возврат",
       "failed": "Ошибка"
+    },
+    "expiring": {
+      "title": "Компании, которые отключатся в течение 3 дней",
+      "trial": "заканчивается пробный период",
+      "balance": "заканчивается баланс",
+      "today": "сегодня",
+      "days": "осталось {n} дн.",
+      "none": "В ближайшие 3 дня отключений нет"
     }
   },
   "dashboard": {
@@ -470,13 +478,7 @@
     "offerAcceptedOn": "Оферта принята {date}",
     "acceptOffer": "Принять оферту",
     "st_expired": "Пробный период истёк",
-    "companiesByStatus": "Статус компаний",
-    "expiringTitle": "Компании, которые отключатся в течение 3 дней",
-    "expiringTrial": "заканчивается пробный период",
-    "expiringBalance": "заканчивается баланс",
-    "expiringToday": "сегодня",
-    "expiringDays": "осталось {n} дн.",
-    "expiringNone": "В ближайшие 3 дня отключений нет"
+    "companiesByStatus": "Статус компаний"
   },
   "admin": {
     "nav": {
@@ -1008,9 +1010,6 @@
     "st_expired": "Истёкшие",
     "st_suspended": "Заблок.",
     "status": "Статус",
-    "expiringTitle": "Баланс заканчивается",
-    "expiringEmpty": "Нет компаний на исходе",
-    "daysLeft": "осталось {n} дн.",
     "lifetimeCommission": "Комиссия всего",
     "noIntegrators": "Интеграторов пока нет",
     "minPayout": "Минимум {n} UZS",
