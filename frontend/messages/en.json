@@ -532,13 +532,15 @@
       "periodYearly": "Yearly",
       "totalCalls": "Total calls",
       "salesManagersTitle": "Sales managers",
-      "callsTodayTitle": "Today's calls — by company",
+      "callsTodayTitle": "Calls today — top 10 companies",
       "callsTodayTotal": "{n} total",
       "ctCompany": "Company / operator",
       "ctTotal": "Total",
       "ctAnswered": "Answered",
       "ctMissed": "Missed",
-      "callsTodayEmpty": "No calls yet today"
+      "callsTodayEmpty": "No calls yet today",
+      "callsTodayCompanies": "{n} companies made calls",
+      "callsTodayOthers": "Other companies ({n})"
     },
     "companies": {
       "title": "Companies",

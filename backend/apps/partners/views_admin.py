@@ -309,12 +309,17 @@ class AdminCallsTodayView(StaffView):
             c["operators"] = sorted(c["operators"].values(), key=lambda o: -o["total"])
             out.append(c)
         out.sort(key=lambda c: -c["total"])
+        top = out[:10]  # dashboard shows the ten busiest companies only
         return Response(
             {
                 "success": True,
                 "date": today_start.date().isoformat(),
                 "total": sum(c["total"] for c in out),
-                "companies": out,
+                "answered": sum(c["answered"] for c in out),
+                "missed": sum(c["missed"] for c in out),
+                "companies_count": len(out),
+                "others_total": sum(c["total"] for c in out[10:]),
+                "companies": top,
             }
         )
 

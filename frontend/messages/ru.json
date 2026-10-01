@@ -532,13 +532,15 @@
       "periodYearly": "По годам",
       "totalCalls": "Всего звонков",
       "salesManagersTitle": "Менеджеры продаж",
-      "callsTodayTitle": "Звонки сегодня — по организациям",
+      "callsTodayTitle": "Звонки сегодня — ТОП-10 организаций",
       "callsTodayTotal": "всего {n}",
       "ctCompany": "Организация / оператор",
       "ctTotal": "Всего",
       "ctAnswered": "Отвечено",
       "ctMissed": "Пропущено",
-      "callsTodayEmpty": "Сегодня звонков пока нет"
+      "callsTodayEmpty": "Сегодня звонков пока нет",
+      "callsTodayCompanies": "звонили {n} организаций",
+      "callsTodayOthers": "Остальные организации ({n})"
     },
     "companies": {
       "title": "Компании",

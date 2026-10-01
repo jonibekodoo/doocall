@@ -278,12 +278,30 @@ function CallsTodayReport() {
   const { data } = useQuery({ queryKey: ["a-calls-today"], queryFn: fetchAdminCallsToday, refetchInterval: 60_000 });
   return (
     <div className="rounded-xl border border-border bg-surface" data-testid="calls-today-report">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold">{t("dashboard.callsTodayTitle")}</h2>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">{t("dashboard.callsTodayTitle")}</h2>
+          {data && (
+            <p className="tnum text-xs text-fg-faint">
+              {data.date} · {t("dashboard.callsTodayCompanies", { n: data.companies_count })}
+            </p>
+          )}
+        </div>
         {data && (
-          <span className="tnum text-xs text-fg-faint">
-            {data.date} · {t("dashboard.callsTodayTotal", { n: data.total })}
-          </span>
+          <div className="ml-auto flex items-center gap-4 text-xs">
+            <span>
+              <span className="block uppercase text-fg-faint">{t("dashboard.ctTotal")}</span>
+              <b className="tnum text-lg" data-testid="calls-today-total">{data.total}</b>
+            </span>
+            <span>
+              <span className="block uppercase text-fg-faint">{t("dashboard.ctAnswered")}</span>
+              <b className="tnum text-lg text-success">{data.answered}</b>
+            </span>
+            <span>
+              <span className="block uppercase text-fg-faint">{t("dashboard.ctMissed")}</span>
+              <b className="tnum text-lg text-danger">{data.missed}</b>
+            </span>
+          </div>
         )}
       </div>
       <div className="overflow-x-auto">
@@ -298,6 +316,15 @@ function CallsTodayReport() {
           </thead>
           <tbody>
             {(data?.companies ?? []).map((c) => <CallsTodayRow key={c.id} c={c} />)}
+            {data && data.others_total > 0 && (
+              <tr className="border-t border-border text-xs text-fg-muted">
+                <td className="px-3 py-2">
+                  {t("dashboard.callsTodayOthers", { n: data.companies_count - data.companies.length })}
+                </td>
+                <td className="tnum px-3 py-2 text-right font-semibold">{data.others_total}</td>
+                <td colSpan={2} />
+              </tr>
+            )}
             {data && data.companies.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-3 py-8 text-center text-xs text-fg-faint">

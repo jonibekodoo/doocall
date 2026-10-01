@@ -272,9 +272,16 @@ export interface CallsTodayCompany {
   operators: CallsTodayOperator[];
 }
 export const fetchAdminCallsToday = () =>
-  g<{ success: boolean; date: string; total: number; companies: CallsTodayCompany[] }>(
-    "/dashboard/calls-today",
-  );
+  g<{
+    success: boolean;
+    date: string;
+    total: number;
+    answered: number;
+    missed: number;
+    companies_count: number;
+    others_total: number;
+    companies: CallsTodayCompany[];
+  }>("/dashboard/calls-today");
 
 export const approvePayment = (id: number) =>
   post<{
