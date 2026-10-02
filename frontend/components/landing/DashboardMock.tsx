@@ -90,7 +90,8 @@ export function DashboardMock({ labels }: { labels: DashboardMockLabels }) {
       </div>
 
       {/* The cabinet itself — light theme, real tokens */}
-      <div className="grid h-[400px] grid-cols-[112px_1fr] bg-surface-2 text-fg">
+      {/* 360px + the 30px browser bar fits the hero's 400px content row. */}
+      <div className="grid h-[360px] grid-cols-[112px_1fr] bg-surface-2 text-fg">
         <aside className="flex flex-col border-r border-border bg-surface px-2 py-3">
           <div className="mb-3 flex items-center gap-1.5 px-1">
             <span className="grid size-5 place-items-center rounded-md bg-accent text-accent-fg">
@@ -166,7 +167,7 @@ export function DashboardMock({ labels }: { labels: DashboardMockLabels }) {
             {/* Operators: stacked columns */}
             <div className="rounded-md border border-border bg-surface p-2">
               <p className="mb-1.5 text-[9px] font-semibold">{labels.operatorChart}</p>
-              <div className="flex h-[52px] items-end gap-1.5">
+              <div className="flex h-[48px] items-end gap-1.5">
                 {OPERATORS.map((o) => {
                   const total = o.answered + o.missed;
                   return (
