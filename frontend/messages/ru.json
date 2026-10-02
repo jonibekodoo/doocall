@@ -871,7 +871,8 @@
       "payout_pending": "Ожидает",
       "payout_approved": "Одобрен",
       "payout_paid": "Выплачен",
-      "payout_rejected": "Отклонён"
+      "payout_rejected": "Отклонён",
+      "searchPlaceholder": "Имя, компания, email или телефон…"
     },
     "salesPay": {
       "title": "Выплаты менеджерам",

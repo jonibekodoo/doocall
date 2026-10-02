@@ -21,7 +21,7 @@ from .permissions import CabinetView
 from .tasks import run_export
 from .views_dashboard import call_row
 
-PAGE_SIZE = 30
+PAGE_SIZE = 20
 SORTABLE = {
     "duration": "duration",
     "-duration": "-duration",

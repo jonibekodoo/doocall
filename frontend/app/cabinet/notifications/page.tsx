@@ -8,6 +8,7 @@ import { CheckCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { KIND_COLOR } from "@/components/shell/NotificationsBell";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import {
   fetchNotifications,
   markNotificationRead,
@@ -35,6 +36,7 @@ export default function NotificationsPage() {
   });
 
   const rows = data?.notifications ?? [];
+  const paged = usePagination(rows);
 
   return (
     <div className="max-w-2xl" data-testid="notifications-page">
@@ -59,7 +61,7 @@ export default function NotificationsPage() {
               <div className="h-4 animate-pulse rounded bg-surface-3" />
             </li>
           )}
-          {rows.map((note) => (
+          {paged.slice.map((note) => (
             <li key={note.id}>
               <button
                 type="button"
@@ -109,6 +111,14 @@ export default function NotificationsPage() {
           )}
         </ul>
       </div>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

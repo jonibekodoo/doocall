@@ -19,7 +19,7 @@ from apps.core.phone import normalize_phone
 from .permissions import CabinetView
 from .views_dashboard import call_row
 
-PAGE_SIZE = 30
+PAGE_SIZE = 20
 
 
 def _resolve_responsible(value: Any) -> User | None:

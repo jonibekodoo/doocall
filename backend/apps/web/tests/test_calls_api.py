@@ -37,10 +37,10 @@ class TestCallsListFilters:
         body = client.get(CALLS_URL).json()
         assert body["count"] == 40  # noise tenant excluded
         assert body["pages"] == 2
-        assert body["page_size"] == 30
-        assert len(body["results"]) == 30
+        assert body["page_size"] == 20
+        assert len(body["results"]) == 20
         page2 = client.get(f"{CALLS_URL}?page=2").json()
-        assert len(page2["results"]) == 10
+        assert len(page2["results"]) == 20
 
     def test_filter_combination(self, client: APIClient, seeded: dict) -> None:
         # operator A + inbound + answered → #1, #11, #19, #33, #35 = 5

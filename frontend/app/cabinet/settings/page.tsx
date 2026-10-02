@@ -12,6 +12,7 @@ import { useState } from "react";
 import { CredentialsDialog } from "@/components/CredentialsDialog";
 import { PaylovPayDialog } from "@/components/PaylovPayDialog";
 import { confirmDialog, promptDialog } from "@/components/ui/Confirm";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   createGroup,
@@ -70,6 +71,7 @@ function UsersTab() {
   const [credentials, setCredentials] = useState<
     NewOperatorResponse["credentials"] | null
   >(null);
+  const paged = usePagination(data?.operators ?? []);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["s-users"] });
@@ -196,7 +198,7 @@ function UsersTab() {
           </div>
         </div>
         <ul className="divide-y divide-border">
-          {(data?.operators ?? []).map((operator) => (
+          {paged.slice.map((operator) => (
             <li
               key={operator.id}
               className="flex items-center gap-3 px-4 py-2.5 text-sm"
@@ -248,6 +250,15 @@ function UsersTab() {
             </li>
           ))}
         </ul>
+        <Pagination
+          page={paged.page}
+          pages={paged.pages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPage={paged.setPage}
+          className="border-t border-border px-4 py-2"
+        />
       </div>
 
       <div className="rounded-lg border border-border bg-surface p-3">
@@ -309,10 +320,12 @@ function DevicesTab() {
   const { data } = useQuery({ queryKey: ["s-devices"], queryFn: fetchDevices });
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["s-devices"] });
+  const paged = usePagination(data?.devices ?? []);
 
   return (
+    <div>
     <div className="grid gap-3 md:grid-cols-2">
-      {(data?.devices ?? []).map((device) => (
+      {paged.slice.map((device) => (
         <div
           key={device.id}
           className="rounded-lg border border-border bg-surface p-4"
@@ -394,6 +407,15 @@ function DevicesTab() {
           —
         </p>
       )}
+    </div>
+    <Pagination
+      page={paged.page}
+      pages={paged.pages}
+      total={paged.total}
+      start={paged.start}
+      end={paged.end}
+      onPage={paged.setPage}
+    />
     </div>
   );
 }
@@ -796,7 +818,7 @@ const STATUS_BADGE: Record<string, string> = {
   overdue: "bg-danger/10 text-danger",
 };
 
-const CHARGES_PAGE_SIZE = 10;
+const CHARGES_PAGE_SIZE = 20;
 
 function DailyChargesCard() {
   const t = useTranslations("settings");

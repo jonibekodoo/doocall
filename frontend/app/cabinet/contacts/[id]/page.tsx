@@ -10,6 +10,7 @@ import { useParams } from "next/navigation";
 
 import { DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchContactDetail } from "@/lib/api/endpoints";
 import { formatDuration, formatPhone } from "@/lib/format";
 
@@ -23,6 +24,7 @@ export default function ContactCardPage() {
     queryFn: () => fetchContactDetail(contactId),
     enabled: Number.isFinite(contactId),
   });
+  const paged = usePagination(data?.calls ?? []);
 
   if (isPending) {
     return <div className="h-64 animate-pulse rounded-lg bg-surface-2" />;
@@ -58,7 +60,7 @@ export default function ContactCardPage() {
         {calls.length === 0 && (
           <li className="px-4 py-6 text-center text-sm text-fg-faint">—</li>
         )}
-        {calls.map((call) => (
+        {paged.slice.map((call) => (
           <li
             key={call.id}
             className="flex items-center gap-2.5 px-4 py-2 text-sm"
@@ -74,6 +76,14 @@ export default function ContactCardPage() {
           </li>
         ))}
       </ul>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

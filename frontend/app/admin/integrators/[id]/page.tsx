@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   fetchIntegratorDetail,
@@ -194,6 +195,10 @@ export default function AdminIntegratorDetailPage() {
     queryKey: ["a-sales-managers"],
     queryFn: fetchSalesManagers,
   });
+  // Hooks before the early returns below (React hook rules).
+  const companiesPaged = usePagination(data?.companies ?? []);
+  const accrualsPaged = usePagination(data?.accruals ?? []);
+  const payoutsPaged = usePagination(data?.payouts ?? []);
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["a-integrator", integratorId] });
@@ -442,7 +447,7 @@ export default function AdminIntegratorDetailPage() {
             {t("companies")}
           </p>
           <ul className="divide-y divide-border">
-            {data.companies.map((c) => (
+            {companiesPaged.slice.map((c) => (
               <li key={c.id} className="px-4 py-2 text-sm">
                 <span className="font-medium">{c.name}</span>
                 <span className="tnum float-right text-accent">
@@ -457,6 +462,15 @@ export default function AdminIntegratorDetailPage() {
               <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
             )}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={companiesPaged.page}
+            pages={companiesPaged.pages}
+            total={companiesPaged.total}
+            start={companiesPaged.start}
+            end={companiesPaged.end}
+            onPage={companiesPaged.setPage}
+          />
         </section>
 
         <section className="rounded-lg border border-border bg-surface">
@@ -464,7 +478,7 @@ export default function AdminIntegratorDetailPage() {
             {t("accruals")}
           </p>
           <ul className="divide-y divide-border" data-testid="accrual-ledger">
-            {data.accruals.slice(0, 15).map((a) => (
+            {accrualsPaged.slice.map((a) => (
               <li
                 key={a.id}
                 className="flex items-center gap-2 px-4 py-2 text-sm"
@@ -483,6 +497,15 @@ export default function AdminIntegratorDetailPage() {
               <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
             )}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={accrualsPaged.page}
+            pages={accrualsPaged.pages}
+            total={accrualsPaged.total}
+            start={accrualsPaged.start}
+            end={accrualsPaged.end}
+            onPage={accrualsPaged.setPage}
+          />
         </section>
 
         <section className="rounded-lg border border-border bg-surface">
@@ -490,7 +513,7 @@ export default function AdminIntegratorDetailPage() {
             {t("payouts")}
           </p>
           <ul className="divide-y divide-border">
-            {data.payouts.map((p) => (
+            {payoutsPaged.slice.map((p) => (
               <li
                 key={p.id}
                 className="flex items-center gap-2 px-4 py-2 text-sm"
@@ -542,6 +565,15 @@ export default function AdminIntegratorDetailPage() {
               <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
             )}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={payoutsPaged.page}
+            pages={payoutsPaged.pages}
+            total={payoutsPaged.total}
+            start={payoutsPaged.start}
+            end={payoutsPaged.end}
+            onPage={payoutsPaged.setPage}
+          />
         </section>
       </div>
 

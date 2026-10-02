@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchSalesIntegrator } from "@/lib/api/sales";
 import { formatUzs } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ export default function SalesIntegratorDetailPage() {
     queryFn: () => fetchSalesIntegrator(id),
     enabled: Number.isFinite(id),
   });
+  const paged = usePagination(data?.integrator.companies ?? []);
 
   if (isPending) return <div className="h-64 animate-pulse rounded-lg bg-surface-2" />;
   if (!data) return null;
@@ -71,7 +73,7 @@ export default function SalesIntegratorDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {i.companies.map((c) => (
+              {paged.slice.map((c) => (
                 <tr key={c.id} className="border-t border-border">
                   <td className="px-3 py-2.5 font-medium">{c.name}</td>
                   <td className="px-3 py-2.5">
@@ -100,6 +102,7 @@ export default function SalesIntegratorDetailPage() {
           </table>
         </div>
       </section>
+      <Pagination page={paged.page} pages={paged.pages} total={paged.total} start={paged.start} end={paged.end} onPage={paged.setPage} />
     </div>
   );
 }

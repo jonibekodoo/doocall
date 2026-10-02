@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
+import { PAGE_SIZE, Pagination } from "@/components/ui/Pagination";
 import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
@@ -300,6 +301,14 @@ function ContactsInner() {
             <p className="text-xs text-fg-faint">{t("emptyHint")}</p>
           </div>
         }
+      />
+
+      {/* Server-paged (backend PAGE_SIZE = 20); the endpoint returns count only */}
+      <Pagination
+        page={page}
+        pages={Math.max(1, Math.ceil((data?.count ?? 0) / PAGE_SIZE))}
+        total={data?.count ?? 0}
+        onPage={setPage}
       />
 
       {dialog && (

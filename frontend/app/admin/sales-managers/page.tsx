@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   createSalesManager,
@@ -133,6 +134,20 @@ export default function AdminSalesManagersPage() {
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery({ queryKey: ["a-sales-managers"], queryFn: fetchSalesManagers });
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("");
+
+  // Small, fully loaded list — filter client-side, instantly.
+  const needle = q.trim().toLowerCase();
+  const rows = (data?.managers ?? []).filter(
+    (m) =>
+      (!status || m.status === status) &&
+      (!needle ||
+        [m.name, m.company_name, m.email, m.phone]
+          .filter(Boolean)
+          .some((v) => v.toLowerCase().includes(needle))),
+  );
+  const paged = usePagination(rows);
 
   return (
     <div data-testid="admin-sales-managers">
@@ -148,6 +163,38 @@ export default function AdminSalesManagersPage() {
       </div>
 
       <Leaderboard />
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          value={q}
+          onChange={(event) => {
+            setQ(event.target.value);
+            paged.reset();
+          }}
+          placeholder={t("salesM.searchPlaceholder")}
+          data-testid="sales-managers-search"
+          className="w-72 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+        />
+        <select
+          value={status}
+          onChange={(event) => {
+            setStatus(event.target.value);
+            paged.reset();
+          }}
+          aria-label={t("common.status")}
+          className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
+        >
+          <option value="">{t("common.allStatuses")}</option>
+          <option value="active">{t("integratorDetail.st_active")}</option>
+          <option value="suspended">{t("integratorDetail.st_suspended")}</option>
+        </select>
+        {!isPending && (needle || status) && (
+          <span className="tnum text-xs text-fg-muted">
+            {rows.length} / {data?.managers.length ?? 0}
+          </span>
+        )}
+      </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-surface">
         <table className="w-full text-sm">
@@ -170,9 +217,9 @@ export default function AdminSalesManagersPage() {
                     </td>
                   </tr>
                 ))
-              : (data?.managers ?? []).map((m, index) => (
+              : paged.slice.map((m, index) => (
                   <tr key={m.id} className="border-t border-border hover:bg-surface-2/60">
-                    <td className="px-3 py-2.5 text-fg-faint">{index + 1}</td>
+                    <td className="px-3 py-2.5 text-fg-faint">{paged.start + index}</td>
                     <td className="px-3 py-2.5">
                       <Link href={`/admin/sales-managers/${m.id}`} className="font-medium text-accent hover:underline">
                         {m.name}
@@ -189,9 +236,20 @@ export default function AdminSalesManagersPage() {
                 ))}
           </tbody>
         </table>
-        {!isPending && (data?.managers ?? []).length === 0 && (
-          <p className="px-4 py-10 text-center text-sm text-fg-faint">{t("salesM.empty")}</p>
+        {!isPending && rows.length === 0 && (
+          <p className="px-4 py-10 text-center text-sm text-fg-faint">
+            {needle || status ? t("common.nothingFound") : t("salesM.empty")}
+          </p>
         )}
+        <Pagination
+          className="border-t border-border px-3 py-2"
+          page={paged.page}
+          pages={paged.pages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPage={paged.setPage}
+        />
       </div>
 
       {open && (

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import { createSalesIntegrator, fetchSalesIntegrators } from "@/lib/api/sales";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,7 @@ export default function SalesIntegratorsPage() {
   const [open, setOpen] = useState(false);
   const { data, isPending } = useQuery({ queryKey: ["sales-integrators"], queryFn: fetchSalesIntegrators });
   const rows = data?.integrators ?? [];
+  const paged = usePagination(rows);
 
   return (
     <div data-testid="sales-integrators">
@@ -81,7 +83,7 @@ export default function SalesIntegratorsPage() {
             ) : rows.length === 0 ? (
               <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-fg-faint">{t("noIntegrators")}</td></tr>
             ) : (
-              rows.map((r) => {
+              paged.slice.map((r) => {
                 const cs = r.company_status;
                 const total = cs.active + cs.trial + cs.expired + cs.suspended;
                 return (
@@ -129,6 +131,7 @@ export default function SalesIntegratorsPage() {
           </tbody>
         </table>
       </div>
+      <Pagination page={paged.page} pages={paged.pages} total={paged.total} start={paged.start} end={paged.end} onPage={paged.setPage} />
       {open && <CreateDialog onClose={() => setOpen(false)} onCreated={() => queryClient.invalidateQueries({ queryKey: ["sales-integrators"] })} />}
     </div>
   );

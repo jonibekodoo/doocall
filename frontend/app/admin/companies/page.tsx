@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { type AdminCompanyStats, fetchAdminCompanies } from "@/lib/api/admin";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +47,7 @@ export default function AdminCompaniesPage() {
     queryFn: () => fetchAdminCompanies(params),
   });
   const stats = data?.stats;
+  const paged = usePagination(data?.companies ?? []);
 
   return (
     <div data-testid="admin-companies">
@@ -60,7 +62,10 @@ export default function AdminCompaniesPage() {
               type="button"
               data-testid={`companies-stat-${key}`}
               aria-pressed={selected}
-              onClick={() => setStatus(selected && filter ? "" : filter)}
+              onClick={() => {
+                setStatus(selected && filter ? "" : filter);
+                paged.reset();
+              }}
               className={cn(
                 "flex items-center gap-3 rounded-lg border bg-surface px-3.5 py-3 text-left transition hover:bg-surface-2",
                 selected
@@ -86,13 +91,19 @@ export default function AdminCompaniesPage() {
         <input
           type="search"
           value={q}
-          onChange={(event) => setQ(event.target.value)}
+          onChange={(event) => {
+            setQ(event.target.value);
+            paged.reset();
+          }}
           placeholder={t("common.searchPlaceholder")}
           className="w-64 rounded-md border border-border bg-surface px-3 py-2 text-sm"
         />
         <select
           value={status}
-          onChange={(event) => setStatus(event.target.value)}
+          onChange={(event) => {
+            setStatus(event.target.value);
+            paged.reset();
+          }}
           aria-label={t("common.status")}
           className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
         >
@@ -136,12 +147,12 @@ export default function AdminCompaniesPage() {
                     </td>
                   </tr>
                 ))
-              : (data?.companies ?? []).map((company, index) => (
+              : paged.slice.map((company, index) => (
                   <tr
                     key={company.id}
                     className="border-t border-border hover:bg-surface-2/60"
                   >
-                    <td className="px-3 py-2.5 text-fg-faint">{index + 1}</td>
+                    <td className="px-3 py-2.5 text-fg-faint">{paged.start + index}</td>
                     <td className="px-3 py-2.5">
                       <Link
                         href={`/admin/companies/${company.id}`}
@@ -234,6 +245,15 @@ export default function AdminCompaniesPage() {
             {t("common.nothingFound")}
           </p>
         )}
+        <Pagination
+          className="border-t border-border px-3 py-2"
+          page={paged.page}
+          pages={paged.pages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPage={paged.setPage}
+        />
       </div>
     </div>
   );

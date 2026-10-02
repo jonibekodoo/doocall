@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   fetchPartnerPayouts,
@@ -116,6 +117,7 @@ export default function PartnerPayoutsPage() {
     queryKey: ["p-profile"],
     queryFn: fetchPartnerProfile,
   });
+  const paged = usePagination(data?.payouts ?? []);
 
   return (
     <div data-testid="partner-payouts">
@@ -155,7 +157,7 @@ export default function PartnerPayoutsPage() {
                   <div className="h-4 animate-pulse rounded bg-surface-3" />
                 </li>
               ))
-            : (data?.payouts ?? []).map((p) => (
+            : paged.slice.map((p) => (
                 <li
                   key={p.id}
                   className="flex items-center gap-2 px-4 py-2.5 text-sm"
@@ -178,6 +180,14 @@ export default function PartnerPayoutsPage() {
           )}
         </ul>
       </section>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
 
       {open && data && (
         <PayoutDialog

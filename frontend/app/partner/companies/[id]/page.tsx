@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { CompanyStats } from "@/components/company/CompanyStats";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchPartnerCompany } from "@/lib/api/partner";
 import { formatUzs } from "@/lib/format";
 
@@ -21,6 +22,7 @@ export default function PartnerCompanyCard() {
     queryFn: () => fetchPartnerCompany(id),
     enabled: Number.isFinite(id),
   });
+  const paged = usePagination(data?.company.accruals ?? []);
 
   if (isPending)
     return <div className="h-64 animate-pulse rounded-lg bg-surface-2" />;
@@ -56,7 +58,7 @@ export default function PartnerCompanyCard() {
           {t("accruals")}
         </p>
         <ul className="divide-y divide-border">
-          {c.accruals.map((a) => (
+          {paged.slice.map((a) => (
             <li
               key={a.id}
               className="flex items-center gap-2 px-4 py-2 text-sm"
@@ -80,6 +82,14 @@ export default function PartnerCompanyCard() {
           )}
         </ul>
       </section>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

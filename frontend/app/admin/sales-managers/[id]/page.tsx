@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   fetchSalesManager,
@@ -46,6 +47,10 @@ export default function AdminSalesManagerDetailPage() {
     enabled: Number.isFinite(id),
   });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["a-sales-manager", id] });
+  // Hooks before the early returns below (React hook rules).
+  const integratorsPaged = usePagination(data?.manager.integrator_list ?? []);
+  const commissionsPaged = usePagination(data?.manager.commissions ?? []);
+  const payoutsPaged = usePagination(data?.manager.payouts ?? []);
 
   const save = useMutation({
     mutationFn: (body: Record<string, string>) => updateSalesManager(id, body),
@@ -166,7 +171,7 @@ export default function AdminSalesManagerDetailPage() {
         <section className="rounded-lg border border-border bg-surface">
           <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">{t("salesM.integratorsList")}</p>
           <ul className="divide-y divide-border">
-            {m.integrator_list.map((i) => (
+            {integratorsPaged.slice.map((i) => (
               <li key={i.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
                 <Link href={`/admin/integrators/${i.id}`} className="truncate text-accent hover:underline">
                   {i.name}
@@ -176,12 +181,21 @@ export default function AdminSalesManagerDetailPage() {
             ))}
             {m.integrator_list.length === 0 && <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={integratorsPaged.page}
+            pages={integratorsPaged.pages}
+            total={integratorsPaged.total}
+            start={integratorsPaged.start}
+            end={integratorsPaged.end}
+            onPage={integratorsPaged.setPage}
+          />
         </section>
 
         <section className="rounded-lg border border-border bg-surface">
           <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">{t("salesM.commissions")}</p>
           <ul className="divide-y divide-border">
-            {m.commissions.slice(0, 15).map((c) => (
+            {commissionsPaged.slice.map((c) => (
               <li key={c.id} className="flex items-center gap-2 px-4 py-2 text-sm">
                 <span className="min-w-0 flex-1 truncate text-xs">{c.company}</span>
                 <span className="tnum">{formatUzs(c.amount_uzs)}</span>
@@ -192,12 +206,21 @@ export default function AdminSalesManagerDetailPage() {
             ))}
             {m.commissions.length === 0 && <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={commissionsPaged.page}
+            pages={commissionsPaged.pages}
+            total={commissionsPaged.total}
+            start={commissionsPaged.start}
+            end={commissionsPaged.end}
+            onPage={commissionsPaged.setPage}
+          />
         </section>
 
         <section className="rounded-lg border border-border bg-surface">
           <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">{t("salesM.payouts")}</p>
           <ul className="divide-y divide-border">
-            {m.payouts.map((p) => (
+            {payoutsPaged.slice.map((p) => (
               <li key={p.id} className="flex items-center gap-2 px-4 py-2 text-sm">
                 <span className="tnum flex-1">{formatUzs(p.amount_uzs)} UZS</span>
                 <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
@@ -207,6 +230,15 @@ export default function AdminSalesManagerDetailPage() {
             ))}
             {m.payouts.length === 0 && <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={payoutsPaged.page}
+            pages={payoutsPaged.pages}
+            total={payoutsPaged.total}
+            start={payoutsPaged.start}
+            end={payoutsPaged.end}
+            onPage={payoutsPaged.setPage}
+          />
         </section>
       </div>
 

@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 
 import { confirmDialog } from "@/components/ui/Confirm";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   deleteAppRelease,
@@ -37,6 +38,7 @@ export default function AdminAppPage() {
     queryKey: ["a-app-releases"],
     queryFn: fetchAppReleases,
   });
+  const paged = usePagination(data?.releases ?? []);
 
   const upload = useMutation({
     mutationFn: () => uploadAppRelease(version.trim(), notes.trim(), file!),
@@ -141,12 +143,12 @@ export default function AdminAppPage() {
                 </td>
               </tr>
             ) : (
-              (data?.releases ?? []).map((release, index) => (
+              paged.slice.map((release, index) => (
                 <tr key={release.id} className="border-t border-border">
-                  <td className="px-3 py-2 text-fg-faint">{index + 1}</td>
+                  <td className="px-3 py-2 text-fg-faint">{paged.start + index}</td>
                   <td className="tnum px-3 py-2 font-medium">
                     {release.version}
-                    {index === 0 && (
+                    {paged.start + index === 1 && (
                       <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold uppercase text-accent">
                         {t("current")}
                       </span>
@@ -193,6 +195,15 @@ export default function AdminAppPage() {
             )}
           </tbody>
         </table>
+        <Pagination
+          className="border-t border-border px-3 py-2"
+          page={paged.page}
+          pages={paged.pages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPage={paged.setPage}
+        />
       </div>
     </div>
   );

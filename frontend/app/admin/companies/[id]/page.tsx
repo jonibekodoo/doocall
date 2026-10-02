@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import { CompanyStats } from "@/components/company/CompanyStats";
 import { confirmDialog } from "@/components/ui/Confirm";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   companyAction,
@@ -336,6 +337,10 @@ export default function AdminCompanyDetailPage() {
     queryFn: () => fetchAdminCompany(companyId),
     enabled: Number.isFinite(companyId),
   });
+  // Hooks before the early returns below (React hook rules).
+  const usersPaged = usePagination(data?.company.users ?? []);
+  const operatorsPaged = usePagination(data?.company.operators ?? []);
+  const paymentsPaged = usePagination(data?.company.payments ?? []);
 
   const act = useMutation({
     mutationFn: ({ action, body }: { action: string; body?: unknown }) =>
@@ -649,7 +654,7 @@ export default function AdminCompanyDetailPage() {
             {t("users")}
           </p>
           <ul className="divide-y divide-border">
-            {company.users.map((cabinetUser) => (
+            {usersPaged.slice.map((cabinetUser) => (
               <li
                 key={cabinetUser.id}
                 className="flex items-center gap-2 px-4 py-2 text-sm"
@@ -688,6 +693,15 @@ export default function AdminCompanyDetailPage() {
               <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
             )}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={usersPaged.page}
+            pages={usersPaged.pages}
+            total={usersPaged.total}
+            start={usersPaged.start}
+            end={usersPaged.end}
+            onPage={usersPaged.setPage}
+          />
         </section>
 
         <section className="rounded-lg border border-border bg-surface">
@@ -695,7 +709,7 @@ export default function AdminCompanyDetailPage() {
             {t("operators")}
           </p>
           <ul className="divide-y divide-border">
-            {company.operators.map((operator) => (
+            {operatorsPaged.slice.map((operator) => (
               <li
                 key={operator.id}
                 className="flex items-center gap-2 px-4 py-2 text-sm"
@@ -715,6 +729,15 @@ export default function AdminCompanyDetailPage() {
               <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
             )}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={operatorsPaged.page}
+            pages={operatorsPaged.pages}
+            total={operatorsPaged.total}
+            start={operatorsPaged.start}
+            end={operatorsPaged.end}
+            onPage={operatorsPaged.setPage}
+          />
         </section>
 
         <section className="rounded-lg border border-border bg-surface">
@@ -722,7 +745,7 @@ export default function AdminCompanyDetailPage() {
             {t("payments")}
           </p>
           <ul className="divide-y divide-border">
-            {company.payments.map((payment) => (
+            {paymentsPaged.slice.map((payment) => (
               <li
                 key={payment.id}
                 className="flex items-center gap-2 px-4 py-2 text-sm"
@@ -740,6 +763,15 @@ export default function AdminCompanyDetailPage() {
               <li className="px-4 py-6 text-center text-xs text-fg-faint">—</li>
             )}
           </ul>
+          <Pagination
+            className="border-t border-border px-4 py-2"
+            page={paymentsPaged.page}
+            pages={paymentsPaged.pages}
+            total={paymentsPaged.total}
+            start={paymentsPaged.start}
+            end={paymentsPaged.end}
+            onPage={paymentsPaged.setPage}
+          />
         </section>
       </div>
 

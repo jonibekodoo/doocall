@@ -19,6 +19,7 @@ import {
   type DateRange,
 } from "@/components/ui/DateRangePicker";
 import { FilterBar, FilterSelect } from "@/components/ui/FilterBar";
+import { Pagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   fetchCalls,
@@ -267,10 +268,6 @@ function CallsInner() {
     },
   ];
 
-  const total = data?.count ?? 0;
-  const start = total === 0 ? 0 : (page - 1) * 30 + 1;
-  const end = Math.min(page * 30, total);
-
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -362,30 +359,14 @@ function CallsInner() {
         storageKey="calls"
       />
 
-      {/* Pagination: «1—30 из N» */}
-      <div className="mt-3 flex items-center justify-between text-sm text-fg-muted">
-        <span className="tnum" data-testid="pagination-info">
-          {start}—{end} {tc("of")} {total}
-        </span>
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((value) => value - 1)}
-            className="rounded-md border border-border px-3 py-1.5 disabled:opacity-40"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            disabled={data ? page >= data.pages : true}
-            onClick={() => setPage((value) => value + 1)}
-            className="rounded-md border border-border px-3 py-1.5 disabled:opacity-40"
-          >
-            →
-          </button>
-        </div>
-      </div>
+      {/* Server-paged: 20 per page (backend PAGE_SIZE) */}
+      <Pagination
+        page={page}
+        pages={data?.pages ?? 1}
+        total={data?.count ?? 0}
+        pageSize={data?.page_size ?? 20}
+        onPage={setPage}
+      />
     </div>
   );
 }

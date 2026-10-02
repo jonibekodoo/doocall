@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import {
   createPlatformAdmin,
   fetchPlatformAdmins,
@@ -17,6 +18,7 @@ export default function AdminAdminsPage() {
     queryKey: ["a-admins"],
     queryFn: fetchPlatformAdmins,
   });
+  const paged = usePagination(data?.admins ?? []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const invalidate = () =>
@@ -58,7 +60,7 @@ export default function AdminAdminsPage() {
         </button>
       </div>
       <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-        {(data?.admins ?? []).map((admin) => (
+        {paged.slice.map((admin) => (
           <li
             key={admin.id}
             className="flex items-center gap-2 px-4 py-2.5 text-sm"
@@ -83,6 +85,14 @@ export default function AdminAdminsPage() {
           </li>
         )}
       </ul>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   chartTooltipStyle,
 } from "@/components/charts/theme";
 import { confirmDialog } from "@/components/ui/Confirm";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   approvePayment,
@@ -212,6 +213,7 @@ export default function AdminPaymentsPage() {
     queryKey: ["a-payments", provider, status],
     queryFn: () => fetchAdminPayments(params),
   });
+  const paged = usePagination(data?.payments ?? []);
 
   const approve = useMutation({
     mutationFn: approvePayment,
@@ -272,7 +274,10 @@ export default function AdminPaymentsPage() {
       <div className="mb-3 flex gap-2">
         <select
           value={provider}
-          onChange={(e) => setProvider(e.target.value)}
+          onChange={(e) => {
+            setProvider(e.target.value);
+            paged.reset();
+          }}
           aria-label={t("payments.provider")}
           className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
         >
@@ -284,7 +289,10 @@ export default function AdminPaymentsPage() {
         </select>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            paged.reset();
+          }}
           aria-label={t("common.status")}
           className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
         >
@@ -317,9 +325,9 @@ export default function AdminPaymentsPage() {
                     </td>
                   </tr>
                 ))
-              : (data?.payments ?? []).map((p, index) => (
+              : paged.slice.map((p, index) => (
                   <tr key={p.id} className="border-t border-border">
-                    <td className="px-3 py-2.5 text-fg-faint">{index + 1}</td>
+                    <td className="px-3 py-2.5 text-fg-faint">{paged.start + index}</td>
                     <td className="px-3 py-2.5">{p.company}</td>
                     <td className="px-3 py-2.5">{providerLabel(p.provider)}</td>
                     <td className="tnum px-3 py-2.5 text-right">
@@ -417,6 +425,15 @@ export default function AdminPaymentsPage() {
             {t("payments.empty")}
           </p>
         )}
+        <Pagination
+          className="border-t border-border px-3 py-2"
+          page={paged.page}
+          pages={paged.pages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPage={paged.setPage}
+        />
       </div>
     </div>
   );

@@ -30,6 +30,7 @@ import {
   chartAxisProps,
   chartTooltipStyle,
 } from "@/components/charts/theme";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { StatCard } from "@/components/ui/StatCard";
 import {
   fetchGeneralReport,
@@ -461,9 +462,9 @@ function ClientDistributionView() {
     queryKey: ["r-client"],
     queryFn: () => fetchPerClient(),
   });
+  const paged = usePagination(data?.report ?? []);
   if (isPending) return <Skeleton />;
-  const rows = data?.report ?? [];
-  if (rows.length === 0) {
+  if (paged.total === 0) {
     return (
       <p className="rounded-lg border border-border bg-surface p-10 text-center text-sm text-fg-faint">
         {t("noData")}
@@ -471,6 +472,7 @@ function ClientDistributionView() {
     );
   }
   return (
+    <div>
     <table
       className="w-full rounded-lg border border-border bg-surface text-sm"
       data-testid="report-clients"
@@ -485,7 +487,7 @@ function ClientDistributionView() {
         </tr>
       </thead>
       <tbody>
-        {rows.slice(0, 50).map((row) => (
+        {paged.slice.map((row) => (
           <tr key={row.counterparty_number} className="border-t border-border">
             <td className="px-3 py-2">
               {row.name ?? (
@@ -508,23 +510,31 @@ function ClientDistributionView() {
         ))}
       </tbody>
     </table>
+    <Pagination
+      page={paged.page}
+      pages={paged.pages}
+      total={paged.total}
+      start={paged.start}
+      end={paged.end}
+      onPage={paged.setPage}
+    />
+    </div>
   );
 }
 
 function UnansweredView() {
   const t = useTranslations("reports");
   const [withContact, setWithContact] = useState(false);
-  const [page, setPage] = useState(1);
   const { data, isPending } = useQuery({
     queryKey: ["r-unanswered"],
     queryFn: () => fetchUnanswered(),
   });
-  if (isPending) return <Skeleton />;
   const all = (data?.report ?? []).filter((row) =>
     withContact ? Boolean(row.name) : true,
   );
-  const pageSize = 20;
-  const rows = all.slice((page - 1) * pageSize, page * pageSize);
+  const paged = usePagination(all);
+  if (isPending) return <Skeleton />;
+  const rows = paged.slice;
   return (
     <div data-testid="report-unanswered">
       <label className="mb-2 flex items-center gap-1.5 text-sm">
@@ -533,7 +543,7 @@ function UnansweredView() {
           checked={withContact}
           onChange={(event) => {
             setWithContact(event.target.checked);
-            setPage(1);
+            paged.reset();
           }}
           className="accent-[var(--accent)]"
         />
@@ -570,24 +580,15 @@ function UnansweredView() {
           ))}
         </tbody>
       </table>
-      <div className="mt-2 flex justify-end gap-1.5 text-sm">
-        <button
-          type="button"
-          disabled={page <= 1}
-          onClick={() => setPage((value) => value - 1)}
-          className="rounded-md border border-border px-2.5 py-1 disabled:opacity-40"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          disabled={page * pageSize >= all.length}
-          onClick={() => setPage((value) => value + 1)}
-          className="rounded-md border border-border px-2.5 py-1 disabled:opacity-40"
-        >
-          →
-        </button>
-      </div>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+        className="mt-2"
+      />
     </div>
   );
 }
@@ -597,13 +598,15 @@ function LastContactView() {
     queryKey: ["r-last-contact"],
     queryFn: () => fetchLastContact(),
   });
+  const paged = usePagination(data?.report ?? []);
   if (isPending) return <Skeleton />;
   return (
+    <div>
     <ul
       className="divide-y divide-border rounded-lg border border-border bg-surface"
       data-testid="report-last-contact"
     >
-      {(data?.report ?? []).slice(0, 50).map((row) => (
+      {paged.slice.map((row) => (
         <li
           key={row.counterparty_number}
           className={cn(
@@ -634,6 +637,15 @@ function LastContactView() {
         </li>
       ))}
     </ul>
+    <Pagination
+      page={paged.page}
+      pages={paged.pages}
+      total={paged.total}
+      start={paged.start}
+      end={paged.end}
+      onPage={paged.setPage}
+    />
+    </div>
   );
 }
 

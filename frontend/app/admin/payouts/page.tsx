@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import { fetchAdminPayouts, payoutAction } from "@/lib/api/admin";
 import { formatUzs } from "@/lib/format";
@@ -16,6 +17,7 @@ export default function AdminPayoutsPage() {
     queryKey: ["a-payouts", status],
     queryFn: () => fetchAdminPayouts(status ? `?status=${status}` : ""),
   });
+  const paged = usePagination(data?.payouts ?? []);
   const act = useMutation({
     mutationFn: ({
       id,
@@ -38,7 +40,10 @@ export default function AdminPayoutsPage() {
       <h1 className="mb-4 text-xl font-semibold">{t("payouts.title")}</h1>
       <select
         value={status}
-        onChange={(e) => setStatus(e.target.value)}
+        onChange={(e) => {
+          setStatus(e.target.value);
+          paged.reset();
+        }}
         aria-label={t("common.status")}
         className="mb-3 rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
       >
@@ -55,7 +60,7 @@ export default function AdminPayoutsPage() {
                 <div className="h-4 animate-pulse rounded bg-surface-3" />
               </li>
             ))
-          : (data?.payouts ?? []).map((payout) => (
+          : paged.slice.map((payout) => (
               <li
                 key={payout.id}
                 className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm"
@@ -118,6 +123,14 @@ export default function AdminPayoutsPage() {
           </li>
         )}
       </ul>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

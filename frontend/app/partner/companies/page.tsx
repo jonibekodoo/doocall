@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchPartnerCompanies } from "@/lib/api/partner";
 import { formatUzs } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ export default function PartnerCompaniesPage() {
     queryKey: ["p-companies"],
     queryFn: fetchPartnerCompanies,
   });
+  const paged = usePagination(data?.companies ?? []);
 
   return (
     <div data-testid="partner-companies">
@@ -44,7 +46,7 @@ export default function PartnerCompaniesPage() {
                     </td>
                   </tr>
                 ))
-              : (data?.companies ?? []).map((c) => (
+              : paged.slice.map((c) => (
                   <tr
                     key={c.id}
                     className="border-t border-border hover:bg-surface-2/60"
@@ -88,6 +90,14 @@ export default function PartnerCompaniesPage() {
           </p>
         )}
       </div>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

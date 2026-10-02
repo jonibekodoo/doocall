@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import { fetchAdminSalesPayouts, salesPayoutAction } from "@/lib/api/admin";
 import { formatUzs } from "@/lib/format";
@@ -19,6 +20,7 @@ export default function AdminSalesPayoutsPage() {
   const t = useTranslations("admin");
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery({ queryKey: ["a-sales-payouts"], queryFn: () => fetchAdminSalesPayouts() });
+  const paged = usePagination(data?.payouts ?? []);
 
   const act = useMutation({
     mutationFn: ({ id, action }: { id: number; action: "approve" | "reject" | "mark-paid" }) =>
@@ -41,7 +43,7 @@ export default function AdminSalesPayoutsPage() {
             {t("salesPay.empty")}
           </p>
         ) : (
-          (data?.payouts ?? []).map((p) => (
+          paged.slice.map((p) => (
             <div key={p.id} className="rounded-xl border border-border bg-surface p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -80,6 +82,14 @@ export default function AdminSalesPayoutsPage() {
           ))
         )}
       </div>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

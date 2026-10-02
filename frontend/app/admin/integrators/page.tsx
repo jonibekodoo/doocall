@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { IntegratorLeaderboard } from "@/components/admin/IntegratorLeaderboard";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import { createIntegrator, fetchIntegrators } from "@/lib/api/admin";
 import { formatUzs } from "@/lib/format";
@@ -145,6 +146,7 @@ export default function AdminIntegratorsPage() {
           .filter(Boolean)
           .some((v) => v.toLowerCase().includes(needle))),
   );
+  const paged = usePagination(rows);
 
   return (
     <div data-testid="admin-integrators">
@@ -166,14 +168,20 @@ export default function AdminIntegratorsPage() {
         <input
           type="search"
           value={q}
-          onChange={(event) => setQ(event.target.value)}
+          onChange={(event) => {
+            setQ(event.target.value);
+            paged.reset();
+          }}
           placeholder={t("integrators.searchPlaceholder")}
           data-testid="integrators-search"
           className="w-72 rounded-md border border-border bg-surface px-3 py-2 text-sm"
         />
         <select
           value={status}
-          onChange={(event) => setStatus(event.target.value)}
+          onChange={(event) => {
+            setStatus(event.target.value);
+            paged.reset();
+          }}
           aria-label={t("common.status")}
           className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
         >
@@ -214,12 +222,12 @@ export default function AdminIntegratorsPage() {
                     </td>
                   </tr>
                 ))
-              : rows.map((row, index) => (
+              : paged.slice.map((row, index) => (
                   <tr
                     key={row.id}
                     className="border-t border-border hover:bg-surface-2/60"
                   >
-                    <td className="px-3 py-2.5 text-fg-faint">{index + 1}</td>
+                    <td className="px-3 py-2.5 text-fg-faint">{paged.start + index}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2.5">
                         <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-surface-2 text-xs font-bold text-fg-muted">
@@ -275,6 +283,15 @@ export default function AdminIntegratorsPage() {
             {needle || status ? t("common.nothingFound") : t("integrators.empty")}
           </p>
         )}
+        <Pagination
+          className="border-t border-border px-3 py-2"
+          page={paged.page}
+          pages={paged.pages}
+          total={paged.total}
+          start={paged.start}
+          end={paged.end}
+          onPage={paged.setPage}
+        />
       </div>
       {open && (
         <CreateDialog

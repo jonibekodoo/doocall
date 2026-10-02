@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { confirmDialog } from "@/components/ui/Confirm";
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
   fetchPaylovLogs,
@@ -60,6 +61,7 @@ function TransactionsTab() {
     queryKey: ["a-paylov-tx", query],
     queryFn: () => fetchPaylovTransactions(query),
   });
+  const paged = usePagination(data?.transactions ?? []);
   const act = useMutation({
     mutationFn: ({ id, action }: { id: number; action: "refund" | "cancel" }) =>
       paylovTransactionAction(id, action),
@@ -97,14 +99,20 @@ function TransactionsTab() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-fg-faint" />
           <input
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              paged.reset();
+            }}
             placeholder={t("paylov.searchPlaceholder")}
             className="w-64 rounded-md border border-border bg-surface py-1.5 pl-8 pr-3 text-sm"
           />
         </div>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            paged.reset();
+          }}
           className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm"
         >
           <option value="">{t("paylov.allStatuses")}</option>
@@ -129,9 +137,9 @@ function TransactionsTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {(data?.transactions ?? []).map((row, index) => (
+            {paged.slice.map((row, index) => (
               <tr key={row.id} className="hover:bg-surface-2/40">
-                <td className="tnum px-3 py-2 text-fg-faint">{index + 1}</td>
+                <td className="tnum px-3 py-2 text-fg-faint">{paged.start + index}</td>
                 <td className="px-3 py-2 font-medium">{row.company}</td>
                 <td className="tnum px-3 py-2 text-right">{formatUzs(row.amount_uzs)}</td>
                 <td className="px-3 py-2">
@@ -182,6 +190,14 @@ function TransactionsTab() {
           </tbody>
         </table>
       </div>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }
@@ -258,13 +274,17 @@ function LogsTab() {
     queryKey: ["a-paylov-logs", query],
     queryFn: () => fetchPaylovLogs(query),
   });
+  const paged = usePagination(data?.logs ?? []);
 
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <select
           value={direction}
-          onChange={(e) => setDirection(e.target.value)}
+          onChange={(e) => {
+            setDirection(e.target.value);
+            paged.reset();
+          }}
           className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm"
         >
           <option value="">{t("paylov.allDirections")}</option>
@@ -275,18 +295,29 @@ function LogsTab() {
           <input
             type="checkbox"
             checked={errorsOnly}
-            onChange={(e) => setErrorsOnly(e.target.checked)}
+            onChange={(e) => {
+              setErrorsOnly(e.target.checked);
+              paged.reset();
+            }}
             className="accent-accent"
           />
           {t("paylov.errorsOnly")}
         </label>
       </div>
       <div className="space-y-2">
-        {(data?.logs ?? []).map((log) => <LogRow key={log.id} log={log} />)}
+        {paged.slice.map((log) => <LogRow key={log.id} log={log} />)}
         {(data?.logs ?? []).length === 0 && (
           <p className="py-10 text-center text-sm text-fg-faint">—</p>
         )}
       </div>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

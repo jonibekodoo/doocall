@@ -7,6 +7,7 @@ import { Download } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchPartnerAccruals, fetchPartnerCompanies } from "@/lib/api/partner";
 import { formatUzs } from "@/lib/format";
 
@@ -26,6 +27,7 @@ export default function PartnerAccrualsPage() {
   });
 
   const rows = data?.accruals ?? [];
+  const paged = usePagination(rows);
   const total = rows
     .filter((r) => r.status !== "reversed")
     .reduce((sum, r) => sum + r.amount_uzs, 0);
@@ -63,7 +65,10 @@ export default function PartnerAccrualsPage() {
       <div className="mb-3 flex flex-wrap gap-2">
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            paged.reset();
+          }}
           aria-label="status"
           className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
         >
@@ -74,7 +79,10 @@ export default function PartnerAccrualsPage() {
         </select>
         <select
           value={company}
-          onChange={(e) => setCompany(e.target.value)}
+          onChange={(e) => {
+            setCompany(e.target.value);
+            paged.reset();
+          }}
           aria-label="company"
           className="rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
         >
@@ -88,7 +96,10 @@ export default function PartnerAccrualsPage() {
         <input
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => {
+            setDateFrom(e.target.value);
+            paged.reset();
+          }}
           aria-label="from"
           className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
         />
@@ -114,7 +125,7 @@ export default function PartnerAccrualsPage() {
                     </td>
                   </tr>
                 ))
-              : rows.map((r) => (
+              : paged.slice.map((r) => (
                   <tr key={r.id} className="border-t border-border">
                     <td className="px-3 py-2.5">{r.company}</td>
                     <td className="tnum px-3 py-2.5 text-xs">
@@ -155,6 +166,14 @@ export default function PartnerAccrualsPage() {
           </p>
         )}
       </div>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

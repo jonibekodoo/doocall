@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import { fetchSalesPayouts, requestSalesPayout } from "@/lib/api/sales";
 import { formatUzs } from "@/lib/format";
@@ -21,6 +22,7 @@ export default function SalesPayoutsPage() {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const { data } = useQuery({ queryKey: ["sales-payouts"], queryFn: fetchSalesPayouts });
+  const paged = usePagination(data?.payouts ?? []);
 
   const request = useMutation({
     mutationFn: () => requestSalesPayout(Number(amount), ""),
@@ -73,7 +75,7 @@ export default function SalesPayoutsPage() {
             </tr>
           </thead>
           <tbody>
-            {(data?.payouts ?? []).map((p) => (
+            {paged.slice.map((p) => (
               <tr key={p.id} className="border-t border-border">
                 <td className="tnum px-3 py-2.5 text-right font-medium">{formatUzs(p.amount_uzs)}</td>
                 <td className="px-3 py-2.5">
@@ -84,7 +86,7 @@ export default function SalesPayoutsPage() {
                 <td className="tnum px-3 py-2.5 text-xs text-fg-muted">{p.requested_at.slice(0, 10)}</td>
               </tr>
             ))}
-            {(data?.payouts ?? []).length === 0 && (
+            {paged.total === 0 && (
               <tr>
                 <td colSpan={3} className="px-4 py-10 text-center text-sm text-fg-faint">
                   {t("noPayouts")}
@@ -94,6 +96,7 @@ export default function SalesPayoutsPage() {
           </tbody>
         </table>
       </div>
+      <Pagination page={paged.page} pages={paged.pages} total={paged.total} start={paged.start} end={paged.end} onPage={paged.setPage} />
     </div>
   );
 }

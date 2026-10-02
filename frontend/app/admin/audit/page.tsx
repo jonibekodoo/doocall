@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchAudit } from "@/lib/api/admin";
 
 export default function AdminAuditPage() {
@@ -15,6 +16,7 @@ export default function AdminAuditPage() {
     queryKey: ["a-audit", action, dateFrom],
     queryFn: () => fetchAudit(params),
   });
+  const paged = usePagination(data?.entries ?? []);
 
   return (
     <div data-testid="admin-audit">
@@ -23,7 +25,10 @@ export default function AdminAuditPage() {
         <input
           type="search"
           value={action}
-          onChange={(e) => setAction(e.target.value)}
+          onChange={(e) => {
+            setAction(e.target.value);
+            paged.reset();
+          }}
           placeholder={t("audit.filterPlaceholder")}
           data-testid="audit-filter"
           className="w-72 rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -31,7 +36,10 @@ export default function AdminAuditPage() {
         <input
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => {
+            setDateFrom(e.target.value);
+            paged.reset();
+          }}
           aria-label={t("audit.fromDate")}
           className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
         />
@@ -46,7 +54,7 @@ export default function AdminAuditPage() {
                 <div className="h-3.5 animate-pulse rounded bg-surface-3" />
               </li>
             ))
-          : (data?.entries ?? []).map((entry) => (
+          : paged.slice.map((entry) => (
               <li
                 key={entry.id}
                 className="flex items-center gap-3 px-4 py-2 text-sm"
@@ -68,6 +76,14 @@ export default function AdminAuditPage() {
           </li>
         )}
       </ul>
+      <Pagination
+        page={paged.page}
+        pages={paged.pages}
+        total={paged.total}
+        start={paged.start}
+        end={paged.end}
+        onPage={paged.setPage}
+      />
     </div>
   );
 }

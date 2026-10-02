@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Bell, Coins, Wallet } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchSalesNotifications, markSalesNotificationsRead } from "@/lib/api/sales";
 
 const KIND_ICON: Record<string, React.ReactNode> = {
@@ -23,6 +24,7 @@ export default function SalesNotificationsPage() {
   });
 
   const rows = data?.notifications ?? [];
+  const paged = usePagination(rows);
 
   return (
     <div data-testid="sales-notifications">
@@ -39,7 +41,7 @@ export default function SalesNotificationsPage() {
         )}
       </div>
       <ul className="space-y-2">
-        {rows.map((n) => (
+        {paged.slice.map((n) => (
           <li
             key={n.id}
             className={
@@ -61,6 +63,7 @@ export default function SalesNotificationsPage() {
           </li>
         )}
       </ul>
+      <Pagination page={paged.page} pages={paged.pages} total={paged.total} start={paged.start} end={paged.end} onPage={paged.setPage} />
     </div>
   );
 }

@@ -871,7 +871,8 @@
       "payout_pending": "Kutilmoqda",
       "payout_approved": "Tasdiqlangan",
       "payout_paid": "To‘langan",
-      "payout_rejected": "Rad etilgan"
+      "payout_rejected": "Rad etilgan",
+      "searchPlaceholder": "Ism, kompaniya, email yoki telefon…"
     },
     "salesPay": {
       "title": "Menejer to‘lovlari",

@@ -9,6 +9,7 @@ import { useState } from "react";
 import { DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { Pagination } from "@/components/ui/Pagination";
 import { fetchCalls } from "@/lib/api/endpoints";
 import type { CallRow } from "@/lib/api/types";
 import { formatDuration, formatPhone } from "@/lib/format";
@@ -16,7 +17,6 @@ import { formatDuration, formatPhone } from "@/lib/format";
 export default function MyCallsPage() {
   const t = useTranslations("calls");
   const tTitle = useTranslations("myCalls");
-  const tc = useTranslations("common");
   const [page, setPage] = useState(1);
 
   // Operator scope: the backend scopes by company; web admins see all, an
@@ -69,7 +69,6 @@ export default function MyCallsPage() {
     },
   ];
 
-  const total = data?.count ?? 0;
   return (
     <div>
       <h1 className="mb-4 text-xl font-semibold">{tTitle("title")}</h1>
@@ -79,30 +78,13 @@ export default function MyCallsPage() {
         loading={isPending}
         storageKey="my-calls"
       />
-      <div className="mt-3 flex items-center justify-between text-sm text-fg-muted">
-        <span className="tnum">
-          {total === 0 ? 0 : (page - 1) * 30 + 1}—{Math.min(page * 30, total)}{" "}
-          {tc("of")} {total}
-        </span>
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((value) => value - 1)}
-            className="rounded-md border border-border px-3 py-1.5 disabled:opacity-40"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            disabled={data ? page >= data.pages : true}
-            onClick={() => setPage((value) => value + 1)}
-            className="rounded-md border border-border px-3 py-1.5 disabled:opacity-40"
-          >
-            →
-          </button>
-        </div>
-      </div>
+      <Pagination
+        page={page}
+        pages={data?.pages ?? 1}
+        total={data?.count ?? 0}
+        pageSize={data?.page_size ?? 20}
+        onPage={setPage}
+      />
     </div>
   );
 }

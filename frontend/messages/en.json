@@ -871,7 +871,8 @@
       "payout_pending": "Pending",
       "payout_approved": "Approved",
       "payout_paid": "Paid",
-      "payout_rejected": "Rejected"
+      "payout_rejected": "Rejected",
+      "searchPlaceholder": "Name, company, email or phone…"
     },
     "salesPay": {
       "title": "Sales payouts",
