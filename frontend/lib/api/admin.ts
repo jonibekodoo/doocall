@@ -74,6 +74,8 @@ export interface IntegratorRow {
   logo_url: string | null;
   status: string;
   referral_code: string;
+  email: string;
+  phone: string;
   companies: number;
   override_percent: string | null;
   balance_uzs: number;

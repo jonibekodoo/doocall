@@ -1070,13 +1070,15 @@ class AdminIntegratorsView(StaffView):
                 "logo_url": f"/api/public/integrator-logo/{i.pk}" if i.logo_key else None,
                 "status": i.status,
                 "referral_code": i.referral_code,
+                "email": i.user.email or i.user.username,
+                "phone": i.phone,
                 "companies": i.companies.count(),
                 "override_percent": str(i.cashback_percent_override)
                 if i.cashback_percent_override is not None
                 else None,
                 "balance_uzs": i.balance_uzs,
             }
-            for i in Integrator.objects.all()
+            for i in Integrator.objects.select_related("user")
         ]
         return Response({"success": True, "integrators": rows})
 

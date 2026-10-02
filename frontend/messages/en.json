@@ -611,7 +611,8 @@
       "colCompanies": "Companies",
       "balance": "Balance",
       "codeToast": "Code: {code}",
-      "empty": "No integrators yet"
+      "empty": "No integrators yet",
+      "searchPlaceholder": "Name, company, code, email or phone…"
     },
     "audit": {
       "title": "Audit log",

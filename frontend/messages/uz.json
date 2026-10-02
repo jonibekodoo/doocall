@@ -611,7 +611,8 @@
       "colCompanies": "Kompaniyalar",
       "balance": "Balans",
       "codeToast": "Kod: {code}",
-      "empty": "Hozircha integratorlar yo'q"
+      "empty": "Hozircha integratorlar yo'q",
+      "searchPlaceholder": "Ism, kompaniya, kod, email yoki telefon…"
     },
     "audit": {
       "title": "Audit jurnali",

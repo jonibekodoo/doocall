@@ -611,7 +611,8 @@
       "colCompanies": "Компаний",
       "balance": "Баланс",
       "codeToast": "Код: {code}",
-      "empty": "Пока нет интеграторов"
+      "empty": "Пока нет интеграторов",
+      "searchPlaceholder": "Имя, компания, код, email или телефон…"
     },
     "audit": {
       "title": "Журнал аудита",
