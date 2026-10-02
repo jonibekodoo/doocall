@@ -4,7 +4,6 @@
  * numerals — same token system. */
 
 import {
-  ArrowDownLeft,
   BarChart3,
   Contact2,
   LayoutDashboard,
@@ -21,6 +20,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 
 import { CabinetMenu } from "@/components/landing/CabinetMenu";
+import { DashboardMock } from "@/components/landing/DashboardMock";
 import { DownloadApp } from "@/components/landing/DownloadApp";
 import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
 import { IntegratorApplyForm } from "@/components/landing/IntegratorApplyForm";
@@ -56,7 +56,8 @@ async function landingLocale(): Promise<LandingLocale> {
 
 export default async function Landing() {
   const locale = await landingLocale();
-  const t = MESSAGES[locale].landing;
+  const m = MESSAGES[locale];
+  const t = m.landing;
   const year = new Date().getFullYear();
 
   const features = [
@@ -151,58 +152,31 @@ export default async function Landing() {
             </div>
           </div>
 
-          {/* Product frame — pure CSS mock of the cabinet (stable size). */}
-          <div className="hidden select-none lg:block" aria-hidden>
-            <div className="h-[360px] rounded-xl border border-white/10 bg-[#1b1e1d] p-4 shadow-2xl">
-              <div className="flex gap-1.5 pb-3">
-                <span className="size-2.5 rounded-full bg-white/15" />
-                <span className="size-2.5 rounded-full bg-white/15" />
-                <span className="size-2.5 rounded-full bg-white/15" />
-              </div>
-              <div className="grid h-[300px] grid-cols-[130px_1fr] gap-3">
-                <div className="space-y-2 rounded-lg bg-white/5 p-3">
-                  {[38, 60, 52, 46, 58].map((width, index) => (
-                    <div
-                      key={index}
-                      className={
-                        index === 0
-                          ? "h-2.5 rounded bg-accent/80"
-                          : "h-2.5 rounded bg-white/15"
-                      }
-                      style={{ width: `${width}%` }}
-                    />
-                  ))}
-                </div>
-                <div className="space-y-3">
-                  <div className="flex h-24 items-end gap-2 rounded-lg bg-white/5 p-3">
-                    {[60, 90, 45, 75, 35, 82].map((height, index) => (
-                      <div
-                        key={index}
-                        className="flex-1 overflow-hidden rounded-t"
-                      >
-                        <div
-                          className="bg-danger-500/80"
-                          style={{ height: `${(100 - height) * 0.3}px` }}
-                        />
-                        <div
-                          className="bg-accent/90"
-                          style={{ height: `${height * 0.6}px` }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="space-y-2 rounded-lg bg-white/5 p-3">
-                    {[0, 1, 2, 3].map((index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <ArrowDownLeft className="size-3 text-accent" />
-                        <div className="h-2 flex-1 rounded bg-white/15" />
-                        <div className="h-2 w-8 rounded bg-white/25" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Product frame — static replica of the real cabinet dashboard. */}
+          <div className="hidden lg:block">
+            <DashboardMock
+              labels={{
+                nav: {
+                  dashboard: m.nav.dashboard,
+                  calls: m.nav.calls,
+                  contacts: m.nav.contacts,
+                  reports: m.nav.reports,
+                  settings: m.nav.settings,
+                },
+                period: m.period,
+                kTotal: m.dashboard.kTotal,
+                answered: m.calls.answered,
+                missed: m.calls.missed,
+                duration: m.calls.duration,
+                answerRate: m.dashboard.answerRate,
+                directionChart: m.dashboard.directionChart,
+                operatorChart: m.dashboard.operatorChart,
+                latestSuccessful: m.dashboard.latestSuccessful,
+                all: m.dashboard.all,
+                inbound: m.dashboard.inbound,
+                outbound: m.dashboard.outbound,
+              }}
+            />
           </div>
         </div>
       </section>
