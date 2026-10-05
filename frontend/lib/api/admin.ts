@@ -564,22 +564,32 @@ export const salesPayoutAction = (
   action: "approve" | "reject" | "mark-paid",
 ) => post<{ success: boolean; status: string }>(abs(`/sales-payouts/${id}/${action}`));
 
-export const fetchOffer = () =>
-  g<{ success: boolean; content: string; version: number }>("/offer");
+/** Offer / legal documents are stored per language (uz is the base). */
+export const DOC_LANGS = ["uz", "ru", "en"] as const;
+export type DocLang = (typeof DOC_LANGS)[number];
+export type DocContents = Record<DocLang, string>;
 
-export const saveOffer = (content: string) =>
-  put<ApiEnvelope>(`${abs("/offer")}`, { content });
+export const fetchOffer = () =>
+  g<{ success: boolean; content: string; contents: DocContents; version: number }>("/offer");
+
+export const saveOffer = (contents: DocContents) =>
+  put<ApiEnvelope>(`${abs("/offer")}`, { contents });
 
 // ── Public legal pages (privacy / terms / refund) ────────────────────────────
 export type LegalKind = "privacy" | "terms" | "refund";
 
 export const fetchLegal = (kind: LegalKind) =>
-  g<{ success: boolean; kind: LegalKind; content: string; version: number; updated_at: string }>(
-    `/legal/${kind}`,
-  );
+  g<{
+    success: boolean;
+    kind: LegalKind;
+    content: string;
+    contents: DocContents;
+    version: number;
+    updated_at: string;
+  }>(`/legal/${kind}`);
 
-export const saveLegal = (kind: LegalKind, content: string) =>
-  put<ApiEnvelope>(`${abs(`/legal/${kind}`)}`, { content });
+export const saveLegal = (kind: LegalKind, contents: DocContents) =>
+  put<ApiEnvelope>(`${abs(`/legal/${kind}`)}`, { contents });
 
 export const fetchIntegratorApplications = (params = "") =>
   g<{

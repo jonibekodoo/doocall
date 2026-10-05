@@ -53,16 +53,19 @@ class PublicLegalView(APIView):
 
     @extend_schema(summary="Public legal document")
     def get(self, request: Request, kind: str) -> Response:
-        from apps.partners.models import LEGAL_KINDS, get_legal_document
+        from apps.core.locale import request_locale
+        from apps.partners.models import LEGAL_KINDS, get_legal_document, localized_content
 
         if kind not in LEGAL_KINDS:
             return Response({"success": False, "message": "unknown document"}, status=404)
         d = get_legal_document(kind)
+        lang = request_locale(request)  # ?lang= → cookie → Accept-Language → uz
         return Response(
             {
                 "success": True,
                 "kind": d.kind,
-                "content": d.content,
+                "lang": lang,
+                "content": localized_content(d, lang),
                 "version": d.version,
                 "updated_at": d.updated_at.isoformat(),
             }

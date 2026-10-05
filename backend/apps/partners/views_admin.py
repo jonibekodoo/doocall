@@ -1812,25 +1812,52 @@ class AdminSalesPayoutActionView(SuperadminView):
         return Response({"success": True, "status": payout.status})
 
 
+def _save_document_contents(doc: Any, data: Any, user: User) -> None:
+    """Apply an editor payload to an offer / legal document.
+
+    Accepts ``contents: {uz, ru, en}`` (any subset) and the legacy single
+    ``content`` (= Uzbek). Every body is sanitised; the version bumps once
+    if anything actually changed."""
+    from apps.core.sanitize import sanitize_html
+
+    from .models import DOC_LANGS, doc_field
+
+    incoming: dict[str, Any] = {}
+    if isinstance(data.get("contents"), dict):
+        incoming.update({k: v for k, v in data["contents"].items() if k in DOC_LANGS})
+    if "content" in data and "uz" not in incoming:
+        incoming["uz"] = data.get("content")
+    changed = False
+    for lang, raw in incoming.items():
+        # Rich text from the editor: keep formatting, strip anything unsafe.
+        clean = sanitize_html(raw or "")
+        if clean != getattr(doc, doc_field(lang)):
+            setattr(doc, doc_field(lang), clean)
+            changed = True
+    if changed:
+        doc.version += 1
+        doc.updated_by = user
+        doc.save()
+
+
 class AdminOfferView(SuperadminView):
-    @extend_schema(summary="Public offer document (get/edit)")
+    @extend_schema(summary="Public offer document (get/edit, per language)")
     def get(self, request: Request) -> Response:
+        from .models import doc_contents
+
         offer = get_offer_document()
         return Response(
-            {"success": True, "content": offer.content, "version": offer.version}
+            {
+                "success": True,
+                "content": offer.content,
+                "contents": doc_contents(offer),
+                "version": offer.version,
+            }
         )
 
     def put(self, request: Request) -> Response:
-        from apps.core.sanitize import sanitize_html
-
         offer = get_offer_document()
-        # Rich text from the editor: keep formatting, strip anything unsafe.
-        content = sanitize_html(request.data.get("content", offer.content))
-        if content != offer.content:
-            offer.content = content
-            offer.version += 1
-            offer.updated_by = cast(User, request.user)
-            offer.save()
+        _save_document_contents(offer, request.data, cast(User, request.user))
         return Response({"success": True, "version": offer.version})
 
 
@@ -1844,31 +1871,26 @@ class AdminLegalView(SuperadminView):
             raise ApiError(ErrorCode.MISSING_FIELD, "unknown document", 404)
         return get_legal_document(kind)
 
-    @extend_schema(summary="Legal page (get)")
+    @extend_schema(summary="Legal page (get, per language)")
     def get(self, request: Request, kind: str) -> Response:
+        from .models import doc_contents
+
         d = self._doc(kind)
         return Response(
             {
                 "success": True,
                 "kind": d.kind,
                 "content": d.content,
+                "contents": doc_contents(d),
                 "version": d.version,
                 "updated_at": d.updated_at.isoformat(),
             }
         )
 
-    @extend_schema(summary="Legal page (edit)")
+    @extend_schema(summary="Legal page (edit, per language)")
     def put(self, request: Request, kind: str) -> Response:
-        from apps.core.sanitize import sanitize_html
-
         d = self._doc(kind)
-        # Rich text from the editor: keep formatting, strip anything unsafe.
-        content = sanitize_html(request.data.get("content", d.content))
-        if content != d.content:
-            d.content = content
-            d.version += 1
-            d.updated_by = cast(User, request.user)
-            d.save()
+        _save_document_contents(d, request.data, cast(User, request.user))
         return Response({"success": True, "version": d.version})
 
 

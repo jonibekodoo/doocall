@@ -450,9 +450,14 @@ class SalesPayoutRequest(models.Model):
 
 
 class OfferDocument(models.Model):
-    """Singleton public-offer document shown in profiles; version bumps on edit."""
+    """Singleton public-offer document shown in profiles; version bumps on edit.
+
+    ``content`` is the Uzbek text (the default language); ``content_ru`` /
+    ``content_en`` hold the translations — see ``localized_content``."""
 
     content = models.TextField(blank=True, default="")
+    content_ru = models.TextField(blank=True, default="")
+    content_en = models.TextField(blank=True, default="")
     version = models.PositiveIntegerField(default=1)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
@@ -461,6 +466,30 @@ class OfferDocument(models.Model):
 
     def __str__(self) -> str:
         return f"offer v{self.version}"
+
+
+DOC_LANGS = ("uz", "ru", "en")
+
+
+def doc_field(lang: str) -> str:
+    """Model field holding a document's text in ``lang`` (uz is the base)."""
+    return "content" if lang == "uz" else f"content_{lang}"
+
+
+def localized_content(doc: "OfferDocument | LegalDocument", lang: str) -> str:
+    """Text in the requested language, falling back to the first non-empty
+    translation (uz → ru → en) so a page is never blank just because one
+    language has not been filled in yet."""
+    for candidate in (lang, *DOC_LANGS):
+        if candidate in DOC_LANGS:
+            value = getattr(doc, doc_field(candidate), "")
+            if value:
+                return value
+    return ""
+
+
+def doc_contents(doc: "OfferDocument | LegalDocument") -> dict[str, str]:
+    return {lang: getattr(doc, doc_field(lang)) for lang in DOC_LANGS}
 
 
 def get_offer_document() -> "OfferDocument":
@@ -482,7 +511,9 @@ class LegalDocument(models.Model):
         REFUND = "refund", "Refund / cancellation policy"
 
     kind = models.CharField(max_length=16, choices=Kind.choices, unique=True)
-    content = models.TextField(blank=True, default="")
+    content = models.TextField(blank=True, default="")  # Uzbek (default language)
+    content_ru = models.TextField(blank=True, default="")
+    content_en = models.TextField(blank=True, default="")
     version = models.PositiveIntegerField(default=1)
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL

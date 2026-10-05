@@ -25,6 +25,7 @@ from apps.api.errors import ApiError, ErrorCode
 from apps.billing import services as billing
 from apps.billing.models import Subscription
 from apps.companies.models import Company
+from apps.core.locale import request_locale
 from apps.core.models import AuditLog
 
 from . import services
@@ -304,17 +305,17 @@ class PartnerProfileView(PartnerView):
                 "bank_mfo": i.bank_mfo,
                 "bank_inn": i.bank_inn,
                 "bank_transit": i.bank_transit,
-                "offer": self._offer_body(i),
+                "offer": self._offer_body(i, request_locale(request)),
             }
         )
 
     @staticmethod
-    def _offer_body(i: Integrator) -> dict[str, Any]:
-        from .models import get_offer_document
+    def _offer_body(i: Integrator, lang: str = "uz") -> dict[str, Any]:
+        from .models import get_offer_document, localized_content
 
         offer = get_offer_document()
         return {
-            "content": offer.content,
+            "content": localized_content(offer, lang),
             "version": offer.version,
             "accepted": i.offer_accepted_version >= offer.version and offer.version > 0,
             "accepted_at": i.offer_accepted_at.isoformat() if i.offer_accepted_at else None,

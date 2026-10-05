@@ -2,45 +2,30 @@
 
 /** Public legal pages required by card acquirers (Visa/Mastercard):
  * Privacy policy · Terms & conditions · Refund/cancellation policy.
- * Each is edited with the rich-text editor and published at /legal/<kind>. */
+ * Each is edited per language (uz / ru / en) with the rich-text editor and
+ * published at /legal/<kind> in the visitor's language. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { DocLangEditor } from "@/components/admin/DocLangEditor";
 import { useToastStore } from "@/components/ui/Toast";
-import { fetchLegal, saveLegal, type LegalKind } from "@/lib/api/admin";
+import { type DocContents, fetchLegal, saveLegal, type LegalKind } from "@/lib/api/admin";
 import { cn } from "@/lib/utils";
 
 const KINDS: LegalKind[] = ["privacy", "terms", "refund"];
-
-/** Legacy plain text → HTML once (mirrors the offer page). */
-function toEditorHtml(raw: string): string {
-  if (!raw) return "";
-  if (/<[a-z][\s\S]*>/i.test(raw)) return raw;
-  return raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .split("\n")
-    .map((line) => `<p>${line || "<br>"}</p>`)
-    .join("");
-}
 
 function LegalEditor({ kind }: { kind: LegalKind }) {
   const t = useTranslations("admin");
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["a-legal", kind], queryFn: () => fetchLegal(kind) });
-  const [content, setContent] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (data && content === null) setContent(toEditorHtml(data.content));
-  }, [data, content]);
+  const [drafts, setDrafts] = useState<DocContents | null>(null);
+  const onChange = useCallback((next: DocContents) => setDrafts(next), []);
 
   const save = useMutation({
-    mutationFn: () => saveLegal(kind, content ?? ""),
+    mutationFn: () => saveLegal(kind, drafts as DocContents),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["a-legal", kind] });
       useToastStore.getState().push({ kind: "success", text: t("legalPage.saved") });
@@ -64,10 +49,10 @@ function LegalEditor({ kind }: { kind: LegalKind }) {
           <ExternalLink className="size-3.5" /> /legal/{kind}
         </a>
       </div>
-      <RichTextEditor value={content ?? ""} onChange={setContent} />
+      <DocLangEditor initial={data?.contents} onChange={onChange} />
       <button
         type="button"
-        disabled={content === null || save.isPending}
+        disabled={drafts === null || save.isPending}
         onClick={() => save.mutate()}
         className="mt-3 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
       >

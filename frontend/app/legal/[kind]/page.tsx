@@ -7,7 +7,7 @@ import { ArrowLeft, PhoneCall } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 const KINDS = ["privacy", "terms", "refund"] as const;
 type Kind = (typeof KINDS)[number];
@@ -16,6 +16,7 @@ type Doc = { content: string; version: number; updated_at: string };
 
 export default function LegalPage() {
   const t = useTranslations("legal");
+  const locale = useLocale(); // the document is served in the visitor's language
   const params = useParams<{ kind: string }>();
   const kind = (KINDS as readonly string[]).includes(params.kind)
     ? (params.kind as Kind)
@@ -29,7 +30,7 @@ export default function LegalPage() {
       return;
     }
     let alive = true;
-    fetch(`/api/public/legal/${kind}`)
+    fetch(`/api/public/legal/${kind}?lang=${locale}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((body: Doc) => {
         if (!alive) return;
@@ -40,7 +41,7 @@ export default function LegalPage() {
     return () => {
       alive = false;
     };
-  }, [kind]);
+  }, [kind, locale]);
 
   const title = kind ? t(kind) : t("notFound");
 

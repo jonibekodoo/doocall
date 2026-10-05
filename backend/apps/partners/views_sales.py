@@ -19,6 +19,7 @@ from apps.accounts.models import OperatorProfile, User
 from apps.api.errors import ApiError, ErrorCode
 from apps.billing import services as billing
 from apps.companies.models import Company
+from apps.core.locale import request_locale
 
 from . import crm, services
 from .models import (
@@ -250,7 +251,9 @@ class SalesPayoutsView(SalesView):
         return Response({"success": True, "payout_id": payout.pk, "balance_uzs": m.balance_uzs})
 
 
-def _profile_body(m: SalesManager) -> dict[str, Any]:
+def _profile_body(m: SalesManager, lang: str = "uz") -> dict[str, Any]:
+    from .models import localized_content
+
     offer = get_offer_document()
     return {
         "success": True,
@@ -265,7 +268,7 @@ def _profile_body(m: SalesManager) -> dict[str, Any]:
         "bank_inn": m.bank_inn,
         "bank_transit": m.bank_transit,
         "offer": {
-            "content": offer.content,
+            "content": localized_content(offer, lang),
             "version": offer.version,
             "accepted": m.offer_accepted_version >= offer.version and offer.version > 0,
             "accepted_at": m.offer_accepted_at.isoformat() if m.offer_accepted_at else None,
@@ -276,7 +279,7 @@ def _profile_body(m: SalesManager) -> dict[str, Any]:
 class SalesProfileView(SalesView):
     @extend_schema(summary="Profile (bank details, offer)")
     def get(self, request: Request) -> Response:
-        return Response(_profile_body(self.sales_manager))
+        return Response(_profile_body(self.sales_manager, request_locale(request)))
 
     @extend_schema(summary="Update profile / accept offer")
     def put(self, request: Request) -> Response:
@@ -289,7 +292,7 @@ class SalesProfileView(SalesView):
             m.offer_accepted_version = offer.version
             m.offer_accepted_at = timezone.now()
         m.save()
-        return Response(_profile_body(m))
+        return Response(_profile_body(m, request_locale(request)))
 
 
 class SalesLogoView(SalesView):
