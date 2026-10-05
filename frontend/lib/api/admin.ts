@@ -178,6 +178,8 @@ export const fetchAdminCompany = (id: number) =>
         last_login: string | null;
       }>;
       integrations: AdminCompanyIntegration[];
+      /** Paylov auto-payment summary (absent on older backends). */
+      autopay?: { is_enabled: boolean; card: string | null; last_status: string } | null;
       stats: CompanyStatsData;
     };
   }>(`/companies/${id}`);
@@ -359,6 +361,47 @@ export interface PaylovLogRow {
 
 export const fetchPaylovLogs = (params = "") =>
   g<{ success: boolean; logs: PaylovLogRow[] }>(`/paylov/logs${params}`);
+
+// ── Paylov auto-payments (saved cards charged without OTP) ───────────────────
+export interface PaylovAutoPayRow {
+  company_id: number;
+  company: string;
+  is_enabled: boolean;
+  /** e.g. "Uzcard •••• 9999" */
+  card: string | null;
+  amount_mode: string;
+  effective_amount_uzs: number;
+  last_attempt_at: string | null;
+  last_status: string;
+  last_error: string;
+  fail_streak: number;
+  disabled_reason: string;
+}
+
+export interface PaylovAutoPayment {
+  id: number;
+  company: string;
+  company_id: number;
+  amount_uzs: number;
+  status: string;
+  created_at: string;
+  card: string | null;
+  error: string;
+}
+
+export const fetchPaylovAutoPay = () =>
+  g<{
+    success: boolean;
+    /** Platform-wide emergency switch for automatic charges. */
+    platform_enabled: boolean;
+    rows: PaylovAutoPayRow[];
+    payments: PaylovAutoPayment[];
+  }>("/paylov/autopay");
+
+export const setPaylovAutoPayEnabled = (platform_enabled: boolean) =>
+  put<{ success: boolean; platform_enabled: boolean }>(abs("/paylov/autopay"), {
+    platform_enabled,
+  });
 
 export const fetchPricing = () =>
   g<{

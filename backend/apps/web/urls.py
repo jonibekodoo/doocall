@@ -4,6 +4,7 @@ from apps.integrations import views as integration_views
 
 from . import (
     views,
+    views_autopay,
     views_billing,
     views_calls,
     views_contacts,
@@ -133,6 +134,11 @@ urlpatterns = [
     path("billing/overview", views_billing.BillingOverviewView.as_view(), name="b-overview"),
     path("billing/pay", views_billing.BillingPayView.as_view(), name="b-pay"),
     path("billing/paylov/pay", views_billing.BillingPaylovPayView.as_view(), name="b-paylov-pay"),
+    path("billing/autopay", views_autopay.BillingAutopayView.as_view(), name="b-autopay"),
+    path("billing/cards", views_autopay.BillingCardsView.as_view(), name="b-cards"),
+    path("billing/cards/confirm", views_autopay.BillingCardConfirmView.as_view(), name="b-card-confirm"),
+    path("billing/cards/<int:card_id>", views_autopay.BillingCardDetailView.as_view(), name="b-card"),
+    path("billing/cards/<int:card_id>/pay", views_autopay.BillingCardPayView.as_view(), name="b-card-pay"),
     path(
         "billing/paylov/confirm",
         views_billing.BillingPaylovConfirmView.as_view(),

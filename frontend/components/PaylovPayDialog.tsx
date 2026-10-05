@@ -9,6 +9,7 @@ import { useState } from "react";
 
 import { useToastStore } from "@/components/ui/Toast";
 import { paylovConfirm, paylovPay } from "@/lib/api/endpoints";
+import { fmtCardNumber, fmtExpiryInput, toYYMM } from "@/lib/card";
 
 export function PaylovPayDialog({
   initialAmount,
@@ -31,20 +32,7 @@ export function PaylovPayDialog({
   const [otpPhone, setOtpPhone] = useState("");
 
   const cardDigits = card.replace(/\D/g, "");
-  const expDigits = expiry.replace(/\D/g, "");
-  // Paylov wants YYMM. Input is MM/YY, but accept YY/MM too: pick the ordering
-  // whose month part is 01-12. Returns "" when neither is valid.
-  const toYYMM = (d: string): string => {
-    if (d.length !== 4) return "";
-    const a = d.slice(0, 2);
-    const b = d.slice(2, 4);
-    const ai = Number(a);
-    const bi = Number(b);
-    if (ai >= 1 && ai <= 12) return `${b}${a}`; // MM/YY (label) → YYMM
-    if (bi >= 1 && bi <= 12) return `${a}${b}`; // YY/MM → YYMM
-    return "";
-  };
-  const yymm = toYYMM(expDigits);
+  const yymm = toYYMM(expiry);
   const canPay =
     Number(amount) >= 1000 &&
     cardDigits.length >= 12 &&
@@ -67,17 +55,6 @@ export function PaylovPayDialog({
     onError: (e: Error) =>
       useToastStore.getState().push({ kind: "error", text: e.message }),
   });
-
-  const fmtCard = (v: string) =>
-    v
-      .replace(/\D/g, "")
-      .slice(0, 19)
-      .replace(/(.{4})/g, "$1 ")
-      .trim();
-  const fmtExp = (v: string) => {
-    const d = v.replace(/\D/g, "").slice(0, 4);
-    return d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
-  };
 
   return (
     <div
@@ -109,7 +86,7 @@ export function PaylovPayDialog({
               <input
                 inputMode="numeric"
                 placeholder="8600 0000 0000 0000"
-                value={fmtCard(card)}
+                value={fmtCardNumber(card)}
                 onChange={(e) => setCard(e.target.value)}
                 className="tnum w-full rounded-md border border-border bg-surface px-3 py-2"
               />
@@ -121,7 +98,7 @@ export function PaylovPayDialog({
               <input
                 inputMode="numeric"
                 placeholder="MM/YY"
-                value={fmtExp(expiry)}
+                value={fmtExpiryInput(expiry)}
                 onChange={(e) => setExpiry(e.target.value)}
                 className="tnum w-full rounded-md border border-border bg-surface px-3 py-2"
               />

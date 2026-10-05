@@ -268,6 +268,7 @@ class BillingNotification(TenantModel):
         PAYMENT_REFUNDED = "payment_refunded", "Payment refunded"
         TARIFF_CHANGED = "tariff_changed", "Tariff changed"
         BLOCKED = "blocked", "Access blocked"
+        AUTOPAY_FAILED = "autopay_failed", "Automatic payment failed"
 
     kind = models.CharField(max_length=20, choices=Kind.choices)
     message = models.CharField(max_length=300)
@@ -312,6 +313,16 @@ class Payment(TenantModel):
     )
     approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Saved-card charges (Paylov Subscribe API). ``is_auto`` = initiated by the
+    # nightly auto-payment job rather than by a person in the cabinet.
+    is_auto = models.BooleanField(default=False)
+    saved_card = models.ForeignKey(
+        "billing.SavedCard", null=True, blank=True, on_delete=models.SET_NULL, related_name="payments"
+    )
+    # One automatic attempt per company per day: the unique key makes a second
+    # attempt impossible even if two workers race.
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
+    failure_code = models.CharField(max_length=64, blank=True, default="")
 
     class Meta(TenantModel.Meta):
         ordering = ["-created_at"]
@@ -341,6 +352,9 @@ class PaymentProviderConfig(models.Model):
     is_enabled = models.BooleanField(default=False)
     logo_key = models.CharField(max_length=500, blank=True, default="", help_text="MinIO key")
     sort_order = models.PositiveSmallIntegerField(default=0)
+    # Emergency switch for merchant-initiated (automatic) charges; only
+    # meaningful on the paylov row. Manual card payments are unaffected.
+    autopay_enabled = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -424,3 +438,83 @@ def enabled_provider_names() -> list[str]:
         .order_by("sort_order")
         .values_list("provider", flat=True)
     )
+
+
+
+class SavedCard(TenantModel):
+    """A bank card the company linked through Paylov's Subscribe API.
+
+    We never see or store the PAN: Paylov keeps the card and hands back an
+    opaque ``cardId`` plus the masked number. A row is created *unconfirmed*
+    when the SMS code is requested and becomes usable once the code is
+    confirmed. Removed cards are kept (inactive) so payment history can still
+    name the card that was charged."""
+
+    paylov_card_id = models.CharField(max_length=64, db_index=True)
+    paylov_user_id = models.CharField(max_length=64)
+    masked_number = models.CharField(max_length=24, blank=True, default="")
+    owner = models.CharField(max_length=120, blank=True, default="")
+    vendor = models.CharField(max_length=32, blank=True, default="")
+    expire = models.CharField(max_length=4, blank=True, default="", help_text="YYMM")
+    is_confirmed = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(TenantModel.Meta):
+        ordering = ["-created_at"]
+
+    @property
+    def usable(self) -> bool:
+        return self.is_confirmed and self.is_active
+
+    @property
+    def label(self) -> str:
+        return f"{self.vendor or 'Card'} •••• {self.masked_number[-4:]}"
+
+    def __str__(self) -> str:
+        return f"{self.label} ({self.company})"
+
+
+class AutoPaySettings(TenantModel):
+    """Per-company automatic top-up from a saved card (one row per company).
+
+    Off by default; switched on only by the company admin with explicit
+    consent (``consent_at`` / ``consent_by``). The nightly job charges the
+    card when the balance covers less than one day of service."""
+
+    class AmountMode(models.TextChoices):
+        MONTH = "month", "One month of service"
+        FIXED = "fixed", "Fixed amount"
+
+    is_enabled = models.BooleanField(default=False)
+    card = models.ForeignKey(
+        SavedCard, null=True, blank=True, on_delete=models.SET_NULL, related_name="autopay"
+    )
+    amount_mode = models.CharField(
+        max_length=8, choices=AmountMode.choices, default=AmountMode.MONTH
+    )
+    fixed_amount_uzs = models.PositiveBigIntegerField(null=True, blank=True)
+    # NULL → the default cap (2 × the current monthly cost).
+    monthly_limit_uzs = models.PositiveBigIntegerField(null=True, blank=True)
+    consent_at = models.DateTimeField(null=True, blank=True)
+    consent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    fail_streak = models.PositiveSmallIntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(max_length=8, blank=True, default="")  # ok|failed|pending
+    last_error = models.CharField(max_length=64, blank=True, default="")  # stable code
+    disabled_reason = models.CharField(max_length=64, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta(TenantModel.Meta):
+        constraints = [
+            models.UniqueConstraint(fields=["company"], name="uniq_autopay_per_company"),
+        ]
+
+    def __str__(self) -> str:
+        return f"autopay {self.company}: {'on' if self.is_enabled else 'off'}"

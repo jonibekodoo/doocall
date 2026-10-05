@@ -9,6 +9,7 @@ import {
   Search,
   XCircle,
 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
@@ -16,6 +17,7 @@ import { confirmDialog } from "@/components/ui/Confirm";
 import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
+  fetchPaylovAutoPay,
   fetchPaylovLogs,
   fetchPaylovTransactions,
   paylovTransactionAction,
@@ -322,15 +324,208 @@ function LogsTab() {
   );
 }
 
+// ── Auto-payments tab ────────────────────────────────────────────────────────
+function AutoPayTab() {
+  const t = useTranslations("admin");
+  const { data } = useQuery({ queryKey: ["a-paylov-autopay"], queryFn: fetchPaylovAutoPay });
+  const rows = usePagination(data?.rows ?? []);
+  const payments = usePagination(data?.payments ?? []);
+  const enabledCount = (data?.rows ?? []).filter((row) => row.is_enabled).length;
+  const failedCount = (data?.payments ?? []).filter((row) => row.status === "failed").length;
+
+  return (
+    <div data-testid="paylov-autopay-tab">
+      {data && !data.platform_enabled && (
+        <p className="mb-4 rounded-lg border border-danger/40 bg-danger/5 px-4 py-3 text-sm font-medium text-danger">
+          {t("paylov.autopayPlatformOff")}
+        </p>
+      )}
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Tile label={t("paylov.autopayCompanies")} value={String(data?.rows.length ?? 0)} />
+        <Tile label={t("paylov.autopayEnabled")} value={String(enabledCount)} tone="text-success" />
+        <Tile label={t("paylov.autopayCharges")} value={String(data?.payments.length ?? 0)} />
+        <Tile label={t("paylov.autopayFailed")} value={String(failedCount)} tone="text-danger" />
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[820px] text-sm">
+          <thead className="bg-surface-2 text-left text-xs uppercase text-fg-faint">
+            <tr>
+              <th className="px-3 py-2">№</th>
+              <th className="px-3 py-2">{t("paylov.company")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayState")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayCard")}</th>
+              <th className="px-3 py-2 text-right">{t("paylov.amount")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayLast")}</th>
+              <th className="px-3 py-2 text-right">{t("paylov.autopayStreak")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayReason")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.slice.map((row, index) => (
+              <tr key={row.company_id} className="hover:bg-surface-2/40">
+                <td className="tnum px-3 py-2 text-fg-faint">{rows.start + index}</td>
+                <td className="px-3 py-2">
+                  <Link
+                    href={`/admin/companies/${row.company_id}`}
+                    className="font-medium text-accent hover:underline"
+                  >
+                    {row.company}
+                  </Link>
+                </td>
+                <td className="px-3 py-2">
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                      row.is_enabled ? "bg-success/15 text-success" : "bg-surface-3 text-fg-muted",
+                    )}
+                  >
+                    {row.is_enabled ? t("paylov.autopayOn") : t("paylov.autopayOff")}
+                  </span>
+                </td>
+                <td className="tnum px-3 py-2 text-xs">{row.card ?? "—"}</td>
+                <td className="tnum px-3 py-2 text-right">
+                  {formatUzs(row.effective_amount_uzs)}
+                  <span className="block text-[11px] text-fg-faint">
+                    {row.amount_mode === "fixed"
+                      ? t("paylov.autopayModeFixed")
+                      : t("paylov.autopayModeMonth")}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {row.last_attempt_at ? (
+                    <span className="tnum" title={row.last_error || undefined}>
+                      {fmtTime(row.last_attempt_at)}
+                      <span
+                        className={cn(
+                          "ml-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                          row.last_status === "ok"
+                            ? "bg-success/15 text-success"
+                            : row.last_status === "failed"
+                              ? "bg-danger/15 text-danger"
+                              : "bg-warning/15 text-warning",
+                        )}
+                      >
+                        {row.last_status || "—"}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-fg-faint">—</span>
+                  )}
+                </td>
+                <td
+                  className={cn(
+                    "tnum px-3 py-2 text-right",
+                    row.fail_streak > 0 ? "font-semibold text-danger" : "text-fg-faint",
+                  )}
+                >
+                  {row.fail_streak}
+                </td>
+                <td
+                  className="max-w-[220px] truncate px-3 py-2 text-xs text-fg-muted"
+                  title={row.disabled_reason}
+                >
+                  {row.disabled_reason || "—"}
+                </td>
+              </tr>
+            ))}
+            {(data?.rows ?? []).length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-3 py-8 text-center text-sm text-fg-faint">
+                  —
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <Pagination
+        page={rows.page}
+        pages={rows.pages}
+        total={rows.total}
+        start={rows.start}
+        end={rows.end}
+        onPage={rows.setPage}
+      />
+
+      <h2 className="mb-2 mt-6 text-sm font-semibold">{t("paylov.autopayChargesTitle")}</h2>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="bg-surface-2 text-left text-xs uppercase text-fg-faint">
+            <tr>
+              <th className="px-3 py-2">№</th>
+              <th className="px-3 py-2">{t("paylov.company")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayCard")}</th>
+              <th className="px-3 py-2 text-right">{t("paylov.amount")}</th>
+              <th className="px-3 py-2">{t("paylov.status")}</th>
+              <th className="px-3 py-2">{t("paylov.created")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayError")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {payments.slice.map((row, index) => (
+              <tr key={row.id} className="hover:bg-surface-2/40">
+                <td className="tnum px-3 py-2 text-fg-faint">{payments.start + index}</td>
+                <td className="px-3 py-2">
+                  <Link
+                    href={`/admin/companies/${row.company_id}`}
+                    className="font-medium text-accent hover:underline"
+                  >
+                    {row.company}
+                  </Link>
+                </td>
+                <td className="tnum px-3 py-2 text-xs">{row.card ?? "—"}</td>
+                <td className="tnum px-3 py-2 text-right">{formatUzs(row.amount_uzs)}</td>
+                <td className="px-3 py-2">
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                      STATUS_TONE[row.status] ?? "bg-surface-3 text-fg-muted",
+                    )}
+                  >
+                    {row.status}
+                  </span>
+                </td>
+                <td className="tnum px-3 py-2 text-xs text-fg-muted">{fmtTime(row.created_at)}</td>
+                <td
+                  className="max-w-[240px] truncate px-3 py-2 text-xs text-danger"
+                  title={row.error}
+                >
+                  {row.error || "—"}
+                </td>
+              </tr>
+            ))}
+            {(data?.payments ?? []).length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-8 text-center text-sm text-fg-faint">
+                  —
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <Pagination
+        page={payments.page}
+        pages={payments.pages}
+        total={payments.total}
+        start={payments.start}
+        end={payments.end}
+        onPage={payments.setPage}
+      />
+    </div>
+  );
+}
+
 export default function AdminPaylovPage() {
   const t = useTranslations("admin");
-  const [tab, setTab] = useState<"tx" | "logs">("tx");
+  const [tab, setTab] = useState<"tx" | "autopay" | "logs">("tx");
 
   return (
     <div data-testid="admin-paylov">
       <h1 className="mb-4 text-xl font-semibold">{t("paylov.title")}</h1>
       <div className="mb-4 inline-flex rounded-lg border border-border bg-surface p-1">
-        {(["tx", "logs"] as const).map((key) => (
+        {(["tx", "autopay", "logs"] as const).map((key) => (
           <button
             key={key}
             type="button"
@@ -344,7 +539,7 @@ export default function AdminPaylovPage() {
           </button>
         ))}
       </div>
-      {tab === "tx" ? <TransactionsTab /> : <LogsTab />}
+      {tab === "tx" ? <TransactionsTab /> : tab === "autopay" ? <AutoPayTab /> : <LogsTab />}
     </div>
   );
 }

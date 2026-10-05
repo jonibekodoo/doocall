@@ -78,8 +78,17 @@ def run_monthly_settlement(now: datetime) -> int:
 
 @shared_task(name="apps.billing.tasks.accrue_daily_charges")
 def accrue_daily_charges(now_iso: str | None = None) -> int:
-    count = run_daily_accrual(_resolve_now(now_iso))
+    now = _resolve_now(now_iso)
+    count = run_daily_accrual(now)
     logger.info("daily accrual: %d operator-day charge(s)", count)
+    # Auto-payment runs in the SAME task, strictly after the deduction, so it
+    # sees the real post-deduction balance (and can lift a fresh suspension).
+    try:
+        from . import autopay
+
+        logger.info("autopay: %s", autopay.run_autopay(now))
+    except Exception:  # noqa: BLE001 - never let auto-pay break the accrual task
+        logger.exception("autopay sweep failed")
     return count
 
 

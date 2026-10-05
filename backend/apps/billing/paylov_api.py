@@ -49,12 +49,18 @@ def _mask_card(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _raw_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
-    data = json.dumps(body).encode()
+    return _raw_request("POST", url, body, headers)
+
+
+def _raw_request(
+    method: str, url: str, body: dict[str, Any] | None, headers: dict[str, str]
+) -> tuple[int, dict[str, Any]]:
+    data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(  # noqa: S310 - fixed Paylov gateway host
         url,
         data=data,
         headers={"Content-Type": "application/json", "Accept": "application/json", **headers},
-        method="POST",
+        method=method,
     )
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310
@@ -67,6 +73,10 @@ def _raw_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[
             return exc.code, {"error": {"code": "http_error", "message": raw[:200].decode(errors="replace")}}
     except urllib.error.URLError as exc:
         return 0, {"error": {"code": "connection_failed", "message": str(exc.reason)}}
+    except (TimeoutError, OSError, ValueError) as exc:
+        # Read timeout / dropped connection / non-JSON body: the outcome of the
+        # call is UNKNOWN to us — callers must not treat it as a decline.
+        return 0, {"error": {"code": "connection_failed", "message": str(exc)[:200]}}
 
 
 def get_token(force: bool = False) -> str:
@@ -156,3 +166,82 @@ def confirm_payment(transaction_id: str, otp: str | None = None, *, payment=None
 
 def cancel_payment(transaction_id: str, *, payment=None) -> dict[str, Any]:
     return _api_post("payment/cancel/", {"transactionId": transaction_id}, payment=payment, event="payment/cancel")
+
+
+
+# ── Subscribe API: saved cards + merchant-initiated payments ───────────────
+# A transport-level failure means we do not know whether Paylov acted.
+AMBIGUOUS_CODES = frozenset({"connection_failed", "http_error"})
+
+
+def _api_call(
+    method: str, path: str, *, body: dict[str, Any] | None = None, payment=None,
+    event: str | None = None, mask: bool = False, _retry: bool = True,
+) -> dict[str, Any]:
+    """Like ``_api_post`` but for any HTTP method (GET/DELETE take the query
+    string in ``path``). Same logging and the same strict success rule."""
+    token = get_token()
+    status, data = _raw_request(
+        method, f"{_base()}/{path.lstrip('/')}", body, {"Authorization": f"Bearer {token}"}
+    )
+    err = data.get("error") if isinstance(data, dict) else None
+    log_paylov(
+        "out", event or path.split("?")[0], payment=payment,
+        ok=(200 <= status < 300 and not err), http_status=status,
+        request_body=(_mask_card(body) if mask else body) if body is not None else {"query": path.partition("?")[2]},
+        response_body=data,
+    )
+    if status == 401 and _retry:
+        get_token(force=True)
+        return _api_call(method, path, body=body, payment=payment, event=event, mask=mask, _retry=False)
+    if err:
+        code = err.get("code", "error") if isinstance(err, dict) else "error"
+        msg = err.get("message", "") if isinstance(err, dict) else str(err)
+        raise PaylovError(code, msg, err.get("data") if isinstance(err, dict) else None, status)
+    if not (200 <= status < 300):
+        raise PaylovError("http_error", f"Unexpected HTTP {status}", data, status)
+    return data
+
+
+def create_user_card(user_id: str, card_number: str, expire_date: str) -> dict[str, Any]:
+    """Start linking a card: Paylov texts an SMS code to the cardholder.
+    Returns ``{cid, otpSentPhone}`` (possibly wrapped in ``result``)."""
+    body = {"userId": user_id, "cardNumber": card_number, "expireDate": expire_date}
+    return _api_call("POST", "userCard/createUserCard/", body=body, event="userCard/create", mask=True)
+
+
+def confirm_user_card(cid: str, otp: str) -> dict[str, Any]:
+    """Finish linking with the SMS code → ``result.card`` (cardId, masked number…)."""
+    return _api_call(
+        "POST", "userCard/confirmUserCardCreate/", body={"cardId": cid, "otp": otp},
+        event="userCard/confirm",
+    )
+
+
+def delete_user_card(card_id: str) -> dict[str, Any]:
+    from urllib.parse import quote
+
+    return _api_call(
+        "DELETE", f"userCard/deleteUserCard/?userCardId={quote(card_id)}", event="userCard/delete"
+    )
+
+
+def create_receipt(user_id: str, amount_uzs: int, account: dict[str, Any], *, payment=None) -> dict[str, Any]:
+    """Create a payable transaction (amount in SOM). Charges nothing yet."""
+    body = {"userId": user_id, "amount": amount_uzs, "account": account}
+    return _api_call("POST", "receipts/create/", body=body, payment=payment, event="receipts/create")
+
+
+def pay_receipt(transaction_id: str, card_id: str, user_id: str, *, payment=None) -> dict[str, Any]:
+    """Charge a SAVED card for the transaction — no SMS code (merchant-initiated)."""
+    body = {"transactionId": transaction_id, "cardId": card_id, "userId": user_id}
+    return _api_call("POST", "receipts/pay/", body=body, payment=payment, event="receipts/pay")
+
+
+def get_transaction(transaction_id: str, *, payment=None) -> dict[str, Any]:
+    from urllib.parse import quote
+
+    return _api_call(
+        "GET", f"getTransactions/?transactionId={quote(transaction_id)}", payment=payment,
+        event="getTransactions",
+    )

@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useState } from "react";
 
+import { AutoPayCard } from "@/components/billing/AutoPayCard";
 import { CredentialsDialog } from "@/components/CredentialsDialog";
 import { PaylovPayDialog } from "@/components/PaylovPayDialog";
 import { confirmDialog, promptDialog } from "@/components/ui/Confirm";
@@ -1179,6 +1180,9 @@ function LicenseTab() {
           </div>
         </div>
       </div>
+
+      {/* ── Saved cards + auto-payment (Paylov) ── */}
+      <AutoPayCard />
 
       {/* ── Detail row: daily charges | statements + payments ── */}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">

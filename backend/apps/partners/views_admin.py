@@ -435,6 +435,18 @@ class AdminCompanyDetailView(StaffView):
             for u in User.objects.filter(company=company).order_by("-is_company_admin", "id")
         ]
         body["integrations"] = _integrations_detail(company)
+        from apps.billing.models import AutoPaySettings
+
+        auto = AutoPaySettings.all_objects.filter(company=company).select_related("card").first()
+        body["autopay"] = (
+            {
+                "is_enabled": auto.is_enabled,
+                "card": auto.card.label if auto.card and auto.card.usable else None,
+                "last_status": auto.last_status,
+            }
+            if auto and auto.consent_at
+            else None
+        )
         from apps.calls.stats import company_call_stats
 
         body["stats"] = company_call_stats(company, include_operators=True)
@@ -987,6 +999,78 @@ class AdminPaylovTransactionActionView(StaffView):
         )
         payment.refresh_from_db()
         return Response({"success": True, "status": payment.status})
+
+
+class AdminPaylovAutopayView(StaffView):
+    """Auto-payment console: who has it on, recent automatic charges, and the
+    platform-wide emergency switch (superadmin only)."""
+
+    @extend_schema(summary="Auto-payment overview")
+    def get(self, request: Request) -> Response:
+        from apps.billing import autopay
+        from apps.billing.models import AutoPaySettings, PaymentProviderConfig
+
+        cfg = PaymentProviderConfig.objects.filter(provider="paylov").first()
+        rows = []
+        for row in (
+            AutoPaySettings.all_objects.select_related("company", "card")
+            .exclude(consent_at__isnull=True)
+            .order_by("-is_enabled", "-last_attempt_at")[:300]
+        ):
+            q = autopay.quote(row.company, row)
+            rows.append(
+                {
+                    "company_id": row.company_id,
+                    "company": row.company.name,
+                    "is_enabled": row.is_enabled,
+                    "card": row.card.label if row.card and row.card.usable else None,
+                    "amount_mode": row.amount_mode,
+                    "effective_amount_uzs": q.amount_uzs,
+                    "last_attempt_at": row.last_attempt_at.isoformat() if row.last_attempt_at else None,
+                    "last_status": row.last_status,
+                    "last_error": autopay.error_text(row.last_error),
+                    "fail_streak": row.fail_streak,
+                    "disabled_reason": autopay.error_text(row.disabled_reason),
+                }
+            )
+        payments = [
+            {
+                "id": p.pk,
+                "company": p.company.name,
+                "company_id": p.company_id,
+                "amount_uzs": p.amount_uzs,
+                "status": p.status,
+                "created_at": p.created_at.isoformat(),
+                "card": p.saved_card.label if p.saved_card else None,
+                "error": autopay.error_text(p.failure_code),
+            }
+            for p in Payment.all_objects.filter(is_auto=True).select_related("company", "saved_card")[:100]
+        ]
+        return Response(
+            {
+                "success": True,
+                "platform_enabled": bool(cfg and cfg.autopay_enabled),
+                "rows": rows,
+                "payments": payments,
+            }
+        )
+
+    @extend_schema(summary="Emergency switch for automatic charges")
+    def put(self, request: Request) -> Response:
+        from apps.billing.models import PaymentProviderConfig, ensure_provider_configs
+
+        if services.role_name(request.user) != "superadmin":
+            raise ApiError(ErrorCode.MISSING_FIELD, "superadmin required", 403)
+        ensure_provider_configs()
+        cfg = PaymentProviderConfig.objects.get(provider="paylov")
+        cfg.autopay_enabled = bool(request.data.get("platform_enabled"))
+        cfg.save(update_fields=["autopay_enabled", "updated_at"])
+        AuditLog.objects.create(
+            actor=cast(User, request.user), action="admin.autopay_switch",
+            target_model="billing.PaymentProviderConfig", target_id=str(cfg.pk),
+            changes={"platform_enabled": cfg.autopay_enabled},
+        )
+        return Response({"success": True, "platform_enabled": cfg.autopay_enabled})
 
 
 class AdminPaylovLogsView(StaffView):

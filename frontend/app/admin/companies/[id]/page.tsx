@@ -548,6 +548,14 @@ export default function AdminCompanyDetailPage() {
                   : t("noIntegrations"),
               ],
               [
+                "autopayLabel",
+                company.autopay
+                  ? `${company.autopay.is_enabled ? t("autopayOn") : t("autopayOff")}${
+                      company.autopay.card ? ` · ${company.autopay.card}` : ""
+                    }`
+                  : "—",
+              ],
+              [
                 "trialEnds",
                 company.trial_ends_at ? company.trial_ends_at.slice(0, 10) : "—",
               ],

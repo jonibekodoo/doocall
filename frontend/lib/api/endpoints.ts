@@ -390,6 +390,86 @@ export const paylovConfirm = (payment_id: number, otp: string) =>
     { payment_id, otp },
   );
 
+// ── Paylov saved cards + auto-payment ────────────────────────────────────────
+export interface SavedCard {
+  id: number;
+  /** Masked PAN as returned by Paylov, e.g. "860000******9999". */
+  masked_number: string;
+  owner: string;
+  /** "Uzcard" | "Humo" */
+  vendor: string;
+  /** YYMM */
+  expire: string;
+  is_active: boolean;
+}
+
+export type AutoPayAmountMode = "month" | "fixed";
+
+export interface AutoPayState {
+  is_enabled: boolean;
+  card_id: number | null;
+  amount_mode: AutoPayAmountMode;
+  fixed_amount_uzs: number | null;
+  monthly_limit_uzs: number | null;
+  /** One month of service at the current operator count. */
+  default_amount_uzs: number;
+  effective_amount_uzs: number;
+  effective_limit_uzs: number;
+  spent_30d_uzs: number;
+  last_attempt_at: string | null;
+  last_status: "" | "ok" | "failed" | "pending";
+  last_error: string;
+  fail_streak: number;
+  disabled_reason: string;
+  consent_at: string | null;
+}
+
+export interface AutoPayOverview extends ApiEnvelope {
+  /** Company admins only may link cards / change auto-payment. */
+  can_manage: boolean;
+  /** Paylov enabled + configured + platform switch on. */
+  available: boolean;
+  cards: SavedCard[];
+  autopay: AutoPayState;
+}
+
+export interface AutoPaySettingsInput {
+  is_enabled: boolean;
+  card_id: number | null;
+  amount_mode: AutoPayAmountMode;
+  fixed_amount_uzs: number | null;
+  monthly_limit_uzs: number | null;
+  /** Must be true when enabling (explicit cardholder authorization). */
+  consent: boolean;
+}
+
+export const fetchAutoPay = () => get<AutoPayOverview>("/billing/autopay");
+
+export const saveAutoPay = (body: AutoPaySettingsInput) =>
+  put<AutoPayOverview>("/billing/autopay", body);
+
+/** Step 1 of linking a card: Paylov sends an SMS code to the cardholder. */
+export const linkCardStart = (card_number: string, expire_date: string) =>
+  post<{ success: boolean; card_ref: number; otp_phone: string }>(
+    "/billing/cards",
+    { card_number, expire_date },
+  );
+
+export const linkCardConfirm = (card_ref: number, otp: string) =>
+  post<{ success: boolean; card: SavedCard }>("/billing/cards/confirm", {
+    card_ref,
+    otp,
+  });
+
+export const removeSavedCard = (id: number) =>
+  del<{ success: boolean }>(`/billing/cards/${id}`);
+
+export const payWithSavedCard = (id: number, amount_uzs: number) =>
+  post<{ success: boolean; status: string; balance_uzs: number }>(
+    `/billing/cards/${id}/pay`,
+    { amount_uzs },
+  );
+
 export const fetchApiKey = () =>
   get<{ success: boolean; api_key_masked: string | null }>("/settings/api-key");
 export const rotateApiKey = () =>

@@ -30,6 +30,7 @@ admin_urlpatterns = [
     path("paylov/transactions", A.AdminPaylovTransactionsView.as_view()),
     path("paylov/transactions/<int:payment_id>/action", A.AdminPaylovTransactionActionView.as_view()),
     path("paylov/logs", A.AdminPaylovLogsView.as_view()),
+    path("paylov/autopay", A.AdminPaylovAutopayView.as_view()),
     path("settings/pricing", A.AdminPricingView.as_view()),
     path("integrators", A.AdminIntegratorsView.as_view()),
     path("integrators/stats", A.AdminIntegratorStatsView.as_view()),

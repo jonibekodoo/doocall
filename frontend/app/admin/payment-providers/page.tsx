@@ -1,13 +1,16 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, ImagePlus, Loader2 } from "lucide-react";
+import { CreditCard, ImagePlus, Loader2, ShieldAlert } from "lucide-react";
 import { useRef } from "react";
 import { useTranslations } from "next-intl";
 
+import { confirmDialog } from "@/components/ui/Confirm";
 import { useToastStore } from "@/components/ui/Toast";
 import {
+  fetchPaylovAutoPay,
   fetchPaymentProviders,
+  setPaylovAutoPayEnabled,
   updatePaymentProvider,
   uploadProviderLogo,
   type PaymentProviderRow,
@@ -127,6 +130,86 @@ function ProviderCard({
   );
 }
 
+/** Platform-wide emergency switch: stops every automatic (no-OTP) Paylov
+ * charge at once. Manual card payments keep working. */
+function AutoPaySwitch() {
+  const t = useTranslations("admin");
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["a-paylov-autopay"], queryFn: fetchPaylovAutoPay });
+  const toggle = useMutation({
+    mutationFn: (next: boolean) => setPaylovAutoPayEnabled(next),
+    onSuccess: (body) => {
+      queryClient.invalidateQueries({ queryKey: ["a-paylov-autopay"] });
+      useToastStore.getState().push({
+        kind: "success",
+        text: body.platform_enabled
+          ? t("paymentProviders.autopayNowOn")
+          : t("paymentProviders.autopayNowOff"),
+      });
+    },
+    onError: (e: Error) => useToastStore.getState().push({ kind: "error", text: e.message }),
+  });
+  if (!data) return null;
+  const on = data.platform_enabled;
+
+  return (
+    <div
+      data-testid="autopay-kill-switch"
+      className={cn(
+        "mt-6 flex flex-wrap items-center gap-4 rounded-2xl border p-5",
+        on ? "border-border bg-surface" : "border-danger/40 bg-danger/5",
+      )}
+    >
+      <span
+        className={cn(
+          "grid size-12 shrink-0 place-items-center rounded-xl",
+          on ? "bg-surface-2 text-fg-muted" : "bg-danger/15 text-danger",
+        )}
+      >
+        <ShieldAlert className="size-6" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-base font-semibold">{t("paymentProviders.autopayTitle")}</p>
+        <p className="mt-0.5 text-sm text-fg-muted">{t("paymentProviders.autopayHint")}</p>
+      </div>
+      <span
+        className={cn(
+          "rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide",
+          on ? "bg-success/15 text-success" : "bg-danger/15 text-danger",
+        )}
+      >
+        {on ? t("paymentProviders.on") : t("paymentProviders.off")}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        disabled={toggle.isPending}
+        onClick={async () => {
+          // Turning OFF halts charges for every company — make it deliberate.
+          if (
+            on &&
+            !(await confirmDialog(t("paymentProviders.autopayConfirmOff"), { danger: true }))
+          )
+            return;
+          toggle.mutate(!on);
+        }}
+        className={cn(
+          "relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-40",
+          on ? "bg-accent" : "bg-surface-3",
+        )}
+      >
+        <span
+          className={cn(
+            "inline-block size-5 transform rounded-full bg-white shadow transition-transform",
+            on ? "translate-x-5" : "translate-x-0.5",
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
 export default function AdminPaymentProvidersPage() {
   const t = useTranslations("admin");
   const queryClient = useQueryClient();
@@ -143,6 +226,7 @@ export default function AdminPaymentProvidersPage() {
           <ProviderCard key={row.provider} row={row} onChanged={onChanged} />
         ))}
       </div>
+      <AutoPaySwitch />
     </div>
   );
 }
