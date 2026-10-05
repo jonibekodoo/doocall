@@ -8,6 +8,12 @@
 upstream doocall_backend  { zone doocall_backend 64k;  resolver 127.0.0.11 valid=10s ipv6=off; server backend:8000  resolve; }
 upstream doocall_frontend { zone doocall_frontend 64k; resolver 127.0.0.11 valid=10s ipv6=off; server frontend:3000 resolve; }
 
+# Blue-green deploys run two containers of a service for a moment and the
+# new one is in DNS before it listens. Give a silent peer 2s at most, then
+# fail over to the live one (nothing was sent yet, so POSTs are retried too).
+proxy_connect_timeout 2s;
+proxy_next_upstream error timeout;
+
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
