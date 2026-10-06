@@ -199,7 +199,7 @@ class AdminDashboardView(StaffView):
         )
         mrr = 0
         for sub in Subscription.all_objects.filter(status=Subscription.Status.ACTIVE):
-            mrr += billing.seat_count(sub.company) * sub.price_per_operator_uzs
+            mrr += billing.seat_count(sub.company) * billing.effective_price(sub.company)
         payments_30d = (
             Payment.all_objects.filter(
                 status=Payment.Status.APPROVED, approved_at__gte=now - timedelta(days=30)
@@ -1010,29 +1010,65 @@ class AdminPaylovAutopayView(StaffView):
         from apps.billing import autopay
         from apps.billing.models import AutoPaySettings, PaymentProviderConfig
 
+        from apps.billing.models import SavedCard
+
         cfg = PaymentProviderConfig.objects.filter(provider="paylov").first()
-        rows = []
-        for row in (
-            AutoPaySettings.all_objects.select_related("company", "card")
-            .exclude(consent_at__isnull=True)
-            .order_by("-is_enabled", "-last_attempt_at")[:300]
+
+        def who(user: User | None) -> str:
+            return (user.email or user.username) if user else ""
+
+        # Every company that linked a card OR touched auto-pay — one row each,
+        # so staff see who linked which card even before auto-pay is on.
+        cards_by_company: dict[int, list[dict[str, Any]]] = {}
+        for c in (
+            SavedCard.all_objects.filter(is_confirmed=True, is_active=True)
+            .select_related("company", "created_by")
+            .order_by("company_id", "-confirmed_at")
         ):
-            q = autopay.quote(row.company, row)
-            rows.append(
+            cards_by_company.setdefault(c.company_id, []).append(
                 {
-                    "company_id": row.company_id,
-                    "company": row.company.name,
-                    "is_enabled": row.is_enabled,
-                    "card": row.card.label if row.card and row.card.usable else None,
-                    "amount_mode": row.amount_mode,
-                    "effective_amount_uzs": q.amount_uzs,
-                    "last_attempt_at": row.last_attempt_at.isoformat() if row.last_attempt_at else None,
-                    "last_status": row.last_status,
-                    "last_error": autopay.error_text(row.last_error),
-                    "fail_streak": row.fail_streak,
-                    "disabled_reason": autopay.error_text(row.disabled_reason),
+                    "id": c.pk,
+                    "label": c.label,
+                    "owner": c.owner,
+                    "expire": c.expire,
+                    "linked_at": (c.confirmed_at or c.created_at).isoformat(),
+                    "linked_by": who(c.created_by),
                 }
             )
+        settings_by_company = {
+            s.company_id: s
+            for s in AutoPaySettings.all_objects.select_related("company", "card", "consent_by")
+            .exclude(consent_at__isnull=True)
+        }
+        company_ids = set(cards_by_company) | set(settings_by_company)
+        companies = {c.pk: c for c in Company.objects.filter(pk__in=company_ids)}
+        rows = []
+        for cid in company_ids:
+            company = companies.get(cid)
+            if company is None:
+                continue
+            row = settings_by_company.get(cid)
+            q = autopay.quote(company, row) if row else None
+            rows.append(
+                {
+                    "company_id": cid,
+                    "company": company.name,
+                    "is_enabled": bool(row and row.is_enabled),
+                    "enabled_at": row.consent_at.isoformat() if row and row.consent_at else None,
+                    "enabled_by": who(row.consent_by) if row else "",
+                    "card": row.card.label if row and row.card and row.card.usable else None,
+                    "card_id": row.card_id if row and row.card and row.card.usable else None,
+                    "cards": cards_by_company.get(cid, []),
+                    "amount_mode": row.amount_mode if row else "",
+                    "effective_amount_uzs": q.amount_uzs if q else 0,
+                    "last_attempt_at": row.last_attempt_at.isoformat() if row and row.last_attempt_at else None,
+                    "last_status": row.last_status if row else "",
+                    "last_error": autopay.error_text(row.last_error) if row else "",
+                    "fail_streak": row.fail_streak if row else 0,
+                    "disabled_reason": autopay.error_text(row.disabled_reason) if row else "",
+                }
+            )
+        rows.sort(key=lambda r: (not r["is_enabled"], r["company"].lower()))
         payments = [
             {
                 "id": p.pk,

@@ -1014,7 +1014,6 @@
       "errorsOnly": "Faqat xatolar",
       "tab_autopay": "Avto to'lovlar",
       "autopayPlatformOff": "Avtomatik yechish platforma bo'yicha O'CHIRILGAN (To'lov tizimlari sahifasidagi favqulodda o'chirgich).",
-      "autopayCompanies": "Kompaniyalar",
       "autopayEnabled": "Yoqilgan",
       "autopayCharges": "Avto yechishlar",
       "autopayFailed": "Xato bilan",
@@ -1028,7 +1027,11 @@
       "autopayModeMonth": "bir oylik",
       "autopayModeFixed": "belgilangan",
       "autopayChargesTitle": "So'nggi avtomatik yechishlar",
-      "autopayError": "Xato"
+      "autopayError": "Xato",
+      "autopayCards": "Bog'langan kartalar",
+      "autopayEnabledBy": "Kim / qachon yoqdi",
+      "autopayUsedCard": "avto",
+      "autopayNone": "Hali hech kim karta bog'lamagan"
     },
     "legalPage": {
       "title": "Huquqiy sahifalar",

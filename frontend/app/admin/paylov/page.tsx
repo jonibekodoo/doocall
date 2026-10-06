@@ -331,6 +331,7 @@ function AutoPayTab() {
   const rows = usePagination(data?.rows ?? []);
   const payments = usePagination(data?.payments ?? []);
   const enabledCount = (data?.rows ?? []).filter((row) => row.is_enabled).length;
+  const cardsCount = (data?.rows ?? []).reduce((sum, row) => sum + row.cards.length, 0);
   const failedCount = (data?.payments ?? []).filter((row) => row.status === "failed").length;
 
   return (
@@ -341,7 +342,7 @@ function AutoPayTab() {
         </p>
       )}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile label={t("paylov.autopayCompanies")} value={String(data?.rows.length ?? 0)} />
+        <Tile label={t("paylov.autopayCards")} value={String(cardsCount)} />
         <Tile label={t("paylov.autopayEnabled")} value={String(enabledCount)} tone="text-success" />
         <Tile label={t("paylov.autopayCharges")} value={String(data?.payments.length ?? 0)} />
         <Tile label={t("paylov.autopayFailed")} value={String(failedCount)} tone="text-danger" />
@@ -354,7 +355,8 @@ function AutoPayTab() {
               <th className="px-3 py-2">№</th>
               <th className="px-3 py-2">{t("paylov.company")}</th>
               <th className="px-3 py-2">{t("paylov.autopayState")}</th>
-              <th className="px-3 py-2">{t("paylov.autopayCard")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayEnabledBy")}</th>
+              <th className="px-3 py-2">{t("paylov.autopayCards")}</th>
               <th className="px-3 py-2 text-right">{t("paylov.amount")}</th>
               <th className="px-3 py-2">{t("paylov.autopayLast")}</th>
               <th className="px-3 py-2 text-right">{t("paylov.autopayStreak")}</th>
@@ -383,14 +385,48 @@ function AutoPayTab() {
                     {row.is_enabled ? t("paylov.autopayOn") : t("paylov.autopayOff")}
                   </span>
                 </td>
-                <td className="tnum px-3 py-2 text-xs">{row.card ?? "—"}</td>
+                <td className="px-3 py-2 text-xs">
+                  {row.enabled_at ? (
+                    <>
+                      <span className="block font-medium">{row.enabled_by || "—"}</span>
+                      <span className="tnum block text-[11px] text-fg-faint">{fmtTime(row.enabled_at)}</span>
+                    </>
+                  ) : (
+                    <span className="text-fg-faint">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-xs">
+                  {row.cards.length === 0 && <span className="text-fg-faint">—</span>}
+                  {row.cards.map((card) => (
+                    <div key={card.id} className="whitespace-nowrap py-0.5">
+                      <span className={cn("tnum font-medium", card.id === row.card_id && "text-accent")}>
+                        {card.label}
+                      </span>
+                      {card.id === row.card_id && (
+                        <span className="ml-1 rounded bg-accent-soft px-1 text-[10px] font-semibold text-accent">
+                          {t("paylov.autopayUsedCard")}
+                        </span>
+                      )}
+                      <span className="block text-[11px] text-fg-faint">
+                        {card.owner || "—"} · {fmtTime(card.linked_at)}
+                        {card.linked_by && ` · ${card.linked_by}`}
+                      </span>
+                    </div>
+                  ))}
+                </td>
                 <td className="tnum px-3 py-2 text-right">
-                  {formatUzs(row.effective_amount_uzs)}
-                  <span className="block text-[11px] text-fg-faint">
-                    {row.amount_mode === "fixed"
-                      ? t("paylov.autopayModeFixed")
-                      : t("paylov.autopayModeMonth")}
-                  </span>
+                  {row.is_enabled || row.enabled_at ? (
+                    <>
+                      {formatUzs(row.effective_amount_uzs)}
+                      <span className="block text-[11px] text-fg-faint">
+                        {row.amount_mode === "fixed"
+                          ? t("paylov.autopayModeFixed")
+                          : t("paylov.autopayModeMonth")}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-fg-faint">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {row.last_attempt_at ? (
@@ -431,8 +467,8 @@ function AutoPayTab() {
             ))}
             {(data?.rows ?? []).length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-sm text-fg-faint">
-                  —
+                <td colSpan={9} className="px-3 py-8 text-center text-sm text-fg-faint">
+                  {t("paylov.autopayNone")}
                 </td>
               </tr>
             )}

@@ -363,12 +363,28 @@ export const fetchPaylovLogs = (params = "") =>
   g<{ success: boolean; logs: PaylovLogRow[] }>(`/paylov/logs${params}`);
 
 // ── Paylov auto-payments (saved cards charged without OTP) ───────────────────
+export interface PaylovSavedCard {
+  id: number;
+  /** e.g. "Uzcard •••• 9999" */
+  label: string;
+  owner: string;
+  expire: string;
+  linked_at: string;
+  linked_by: string;
+}
+
 export interface PaylovAutoPayRow {
   company_id: number;
   company: string;
   is_enabled: boolean;
-  /** e.g. "Uzcard •••• 9999" */
+  /** Who pressed "enable" (consent) and when. */
+  enabled_at: string | null;
+  enabled_by: string;
+  /** e.g. "Uzcard •••• 9999" — the card auto-pay charges */
   card: string | null;
+  card_id: number | null;
+  /** Every linked card of the company (auto-pay on or off). */
+  cards: PaylovSavedCard[];
   amount_mode: string;
   effective_amount_uzs: number;
   last_attempt_at: string | null;

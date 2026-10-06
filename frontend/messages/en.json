@@ -1014,7 +1014,6 @@
       "errorsOnly": "Errors only",
       "tab_autopay": "Auto-payments",
       "autopayPlatformOff": "Automatic charges are DISABLED platform-wide (emergency switch on the Payment providers page).",
-      "autopayCompanies": "Companies",
       "autopayEnabled": "Enabled",
       "autopayCharges": "Automatic charges",
       "autopayFailed": "Failed",
@@ -1028,7 +1027,11 @@
       "autopayModeMonth": "one month",
       "autopayModeFixed": "fixed",
       "autopayChargesTitle": "Recent automatic charges",
-      "autopayError": "Error"
+      "autopayError": "Error",
+      "autopayCards": "Linked cards",
+      "autopayEnabledBy": "Enabled by / when",
+      "autopayUsedCard": "auto",
+      "autopayNone": "No one has linked a card yet"
     },
     "legalPage": {
       "title": "Legal pages",

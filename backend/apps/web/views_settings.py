@@ -441,11 +441,9 @@ class LicenseView(CabinetView):
         company = self.company
         subscription = Subscription.all_objects.filter(company=company).first()
         seats = billing.seat_count(company)  # live — reacts to deactivation instantly
-        price = (
-            subscription.price_per_operator_uzs
-            if subscription
-            else billing.effective_price(company)
-        )
+        # The tariff actually charged each day (company override → global), not
+        # the subscription's snapshot, which only refreshes when a cycle rolls.
+        price = billing.effective_price(company)
         payments = [
             {
                 "id": p.pk,

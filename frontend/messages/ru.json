@@ -1014,7 +1014,6 @@
       "errorsOnly": "Только ошибки",
       "tab_autopay": "Автоплатежи",
       "autopayPlatformOff": "Автоматические списания ОТКЛЮЧЕНЫ на уровне платформы (аварийный выключатель на странице платёжных систем).",
-      "autopayCompanies": "Компании",
       "autopayEnabled": "Включено",
       "autopayCharges": "Автосписания",
       "autopayFailed": "С ошибкой",
@@ -1028,7 +1027,11 @@
       "autopayModeMonth": "месяц",
       "autopayModeFixed": "фиксированная",
       "autopayChargesTitle": "Последние автоматические списания",
-      "autopayError": "Ошибка"
+      "autopayError": "Ошибка",
+      "autopayCards": "Привязанные карты",
+      "autopayEnabledBy": "Кто / когда включил",
+      "autopayUsedCard": "авто",
+      "autopayNone": "Пока никто не привязал карту"
     },
     "legalPage": {
       "title": "Юридические страницы",
