@@ -5,6 +5,7 @@
 
 import {
   BarChart3,
+  BookOpen,
   Contact2,
   LayoutDashboard,
   MapPin,
@@ -149,6 +150,14 @@ export default async function Landing() {
                 → {t.pricingTitle}
               </a>
               <DownloadApp label={t.downloadApk} />
+              <Link
+                href="/help/recording"
+                data-testid="hero-guide"
+                className="inline-flex items-center gap-2 rounded-md border border-white/20 px-6 py-3 text-sm font-medium text-white/90 hover:bg-white/5"
+              >
+                <BookOpen className="size-4" />
+                {t.heroGuide}
+              </Link>
             </div>
           </div>
 
