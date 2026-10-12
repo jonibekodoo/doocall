@@ -8,7 +8,6 @@ import {
   BookOpen,
   Contact2,
   LayoutDashboard,
-  MapPin,
   Phone,
   PhoneCall,
   Settings,
@@ -69,7 +68,7 @@ export default async function Landing() {
     { icon: Settings, title: t.fSettings, text: t.fSettingsText },
     { icon: ShieldCheck, title: t.fSecurity, text: t.fSecurityText },
     { icon: Sparkles, title: t.fAi, text: t.fAiText, soon: true },
-    { icon: MapPin, title: t.fMonitoring, text: t.fMonitoringText, soon: true },
+    // Staff monitoring (t.fMonitoring / fMonitoringText, icon MapPin) hidden for now — re-add to enable
   ];
   const steps = [
     { icon: Smartphone, title: t.step1Title, text: t.step1Text },
@@ -219,10 +218,19 @@ export default async function Landing() {
             {t.featuresTitle}
           </h2>
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => (
+            {features.map((feature, index) => (
               <div
                 key={feature.title}
-                className="relative rounded-xl border border-border bg-surface p-5 transition-shadow hover:shadow-md"
+                className={`relative rounded-xl border border-border bg-surface p-5 transition-shadow hover:shadow-md ${
+                  // A lone card on the last row spans it instead of hanging left.
+                  index === features.length - 1
+                    ? `${features.length % 2 === 1 ? "sm:col-span-2" : ""} ${
+                        features.length % 3 === 1
+                          ? "lg:col-span-3"
+                          : "lg:col-span-1"
+                      }`
+                    : ""
+                }`}
               >
                 {"soon" in feature && feature.soon && (
                   <span className="absolute right-3 top-3 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent">

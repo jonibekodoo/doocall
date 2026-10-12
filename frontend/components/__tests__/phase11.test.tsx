@@ -37,10 +37,23 @@ describe("KPI card mapping", () => {
     mrr_uzs: 300000,
     payments_30d_uzs: 500000,
     calls_today: 412,
+    total_calls: 18250,
+    total_call_seconds: 2190000,
     integrators: 2,
+    pending_payments: 3,
     pending_payouts: 1,
     payments_series: [],
     calls_series: [],
+    expiring: [
+      {
+        id: 7,
+        name: "Acme",
+        integrator: null,
+        reason: "trial",
+        days_left: 2,
+        ends_on: "2026-10-14",
+      },
+    ],
   };
 
   const t = (key: string, values?: Record<string, string | number>) =>
@@ -51,12 +64,23 @@ describe("KPI card mapping", () => {
   it("maps all six cards with formatted money and status hint", () => {
     const cards = kpiCards(kpis, t);
     expect(cards).toHaveLength(6);
+    expect(cards.map((card) => card.key)).toEqual([
+      "companies",
+      "payments30",
+      "calls",
+      "integrators",
+      "pendingPayments",
+      "payouts",
+    ]);
     const byKey = Object.fromEntries(cards.map((card) => [card.key, card]));
     expect(byKey.companies.value).toBe(33);
     expect(byKey.companies.hint).toContain("актив 2");
     expect(byKey.companies.hint).toContain("стоп 5");
-    expect(String(byKey.mrr.value)).toMatch(/^300\D000 UZS$/);
+    // MRR tile was dropped intentionally (13a11b7); 30-day payments carry the money.
+    expect(String(byKey.payments30.value)).toMatch(/^500\D000 UZS$/);
     expect(byKey.calls.value).toBe(412);
+    expect(byKey.integrators.value).toBe(2);
+    expect(byKey.pendingPayments.value).toBe(3);
     expect(byKey.payouts.value).toBe(1);
   });
 });
