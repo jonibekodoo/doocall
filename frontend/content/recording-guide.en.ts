@@ -221,12 +221,13 @@ export const en: GuideContent = {
           items: [
             "A **Windows computer**",
             "A **USB cable**",
-            "The **archive file** — [download](https://t.me/c/3177623007/75)",
+            "**ADB (Platform Tools)** — [download](https://developer.android.com/tools/releases/platform-tools)",
+            "The **archive file** — [download](https://drive.google.com/file/d/1d4SBXVLuWRWVTJP8pjzYQyhHOipb_wc3/view)",
           ],
         },
         {
           t: "note",
-          text: "The download link points to a **private Telegram channel**. If it doesn't open — contact support and the file will be sent to you.",
+          text: '**What is ADB?** It is a small program the computer needs to "talk" to the phone. Without it the `.bat` file **won\'t see** the phone and won\'t work. ADB comes inside the **Platform Tools** package.',
         },
         {
           t: "details",
@@ -268,16 +269,44 @@ export const en: GuideContent = {
         },
         {
           t: "details",
-          summary: "3. Run the file",
+          summary: "3. Install ADB (Platform Tools) on the computer",
+          open: true,
+          blocks: [
+            {
+              t: "video",
+              href: "https://youtu.be/JQrMvecOAeE?t=39",
+              label: "Open the video guide (starts at 0:39)",
+            },
+            {
+              t: "steps",
+              items: [
+                "Go to [developer.android.com/tools/releases/platform-tools](https://developer.android.com/tools/releases/platform-tools)",
+                "Click the **Download SDK Platform-Tools for Windows** button",
+                "Tick the box to accept the terms and **download** it",
+                "**Extract** the downloaded archive — it contains a **`platform-tools`** folder",
+                "Put this folder somewhere convenient, for example **`C:\\platform-tools`**",
+              ],
+            },
+            {
+              t: "tip",
+              text: "The folder must contain an **`adb.exe`** file — that means everything is correct.",
+            },
+          ],
+        },
+        {
+          t: "details",
+          summary: "4. Run the file",
           open: true,
           blocks: [
             {
               t: "steps",
               items: [
-                "**Download** the archive to your computer",
-                "**Extract** the archive (using WinRAR or 7-Zip)",
+                "**Download** the archive to your computer [from Google Drive](https://drive.google.com/file/d/1d4SBXVLuWRWVTJP8pjzYQyhHOipb_wc3/view)",
+                "**Extract** the archive (*Extract* — using WinRAR or 7-Zip)",
+                "**Copy all the files** from it into the `platform-tools` folder (next to **`adb.exe`**)",
                 "Connect the phone to the computer with the USB cable",
-                "**Double-click** the **`Install_Xiaomi_Dialer.bat`** file inside",
+                'If the phone asks **"Allow USB debugging?"** — tap **Allow**',
+                "**Double-click** the **`Install_Xiaomi_Dialer.bat`** file",
                 "A black window (command prompt) will open — **don't close it**, wait for it to finish",
                 "If a prompt appears on the phone — tap **Allow** / **Install**",
               ],
@@ -402,6 +431,11 @@ export const en: GuideContent = {
             "Turn on the **Automatic** mode",
           ],
         },
+        {
+          t: "note",
+          text: "On Honor with Android 13 and later this menu **may be missing** — see the notes below.",
+        },
+        { t: "h3", text: "Separate notes for Honor owners" },
         {
           t: "details",
           summary: "Honor + Android 13 / 14",
