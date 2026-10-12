@@ -30,6 +30,12 @@ describe("landing locale catalogs", () => {
     }
   });
 
+  it("hero setup-guide link label exists in all locales", () => {
+    expect(uz.landing.heroGuide).toBe("Telefonga o‘rnatish yo‘riqnomasi");
+    expect(ru.landing.heroGuide).toBe("Инструкция по установке на телефон");
+    expect(en.landing.heroGuide).toBe("Phone setup guide");
+  });
+
   it("onboarding checklist strings exist in all locales", () => {
     for (const catalog of [uz, ru, en]) {
       expect(catalog.onboarding.step1).toBeTruthy();
