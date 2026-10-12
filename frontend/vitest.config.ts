@@ -6,6 +6,9 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    // The shell may export NODE_ENV=production (vitest won't override it);
+    // React's prod build has no act(), so every RTL render would throw.
+    env: { NODE_ENV: "test" },
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.test.{ts,tsx}"],
