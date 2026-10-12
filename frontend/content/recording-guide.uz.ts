@@ -221,12 +221,13 @@ export const uz: GuideContent = {
           items: [
             "**Windows kompyuter**",
             "**USB kabel**",
-            "**Arxiv fayl** — [yuklab olish](https://t.me/c/3177623007/75)",
+            "**ADB (Platform Tools)** — [Yuklab olish](https://developer.android.com/tools/releases/platform-tools)",
+            "**Arxiv fayl** — [Yuklab olish](https://drive.google.com/file/d/1d4SBXVLuWRWVTJP8pjzYQyhHOipb_wc3/view)",
           ],
         },
         {
           t: "note",
-          text: "Yuklab olish havolasi **yopiq Telegram kanalida**. Ochilmasa — qo'llab-quvvatlash xizmatiga murojaat qiling, fayl yuboriladi.",
+          text: "**ADB nima?** Bu kompyuter telefon bilan «gaplashishi» uchun kerak bo'lgan kichik dastur. Usiz `.bat` fayl telefonni **ko'rmaydi** va ishlamaydi. ADB **Platform Tools** paketi ichida keladi.",
         },
         {
           t: "details",
@@ -274,16 +275,44 @@ export const uz: GuideContent = {
         },
         {
           t: "details",
-          summary: "3. Faylni ishga tushirish",
+          summary: "3. Kompyuterga ADB (Platform Tools) o'rnatish",
+          open: true,
+          blocks: [
+            {
+              t: "video",
+              href: "https://youtu.be/JQrMvecOAeE?t=39",
+              label: "Video yo'riqnomani ochish (0:39 dan boshlanadi)",
+            },
+            {
+              t: "steps",
+              items: [
+                "[developer.android.com/tools/releases/platform-tools](https://developer.android.com/tools/releases/platform-tools) saytiga kiring",
+                "**«Download SDK Platform-Tools for Windows»** tugmasini bosing",
+                "Shartlarga rozilik belgisini qo'ying va **yuklab oling**",
+                "Yuklangan arxivni **oching** — ichidan **`platform-tools`** papkasi chiqadi",
+                "Bu papkani qulay joyga qo'ying, masalan: **`C:\\platform-tools`**",
+              ],
+            },
+            {
+              t: "tip",
+              text: "Papka ichida **`adb.exe`** fayli bo'lishi kerak — demak hammasi to'g'ri.",
+            },
+          ],
+        },
+        {
+          t: "details",
+          summary: "4. Faylni ishga tushirish",
           open: true,
           blocks: [
             {
               t: "steps",
               items: [
-                "Arxivni kompyuterga **yuklab oling**",
-                "Arxivni **oching** (*Extract* — WinRAR yoki 7-Zip orqali)",
+                "Arxivni [Google Drive dan](https://drive.google.com/file/d/1d4SBXVLuWRWVTJP8pjzYQyhHOipb_wc3/view) kompyuterga **yuklab oling**",
+                "Arxivni **oching** (*Extract / Ochish* — WinRAR yoki 7-Zip orqali)",
+                "Ichidagi **barcha fayllarni** `platform-tools` papkasiga (**`adb.exe`** yoniga) **ko'chiring**",
                 "Telefonni USB kabel bilan kompyuterga ulang",
-                "Ichidagi **`Install_Xiaomi_Dialer.bat`** faylini **ikki marta bosing**",
+                "Telefonda **«USB debugging'ga ruxsat berilsinmi?»** chiqsa — **Ruxsat berish**ni bosing",
+                "**`Install_Xiaomi_Dialer.bat`** faylini **ikki marta bosing**",
                 "Qora oyna (buyruqlar oynasi) ochiladi — **yopmang**, tugashini kuting",
                 "Telefonda so'rov chiqsa — **Ruxsat berish** / **O'rnatish**ni bosing",
               ],
@@ -394,8 +423,8 @@ export const uz: GuideContent = {
           t: "steps",
           items: [
             "**Sozlamalar** → **Ilovalar** → **Ilovalar** ro'yxati",
-            "Ro'yxatdan **`Recorder`** (yoki *Qo'ng'iroqlarni yozib olish*)ni toping",
-            "Uni bosing → **Ruxsatlar**",
+            "Ro'yxatdan **`Recorder`** (yoki *Qo'ng'iroqlarni yozib olish* / *Запись звонков*)ni toping",
+            "Uni bosing → **Ruxsatlar** (*Права*)",
             "**Berilmagan barcha ruxsatlarni yoqing** (mikrofon, xotira, telefon, kontaktlar)",
           ],
         },
@@ -408,6 +437,11 @@ export const uz: GuideContent = {
             "**«Avtomatik»** rejimini yoqing",
           ],
         },
+        {
+          t: "note",
+          text: "Honor Android 13 va undan yuqorisida bu menyu **bo'lmasligi** mumkin — pastdagi eslatmaga qarang.",
+        },
+        { t: "h3", text: "Honor egalari uchun alohida eslatmalar" },
         {
           t: "details",
           summary: "Honor + Android 13 / 14",
