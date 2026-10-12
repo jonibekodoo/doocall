@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import ru from "@/messages/ru.json";
 import { directionBars } from "@/components/calls-shared";
 
+import ReportsPage from "@/app/cabinet/reports/page";
 import { CredentialsDialog } from "@/components/CredentialsDialog";
 import type { DashboardResponse } from "@/lib/api/types";
 import { formatUzs, humanizeAgo } from "@/lib/format";
@@ -96,7 +97,16 @@ describe("report matrix rendering from fixture JSON", () => {
         return new Response(JSON.stringify(body), { status: 200 });
       }),
     );
-    const { default: ReportsPage } = await import("@/app/cabinet/reports/page");
+    // Recharts' ResponsiveContainer needs ResizeObserver, which jsdom lacks;
+    // without it the chart throws and unmounts the whole page.
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     wrap(<ReportsPage />);
 
     // Switch to the weekday matrix subtab.
@@ -124,8 +134,9 @@ describe("report matrix rendering from fixture JSON", () => {
       ]),
     );
     vi.unstubAllGlobals();
-    // 20s: the dynamic page import + Recharts render exceed the default
-    // 5s budget when the host is busy running the docker stack.
+    // The page (with Recharts) is imported statically so its slow transform
+    // counts toward collection, not this test's budget; 20s covers the
+    // render on a busy host.
   }, 20_000);
 });
 
