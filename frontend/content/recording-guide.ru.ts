@@ -221,12 +221,13 @@ export const ru: GuideContent = {
           items: [
             "**Компьютер с Windows**",
             "**USB-кабель**",
-            "**Архив с файлами** — [скачать](https://t.me/c/3177623007/75)",
+            "**ADB (Platform Tools)** — [скачать](https://developer.android.com/tools/releases/platform-tools)",
+            "**Архив с файлами** — [скачать](https://drive.google.com/file/d/1d4SBXVLuWRWVTJP8pjzYQyhHOipb_wc3/view)",
           ],
         },
         {
           t: "note",
-          text: "Ссылка на скачивание ведёт в **закрытый Telegram-канал**. Если не открывается — обратитесь в службу поддержки, файл вам отправят.",
+          text: "**Что такое ADB?** Это небольшая программа, которая нужна компьютеру, чтобы «общаться» с телефоном. Без неё `.bat`-файл **не увидит** телефон и не сработает. ADB входит в пакет **Platform Tools**.",
         },
         {
           t: "details",
@@ -271,16 +272,44 @@ export const ru: GuideContent = {
         },
         {
           t: "details",
-          summary: "3. Запустите файл",
+          summary: "3. Установите ADB (Platform Tools) на компьютер",
+          open: true,
+          blocks: [
+            {
+              t: "video",
+              href: "https://youtu.be/JQrMvecOAeE?t=39",
+              label: "Открыть видеоинструкцию (начинается с 0:39)",
+            },
+            {
+              t: "steps",
+              items: [
+                "Откройте сайт [developer.android.com/tools/releases/platform-tools](https://developer.android.com/tools/releases/platform-tools)",
+                "Нажмите кнопку **«Download SDK Platform-Tools for Windows»**",
+                "Отметьте согласие с условиями и **скачайте** архив",
+                "**Распакуйте** скачанный архив — внутри будет папка **`platform-tools`**",
+                "Поместите эту папку в удобное место, например: **`C:\\platform-tools`**",
+              ],
+            },
+            {
+              t: "tip",
+              text: "Внутри папки должен быть файл **`adb.exe`** — значит, всё сделано правильно.",
+            },
+          ],
+        },
+        {
+          t: "details",
+          summary: "4. Запустите файл",
           open: true,
           blocks: [
             {
               t: "steps",
               items: [
-                "**Скачайте** архив на компьютер",
+                "**Скачайте** архив на компьютер [с Google Drive](https://drive.google.com/file/d/1d4SBXVLuWRWVTJP8pjzYQyhHOipb_wc3/view)",
                 "**Распакуйте** архив (*Extract* — через WinRAR или 7-Zip)",
+                "**Скопируйте все файлы** из него в папку `platform-tools` (рядом с **`adb.exe`**)",
                 "Подключите телефон к компьютеру USB-кабелем",
-                "**Дважды щёлкните** по файлу **`Install_Xiaomi_Dialer.bat`** внутри архива",
+                "Если на телефоне появится вопрос **«Разрешить отладку по USB?»** — нажмите **Разрешить**",
+                "**Дважды щёлкните** по файлу **`Install_Xiaomi_Dialer.bat`**",
                 "Откроется чёрное окно (командная строка) — **не закрывайте**, дождитесь завершения",
                 "Если на телефоне появится запрос — нажмите **Разрешить** / **Установить**",
               ],
@@ -405,6 +434,11 @@ export const ru: GuideContent = {
             "Включите режим **«Автоматически»**",
           ],
         },
+        {
+          t: "note",
+          text: "На Honor с Android 13 и выше этого меню **может не быть** — см. примечания ниже.",
+        },
+        { t: "h3", text: "Отдельные примечания для владельцев Honor" },
         {
           t: "details",
           summary: "Honor + Android 13 / 14",
