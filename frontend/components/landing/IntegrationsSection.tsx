@@ -5,6 +5,8 @@
 
 import { useEffect, useState } from "react";
 
+import { KotibTileLogo } from "@/components/KotibLogo";
+
 interface Tile {
   id: number;
   name: string;
@@ -40,6 +42,11 @@ const SPECIAL = [
       </span>
     ),
   },
+  {
+    key: "kotib",
+    href: "https://kotib.ai",
+    logo: <KotibTileLogo />,
+  },
 ] as const;
 
 export function IntegrationsSection({
@@ -68,6 +75,9 @@ export function IntegrationsSection({
           <a
             key={tile.key}
             href={tile.href}
+            {...(tile.href.startsWith("http")
+              ? { target: "_blank", rel: "noopener noreferrer" }
+              : {})}
             className="grid h-20 w-44 place-items-center rounded-lg border border-border bg-white transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-2"
           >
             {tile.logo}

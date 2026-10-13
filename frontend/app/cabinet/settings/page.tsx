@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import { AutoPayCard } from "@/components/billing/AutoPayCard";
 import { CredentialsDialog } from "@/components/CredentialsDialog";
+import { KotibTileLogo } from "@/components/KotibLogo";
 import { PaylovPayDialog } from "@/components/PaylovPayDialog";
 import { confirmDialog, promptDialog } from "@/components/ui/Confirm";
 import { Pagination, usePagination } from "@/components/ui/Pagination";
@@ -614,6 +615,12 @@ const SPECIAL_TILES = [
         odoo
       </span>
     ),
+  },
+  {
+    provider: "kotib",
+    label: "Kotib Analytics",
+    style: { color: "#981BFF" },
+    logo: <KotibTileLogo />,
   },
 ] as const;
 

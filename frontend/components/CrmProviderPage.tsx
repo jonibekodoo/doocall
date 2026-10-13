@@ -1,14 +1,14 @@
 "use client";
 
 /** Shared shell for the dedicated CRM connector pages
- * (Settings → Integration → amoCRM / Bitrix24 / Odoo), moizvonki-style:
+ * (Settings → Integration → amoCRM / Bitrix24 / Odoo / Kotib), moizvonki-style:
  * back link, guide note, info box, region radios, config form, connect/test. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, RefreshCw, Unplug } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { DirectionIcon } from "@/components/calls-shared";
 import { confirmDialog } from "@/components/ui/Confirm";
@@ -18,6 +18,7 @@ import {
   fetchIntegrationDeliveries,
   fetchIntegrations,
   retryIntegrationDelivery,
+  type CrmIntegrationRow,
   saveIntegration,
   testIntegration,
 } from "@/lib/api/endpoints";
@@ -208,14 +209,23 @@ export function CrmProviderPage({
   fields,
   guideHref,
   downloadHref,
+  alwaysEnabled = false,
+  showSaveError = false,
+  connectedInfo,
 }: {
-  provider: "amocrm" | "bitrix24" | "odoo";
+  provider: CrmIntegrationRow["provider"];
   title: string;
   info: string;
   regions?: { label: string; options: CrmRegion[] };
   fields: CrmField[];
   guideHref?: string;
   downloadHref?: string;
+  /** No on/off toggle: saving always enables (connect-on-save providers). */
+  alwaysEnabled?: boolean;
+  /** Keep the failed save's server message visible on the card, not only in a toast. */
+  showSaveError?: boolean;
+  /** Extra details rendered while the integration is enabled and configured. */
+  connectedInfo?: (config: Record<string, string>) => ReactNode;
 }) {
   const t = useTranslations("crm");
   const queryClient = useQueryClient();
@@ -238,7 +248,10 @@ export function CrmProviderPage({
 
   const save = useMutation({
     mutationFn: () =>
-      saveIntegration(provider, { is_enabled: enabled, config: form }),
+      saveIntegration(provider, {
+        is_enabled: alwaysEnabled || enabled,
+        config: form,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["s-integrations"] });
       useToastStore.getState().push({ kind: "success", text: t("saved") });
@@ -358,16 +371,18 @@ export function CrmProviderPage({
             />
           </label>
         ))}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(event) => setEnabled(event.target.checked)}
-            data-testid="crm-enabled"
-            className="size-4 accent-[var(--accent)]"
-          />
-          {t("enabled")}
-        </label>
+        {!alwaysEnabled && (
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(event) => setEnabled(event.target.checked)}
+              data-testid="crm-enabled"
+              className="size-4 accent-[var(--accent)]"
+            />
+            {t("enabled")}
+          </label>
+        )}
       </div>
 
       <div className="mt-5 flex items-center gap-2">
@@ -419,6 +434,20 @@ export function CrmProviderPage({
           </span>
         )}
       </div>
+      {showSaveError && save.isError && (
+        <p
+          role="alert"
+          data-testid="crm-save-error"
+          className="mt-3 max-w-md rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger"
+        >
+          {save.error.message}
+        </p>
+      )}
+      {connectedInfo && row?.is_enabled && row.configured && (
+        <div data-testid="crm-connected-info" className="mt-4">
+          {connectedInfo(row.config)}
+        </div>
+      )}
       {row?.last_delivery_at && (
         <p className="mt-2 text-xs text-fg-faint">
           {t("lastDelivery")}: {row.last_delivery_at.slice(0, 16).replace("T", " ")}
