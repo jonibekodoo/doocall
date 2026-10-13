@@ -11,6 +11,7 @@ Pricing rules (master spec §4, executed from the Phase-4 task message):
 from __future__ import annotations
 
 import calendar
+import logging
 from datetime import date, datetime, timedelta
 from typing import cast
 
@@ -33,6 +34,8 @@ from .models import (
     PricingSetting,
     Subscription,
 )
+
+logger = logging.getLogger(__name__)
 
 PERIOD_DAYS = 30
 GRACE_DAYS = 2  # unpaid statement blocks the account on day 3
@@ -640,13 +643,23 @@ def apply_payment(
     """A successful payment: mark approved, settle invoice, (re)activate company.
 
     Used by BOTH the admin manual-approval action and provider webhooks.
+
+    Credits ONLY a payment that is PENDING under the row lock. Anything else
+    (already APPROVED — a retry/double click — or REJECTED/FAILED, e.g.
+    cancelled after the caller loaded it) is a no-op: the caller's instance is
+    refreshed and returned unchanged, so callers read ``payment.status`` to see
+    the outcome (webhooks keep their normal reply instead of erroring out).
     """
     now = now or timezone.now()
-    # Idempotent — webhook retries must not credit twice. Check the status
-    # under a row lock, not the caller's instance: two racing deliveries (or a
-    # double click) can each hold a stale PENDING copy of the same payment.
+    # Check the status under a row lock, not the caller's instance: racing
+    # deliveries / a double click / a concurrent cancel can each hold a stale
+    # PENDING copy of the same payment.
     current = Payment.all_objects.select_for_update().only("status").get(pk=payment.pk)
-    if current.status == Payment.Status.APPROVED:
+    if current.status != Payment.Status.PENDING:
+        if current.status != Payment.Status.APPROVED:
+            logger.warning(
+                "apply_payment refused: payment %s is %s, not pending", payment.pk, current.status
+            )
         payment.refresh_from_db()
         return payment
 
