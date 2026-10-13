@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import io
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
+from apps.api import storage
 from apps.core.models import AppRelease
 from apps.partners.models import Integrator
 
@@ -15,6 +18,28 @@ from .conftest import client_for
 pytestmark = pytest.mark.django_db
 
 FAKE_APK = b"PK\x03\x04" + b"\x00" * 512  # apk = zip container
+
+
+class _FakeMinio:
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    def put_object(self, bucket: str, key: str, data: io.BytesIO, length: int, **_: object) -> None:
+        self.objects[key] = data.read(length)
+
+
+@pytest.fixture(autouse=True)
+def fake_minio(monkeypatch: pytest.MonkeyPatch) -> _FakeMinio:
+    """Keep uploads off the network: `minio:9000` only resolves inside compose."""
+    fake = _FakeMinio()
+    monkeypatch.setattr(storage, "client", lambda: fake)
+    monkeypatch.setattr(storage, "ensure_bucket", lambda: None)
+    monkeypatch.setattr(
+        storage,
+        "presigned_url",
+        lambda key: f"https://minio.test/doocall-recordings/{key}?X-Amz-Signature=test",
+    )
+    return fake
 
 
 def _upload(client: APIClient, version: str = "1.0.0", **extra: object):
@@ -35,10 +60,13 @@ def _upload(client: APIClient, version: str = "1.0.0", **extra: object):
 
 
 class TestAppReleases:
-    def test_upload_list_latest_download(self, platform_admin: User) -> None:
+    def test_upload_list_latest_download(
+        self, platform_admin: User, fake_minio: _FakeMinio
+    ) -> None:
         client = client_for(platform_admin)
         created = _upload(client)
         assert created.status_code == 201
+        assert fake_minio.objects["app-releases/doocall-1.0.0.apk"] == FAKE_APK
 
         listing = client.get("/api/admin/v1/app-releases").json()
         assert listing["releases"][0]["version"] == "1.0.0"

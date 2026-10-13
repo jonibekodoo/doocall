@@ -239,27 +239,78 @@ def reverse_sales_commission(payment: Payment, *, now: datetime | None = None) -
     return commission
 
 
+INTEGRATOR_REASSIGNED = "company.integrator_reassigned"
+REASSIGN_NOTE_MAX = 500
+
+
+class ReassignError(Exception):
+    pass
+
+
 @transaction.atomic
 def reassign_integrator(
-    company: Company, new_integrator: Integrator | None, *, actor: User
-) -> Company:
-    """Superadmin-only rebinding. Existing accruals stay with the OLD owner."""
-    old_id = company.integrator_id
-    company._allow_integrator_change = True
-    try:
-        company.integrator = new_integrator
-        company.save(update_fields=["integrator", "updated_at"])
-    finally:
-        company._allow_integrator_change = False
-    AuditLog.objects.create(
-        company=company,
-        actor=actor,
-        action="company.integrator_reassigned",
-        target_model="companies.Company",
-        target_id=str(company.pk),
-        changes={"from": old_id, "to": new_integrator.pk if new_integrator else None},
+    company: Company, new_integrator: Integrator | None, *, actor: User, note: str = ""
+) -> AuditLog:
+    """Superadmin-only rebinding (None = unassign). Returns the history entry.
+
+    Existing accruals stay with the OLD owner; cashback / sales commission
+    for payments approved after this point follow ``company.integrator``.
+    Integrator names are snapshotted into the log so the history survives
+    renames and deletions. ``acquired_via`` is left as is.
+    """
+    note = note.strip()
+    if len(note) > REASSIGN_NOTE_MAX:
+        raise ReassignError(f"note must be at most {REASSIGN_NOTE_MAX} characters")
+    locked = (
+        Company.objects.select_for_update(of=("self",))
+        .select_related("integrator")
+        .get(pk=company.pk)
     )
-    return company
+    old = locked.integrator
+    new_id = new_integrator.pk if new_integrator else None
+    if locked.integrator_id == new_id:
+        raise ReassignError(
+            "integrator already assigned" if new_id else "company has no integrator"
+        )
+    if new_integrator is not None and new_integrator.status != Integrator.Status.ACTIVE:
+        raise ReassignError("integrator is not active")
+
+    locked._allow_integrator_change = True
+    try:
+        locked.integrator = new_integrator
+        locked.save(update_fields=["integrator", "updated_at"])
+    finally:
+        locked._allow_integrator_change = False
+    company.integrator = new_integrator  # keep the caller's instance current
+    entry = AuditLog.objects.create(
+        company=locked,
+        actor=actor,
+        action=INTEGRATOR_REASSIGNED,
+        target_model="companies.Company",
+        target_id=str(locked.pk),
+        changes={
+            "from": old.pk if old else None,
+            "to": new_id,
+            "from_name": old.name if old else None,
+            "to_name": new_integrator.name if new_integrator else None,
+            "from_company_name": old.company_name if old else None,
+            "to_company_name": new_integrator.company_name if new_integrator else None,
+            "note": note,
+        },
+    )
+    if old is not None:
+        notify_user(
+            old.user,
+            PlatformNotification.Kind.GENERIC,
+            f"«{locked.name}» kompaniyasi boshqa integratorga o'tkazildi."[:300],
+        )
+    if new_integrator is not None:
+        notify_user(
+            new_integrator.user,
+            PlatformNotification.Kind.GENERIC,
+            f"«{locked.name}» kompaniyasi sizga biriktirildi."[:300],
+        )
+    return entry
 
 
 # ── Payout lifecycle ────────────────────────────────────────────────────────
