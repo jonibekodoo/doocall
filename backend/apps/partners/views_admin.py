@@ -424,6 +424,21 @@ class AdminCompanyDetailView(StaffView):
             }
             for p in Payment.all_objects.filter(company=company)[:20]
         ]
+        body["cashbacks"] = [
+            {
+                "id": a.pk,
+                "payment_id": a.payment_id,
+                "integrator_id": a.integrator_id,
+                "integrator_name": a.integrator.name,
+                "percent": str(a.percent),
+                "amount_uzs": a.amount_uzs,
+                "status": a.status,
+                "created_at": a.created_at.isoformat(),
+            }
+            for a in CashbackAccrual.objects.filter(company=company)
+            .select_related("integrator")
+            .order_by("-created_at", "-id")[:50]
+        ]
         body["users"] = [
             {
                 "id": u.pk,
@@ -623,19 +638,102 @@ class AdminCompanyActionView(StaffView):
         return Response({"success": True, "company": _company_body(company)})
 
 
+def _integrator_ref(
+    pk: int | None, name: str | None, company_name: str | None, current: dict[int, Integrator]
+) -> dict[str, Any] | None:
+    """One side of a reassignment; snapshotted names win, older rows fall
+    back to the integrator's current names."""
+    if pk is None:
+        return None
+    live = current.get(pk)
+    return {
+        "id": pk,
+        "name": name if name is not None else (live.name if live else None),
+        "company_name": (
+            company_name if company_name is not None else (live.company_name if live else None)
+        ),
+    }
+
+
+def _integrator_history_rows(entries: list[AuditLog]) -> list[dict[str, Any]]:
+    ids = {
+        pk for e in entries for pk in (e.changes.get("from"), e.changes.get("to")) if pk is not None
+    }
+    current = Integrator.objects.in_bulk(ids)
+    return [
+        {
+            "id": e.pk,
+            "at": e.created_at.isoformat(),
+            "actor": (
+                {"id": e.actor.pk, "email": e.actor.email or e.actor.username} if e.actor else None
+            ),
+            "from": _integrator_ref(
+                e.changes.get("from"),
+                e.changes.get("from_name"),
+                e.changes.get("from_company_name"),
+                current,
+            ),
+            "to": _integrator_ref(
+                e.changes.get("to"),
+                e.changes.get("to_name"),
+                e.changes.get("to_company_name"),
+                current,
+            ),
+            "note": e.changes.get("note") or "",
+        }
+        for e in entries
+    ]
+
+
 class AdminCompanyReassignView(SuperadminView):
-    @extend_schema(summary="Reassign integrator binding (superadmin)")
+    @extend_schema(summary="Set / change / clear the company's integrator (superadmin)")
     def post(self, request: Request, company_id: int) -> Response:
         company = Company.objects.filter(pk=company_id).first()
         if company is None:
             raise ApiError(ErrorCode.MISSING_FIELD, "company not found", 404)
         integrator = None
-        if integrator_id := request.data.get("integrator_id"):
-            integrator = Integrator.objects.filter(pk=integrator_id).first()
+        raw_id = request.data.get("integrator_id")
+        if raw_id not in (None, ""):
+            try:
+                integrator = Integrator.objects.filter(pk=int(raw_id)).first()
+            except (TypeError, ValueError):
+                integrator = None
             if integrator is None:
                 raise ApiError(ErrorCode.MISSING_FIELD, "integrator not found", 400)
-        services.reassign_integrator(company, integrator, actor=cast(User, request.user))
-        return Response({"success": True, "integrator_id": company.integrator_id})
+        note = request.data.get("note") or ""
+        if not isinstance(note, str):
+            raise ApiError(ErrorCode.MISSING_FIELD, "note must be a string", 400)
+        try:
+            entry = services.reassign_integrator(
+                company, integrator, actor=cast(User, request.user), note=note
+            )
+        except services.ReassignError as exc:
+            raise ApiError(ErrorCode.MISSING_FIELD, str(exc), 400) from exc
+        company.refresh_from_db()
+        return Response(
+            {
+                "success": True,
+                "company": _company_body(company),
+                "entry": _integrator_history_rows([entry])[0],
+            }
+        )
+
+
+class AdminCompanyIntegratorHistoryView(StaffView):
+    @extend_schema(summary="Integrator assignment history for a company (newest first)")
+    def get(self, request: Request, company_id: int) -> Response:
+        if not Company.objects.filter(pk=company_id).exists():
+            raise ApiError(ErrorCode.MISSING_FIELD, "company not found", 404)
+        entries = list(
+            AuditLog.objects.filter(
+                action=services.INTEGRATOR_REASSIGNED,
+                target_model="companies.Company",
+                target_id=str(company_id),
+            )
+            .select_related("actor")
+            .order_by("-created_at", "-id")
+        )
+        return Response({"success": True, "history": _integrator_history_rows(entries)})
 
 
 class AdminPaymentApproveView(StaffView):
