@@ -14,6 +14,10 @@ admin_urlpatterns = [
     path("companies/<int:company_id>", A.AdminCompanyDetailView.as_view()),
     path("companies/<int:company_id>/reassign", A.AdminCompanyReassignView.as_view()),
     path(
+        "companies/<int:company_id>/integrator-history",
+        A.AdminCompanyIntegratorHistoryView.as_view(),
+    ),
+    path(
         "companies/<int:company_id>/users/<int:user_id>/password",
         A.AdminCompanyUserPasswordView.as_view(),
     ),
