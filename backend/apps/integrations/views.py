@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import timedelta
 from secrets import token_hex
 from typing import Any, cast
 
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -22,6 +24,10 @@ from .models import CrmCatalogEntry, CrmDelivery, CrmIntegration
 logger = logging.getLogger(__name__)
 
 DELIVERIES_PAGE = 50
+
+# Kotib calls our public API back (account.info, users.list) *during* the
+# connect request, so the candidate key must already authenticate by then.
+KOTIB_PENDING_TTL = timedelta(minutes=5)
 
 PROVIDERS = tuple(CrmIntegration.Provider.values)
 
@@ -160,13 +166,29 @@ class IntegrationDetailView(AdminCabinetView):
         user = cast(User, request.user)
         user_name = user.email or user.username
         webhook_secret = token_hex(32)
+        # Stage the candidate as a short-lived pending key (committed before
+        # the HTTP call; no atomic block) so Kotib's call-back can use it. The
+        # active key and is_enabled stay as they are until Kotib says yes.
+        if integration is None:
+            integration = CrmIntegration.all_objects.create(
+                company=company, provider="kotib", config={}, is_enabled=False
+            )
+        integration.config = {
+            **integration.config,
+            "pending_doocall_api_key": doocall_api_key,
+            "pending_doocall_api_key_until": (timezone.now() + KOTIB_PENDING_TTL).isoformat(),
+        }
+        integration.save(update_fields=["config", "updated_at"])
         try:
             result = providers.kotib_connect(
                 api_key, company.slug, user_name, doocall_api_key, webhook_secret
             )
         except providers.ProviderError as exc:
-            # Nothing is enabled; the new secret/key are dropped (a key that
-            # was never stored can't authenticate).
+            # Nothing is enabled; the pending key and new secret are dropped.
+            integration.config = {
+                k: v for k, v in integration.config.items() if not k.startswith("pending_")
+            }
+            integration.save(update_fields=["config", "updated_at"])
             raise ApiError(ErrorCode.MISSING_FIELD, str(exc), 400) from None
 
         employees = result["employees"]
@@ -183,22 +205,14 @@ class IntegrationDetailView(AdminCabinetView):
                 for key in ("created", "existing", "created_inactive")
             },
         }
-        if integration is None:
-            integration = CrmIntegration.all_objects.create(
-                company=company,
-                provider="kotib",
-                config=config,
-                is_enabled=True,
-                last_status="ok",
-            )
-        else:
-            integration.config = config
-            integration.is_enabled = True
-            integration.last_status = "ok"
-            integration.last_error = ""
-            integration.save(
-                update_fields=["config", "is_enabled", "last_status", "last_error", "updated_at"]
-            )
+        # Fresh config: the candidate becomes active, pending_* is dropped.
+        integration.config = config
+        integration.is_enabled = True
+        integration.last_status = "ok"
+        integration.last_error = ""
+        integration.save(
+            update_fields=["config", "is_enabled", "last_status", "last_error", "updated_at"]
+        )
         AuditLog.objects.create(
             company=company,
             actor=user,
