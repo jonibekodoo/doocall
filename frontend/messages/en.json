@@ -339,6 +339,13 @@
       "login": "User login (e-mail)",
       "apiKey": "API key"
     },
+    "kotib": {
+      "info": "Kotib Analytics analyses answered calls with AI. Get the API key in your Kotib cabinet (API settings) and enter it below. After saving, operators and calls are synced automatically — a test call should appear in Kotib within 5–10 minutes. If you rotate the key in Kotib, save the new one here again.",
+      "apiKey": "Kotib API key",
+      "connectedTo": "Connected: {company}",
+      "employees": "Operators: created — {created}, already existed — {existing}, inactive — {inactive}",
+      "inactiveWarning": "Inactive operators: {count}. They were created inactive because the operator limit of your Kotib plan is reached, and their calls are not analysed — activate them in your Kotib cabinet."
+    },
     "disconnect": "Disconnect",
     "disconnectConfirm": "Disconnect the {title} integration? Calls will no longer be sent to this CRM and the stored credentials will be removed.",
     "disconnected": "Integration disconnected",

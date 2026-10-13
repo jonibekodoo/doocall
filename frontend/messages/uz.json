@@ -339,6 +339,13 @@
       "login": "Foydalanuvchi logini (e-mail)",
       "apiKey": "API kalit"
     },
+    "kotib": {
+      "info": "Kotib Analytics javob berilgan qo'ng'iroqlarni sun'iy intellekt yordamida tahlil qiladi. Kotib API kalitini Kotib kabinetidagi API sozlamalaridan oling va quyidagi maydonga kiriting. Saqlangandan so'ng operatorlar va qo'ng'iroqlar avtomatik sinxronlanadi — sinov qo'ng'irog'i Kotib kabinetida 5–10 daqiqa ichida paydo bo'ladi. Kotib'da kalitni yangilasangiz, uni shu yerda qayta saqlang.",
+      "apiKey": "Kotib API kaliti",
+      "connectedTo": "Ulangan: {company}",
+      "employees": "Operatorlar: yaratildi — {created}, avvaldan bor — {existing}, nofaol — {inactive}",
+      "inactiveWarning": "Nofaol operatorlar: {count}. Ular Kotib tarifidagi operator limiti to'lgani uchun nofaol qoldirildi va ularning qo'ng'iroqlari tahlil qilinmaydi — ularni Kotib kabinetida faollashtiring."
+    },
     "disconnect": "Uzish",
     "disconnectConfirm": "{title} integratsiyasi uzilsinmi? Qo'ng'iroqlar bu CRM'ga boshqa yuborilmaydi va saqlangan kirish ma'lumotlari o'chiriladi.",
     "disconnected": "Integratsiya uzildi",

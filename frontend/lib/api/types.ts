@@ -73,7 +73,7 @@ export interface ExpiringCompany {
 }
 
 export interface CrmMark {
-  provider: "amocrm" | "bitrix24" | "odoo";
+  provider: "amocrm" | "bitrix24" | "odoo" | "kotib";
   status: "ok" | "error";
   error: string;
   at: string;

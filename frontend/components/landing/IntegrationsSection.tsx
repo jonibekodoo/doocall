@@ -40,6 +40,18 @@ const SPECIAL = [
       </span>
     ),
   },
+  {
+    key: "kotib",
+    href: "https://kotib.ai",
+    logo: (
+      <span className="text-lg font-extrabold" style={{ color: "#5B3DF5" }}>
+        kotib
+        <sup className="ml-0.5 rounded bg-[#5B3DF5] px-1 text-[10px] font-bold text-white">
+          AI
+        </sup>
+      </span>
+    ),
+  },
 ] as const;
 
 export function IntegrationsSection({
@@ -68,6 +80,9 @@ export function IntegrationsSection({
           <a
             key={tile.key}
             href={tile.href}
+            {...(tile.href.startsWith("http")
+              ? { target: "_blank", rel: "noopener noreferrer" }
+              : {})}
             className="grid h-20 w-44 place-items-center rounded-lg border border-border bg-white transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-2"
           >
             {tile.logo}
