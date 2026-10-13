@@ -250,7 +250,8 @@ class TestEmailVerificationFlag:
 
 
 class TestPaywall:
-    def test_suspended_company_402_with_paywall_payload(self) -> None:
+    def test_suspended_company_402_with_paywall_payload(self, settings: Any) -> None:
+        settings.PAYLOV_CONSUMER_KEY = ""  # Paylov not configured in this env
         client = APIClient()
         register(client)
         access = client.post(
@@ -278,4 +279,11 @@ class TestPaywall:
             "amount_due_uzs",
             "providers",
         }
-        assert paywall["providers"] == ["payme", "click", "manual"]
+        # Admin-managed list (PaymentProviderConfig.DEFAULTS): paylov + manual
+        # on, payme/click off; paylov is hidden until its API creds are set.
+        assert paywall["providers"] == ["manual"]
+
+        settings.PAYLOV_CONSUMER_KEY = "test-key"
+        settings.PAYLOV_API_USERNAME = "test-user"
+        paywall = client.get(STATUS_URL).json()["paywall"]
+        assert paywall["providers"] == ["paylov", "manual"]
