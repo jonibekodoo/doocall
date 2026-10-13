@@ -135,7 +135,10 @@ class IntegrationDetailView(AdminCabinetView):
     def _put_kotib(self, request: Request, integration: CrmIntegration | None) -> Response:
         """Kotib: saving = (re)connect on Kotib's side with a fresh webhook
         secret; the returned webhook URL + secret live only in this row's
-        config (Company.webhook_url stays the customer's own webhook)."""
+        config (Company.webhook_url stays the customer's own webhook).
+
+        Kotib reads our public API with its OWN key (``doocall_api_key``),
+        never Company.api_key — wiping it on disconnect revokes access."""
         is_enabled = bool(
             request.data.get("is_enabled", integration.is_enabled if integration else False)
         )
@@ -149,18 +152,21 @@ class IntegrationDetailView(AdminCabinetView):
             raise ApiError(ErrorCode.MISSING_FIELD, "missing fields: api_key", 400)
 
         company = self.company
-        if not company.api_key:
-            company.api_key = uuid.uuid4().hex
-            company.save(update_fields=["api_key", "updated_at"])
+        # Reuse Kotib's key on a plain re-save; a new Kotib key (possibly a
+        # different Kotib company) gets a fresh one.
+        doocall_api_key = str(existing.get("doocall_api_key") or "")
+        if not doocall_api_key or api_key != existing.get("api_key"):
+            doocall_api_key = uuid.uuid4().hex
         user = cast(User, request.user)
         user_name = user.email or user.username
         webhook_secret = token_hex(32)
         try:
             result = providers.kotib_connect(
-                api_key, company.slug, user_name, company.api_key, webhook_secret
+                api_key, company.slug, user_name, doocall_api_key, webhook_secret
             )
         except providers.ProviderError as exc:
-            # Nothing is enabled and the new secret is dropped.
+            # Nothing is enabled; the new secret/key are dropped (a key that
+            # was never stored can't authenticate).
             raise ApiError(ErrorCode.MISSING_FIELD, str(exc), 400) from None
 
         employees = result["employees"]
@@ -168,6 +174,7 @@ class IntegrationDetailView(AdminCabinetView):
             "api_key": api_key,
             "webhook_url": result["webhook_url"],
             "webhook_secret": webhook_secret,
+            "doocall_api_key": doocall_api_key,
             "user_name": user_name,
             "company_name": result["company"],
             # null = Kotib could not list operators yet (connection still saved).
