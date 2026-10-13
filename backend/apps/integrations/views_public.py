@@ -2,7 +2,8 @@
 
 * ``POST /api/v1`` — single action endpoint for third-party systems.
   Auth rides in the JSON body: ``user_name`` (cabinet user e-mail) +
-  ``api_key`` (the company API key from Settings → Integration).
+  ``api_key`` (the company API key from Settings → Integration, or the
+  per-integration read-only key issued to Kotib Analytics on connect).
 * ``GET /api/public/rec/<server_id>?sig=…`` — permanent recording link
   (302 → fresh presigned MinIO URL) safe to store inside a CRM.
 * ``GET /api/public/crm-logo/<id>`` — catalog tile logo (302 → MinIO).
@@ -30,7 +31,8 @@ from apps.calls.models import CallAudio, CallRecord
 from apps.companies.models import Company
 from apps.core import domains
 
-from .models import CrmCatalogEntry
+from .models import CrmCatalogEntry, CrmIntegration
+from .providers import KOTIB_ALLOWED_ACTIONS
 from .tasks import public_record_url, record_signature
 
 MAX_LIMIT = 200
@@ -74,6 +76,26 @@ def _call_body(record: CallRecord) -> dict[str, Any]:
     }
 
 
+def _kotib_company(api_key: str) -> Company | None:
+    """Company of the ENABLED Kotib integration holding this key, if any."""
+    integration = (
+        CrmIntegration.all_objects.filter(
+            provider=CrmIntegration.Provider.KOTIB,
+            is_enabled=True,
+            config__doocall_api_key=api_key,
+        )
+        .select_related("company")
+        .first()
+    )
+    if integration is None:
+        return None
+    stored = str(integration.config.get("doocall_api_key") or "")
+    if not stored or not hmac.compare_digest(stored.encode(), api_key.encode()):
+        return None
+    company: Company = integration.company
+    return company
+
+
 class CustomApiView(APIView):
     """POST-only action API: {"user_name", "api_key", "action", ...}."""
 
@@ -94,6 +116,11 @@ class CustomApiView(APIView):
                 http.HTTP_400_BAD_REQUEST,
             )
         company = Company.objects.filter(api_key=api_key).exclude(api_key="").first()
+        # Kotib's own key: valid only while that integration is enabled.
+        allowed_actions: frozenset[str] | None = None
+        if company is None:
+            company = _kotib_company(api_key)
+            allowed_actions = KOTIB_ALLOWED_ACTIONS
         if company is None:
             raise ApiError(
                 ErrorCode.INVALID_API_KEY, "invalid api_key", http.HTTP_401_UNAUTHORIZED
@@ -115,6 +142,12 @@ class CustomApiView(APIView):
             )
 
         action = str(data.get("action") or "").strip()
+        if allowed_actions is not None and action not in allowed_actions:
+            raise ApiError(
+                ErrorCode.INVALID_API_KEY,
+                f"action {action!r} is not allowed for this api_key",
+                http.HTTP_403_FORBIDDEN,
+            )
         handler = {
             "calls.list": self._calls_list,
             "calls.get": self._calls_get,

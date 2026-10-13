@@ -39,7 +39,9 @@ def deliver(
     except providers.KotibGone:
         status, error = CrmDelivery.Status.ERROR, providers.KOTIB_GONE_ERROR
         integration.is_enabled = False
-        update_fields.append("is_enabled")
+        # Revoke Kotib's public-API key along with the integration.
+        integration.config = {k: v for k, v in integration.config.items() if k != "doocall_api_key"}
+        update_fields += ["is_enabled", "config"]
         logger.warning("integration %s/kotib disabled: Kotib answered 410", record.company_id)
     except Exception as exc:  # noqa: BLE001 - keep other CRMs delivering
         status, error = CrmDelivery.Status.ERROR, str(exc)[:500]
