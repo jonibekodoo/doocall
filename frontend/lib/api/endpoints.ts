@@ -490,7 +490,7 @@ export const testWebhook = () =>
   );
 
 export interface CrmIntegrationRow {
-  provider: "amocrm" | "bitrix24" | "odoo";
+  provider: "amocrm" | "bitrix24" | "odoo" | "kotib";
   is_enabled: boolean;
   configured: boolean;
   config: Record<string, string>;

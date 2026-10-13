@@ -615,6 +615,19 @@ const SPECIAL_TILES = [
       </span>
     ),
   },
+  {
+    provider: "kotib",
+    label: "Kotib Analytics",
+    style: { color: "#5B3DF5" },
+    logo: (
+      <span className="text-lg font-extrabold" style={{ color: "#5B3DF5" }}>
+        kotib
+        <sup className="ml-0.5 rounded bg-[#5B3DF5] px-1 text-[10px] font-bold text-white">
+          AI
+        </sup>
+      </span>
+    ),
+  },
 ] as const;
 
 function IntegrationTab() {
