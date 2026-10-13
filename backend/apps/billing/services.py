@@ -642,8 +642,13 @@ def apply_payment(
     Used by BOTH the admin manual-approval action and provider webhooks.
     """
     now = now or timezone.now()
-    if payment.status == Payment.Status.APPROVED:
-        return payment  # idempotent — webhook retries must not double-extend
+    # Idempotent — webhook retries must not credit twice. Check the status
+    # under a row lock, not the caller's instance: two racing deliveries (or a
+    # double click) can each hold a stale PENDING copy of the same payment.
+    current = Payment.all_objects.select_for_update().only("status").get(pk=payment.pk)
+    if current.status == Payment.Status.APPROVED:
+        payment.refresh_from_db()
+        return payment
 
     payment.status = Payment.Status.APPROVED
     payment.approved_by = actor

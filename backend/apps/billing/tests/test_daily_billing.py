@@ -72,6 +72,20 @@ class TestDailyAccrual:
 
 
 class TestMonthlySettlement:
+    """Billing cycles (payment date → same day next month): the sweep settles
+    every ACTIVE subscription whose cycle has ended. The statement summarises
+    the cycle's operator-days, which are taken from the prepaid balance (day by
+    day; the settlement deducts any day still pending as a safety net)."""
+
+    def _cycle(self, company: Company) -> Subscription:
+        return Subscription.all_objects.create(
+            company=company,
+            status=Subscription.Status.ACTIVE,
+            price_per_operator_uzs=PRICE,
+            current_period_start=dt(2026, 8, 1, 0),
+            current_period_end=dt(2026, 9, 1, 0),
+        )
+
     def _accrue_month(self, company: Company, operators: int, days: int) -> int:
         ops = make_operators(company, operators)
         for d in range(1, days + 1):
@@ -80,6 +94,7 @@ class TestMonthlySettlement:
         return operators * days * RATE_AUG
 
     def test_settles_from_balance_and_notifies(self, company: Company) -> None:
+        subscription = self._cycle(company)
         total = self._accrue_month(company, 2, 10)
         company.balance_uzs = 500_000
         company.save(update_fields=["balance_uzs"])
@@ -87,28 +102,52 @@ class TestMonthlySettlement:
         company.refresh_from_db()
         statement = MonthlyStatement.all_objects.get(company=company)
         assert statement.month == date(2026, 8, 1)
+        assert (statement.period_start, statement.period_end) == (
+            date(2026, 8, 1),
+            date(2026, 9, 1),
+        )
         assert statement.total_uzs == total
         assert statement.status == MonthlyStatement.Status.PAID
         assert company.balance_uzs == 500_000 - total
+        assert company.status == Company.Status.ACTIVE
         kinds = set(
             BillingNotification.all_objects.filter(company=company).values_list(
                 "kind", flat=True
             )
         )
         assert BillingNotification.Kind.CHARGE_SETTLED in kinds
+        # The next cycle starts where this one ended.
+        subscription.refresh_from_db()
+        assert subscription.current_period_start == dt(2026, 9, 1, 0)
+        assert subscription.current_period_end == dt(2026, 10, 1, 0)
+        # Re-running the sweep the same day neither re-settles nor re-charges.
+        assert tasks.run_monthly_settlement(dt(2026, 9, 1, 0)) == 0
+        company.refresh_from_db()
+        assert company.balance_uzs == 500_000 - total
 
-    def test_insufficient_balance_leaves_pending_and_warns(self, company: Company) -> None:
-        self._accrue_month(company, 2, 10)
+    def test_insufficient_balance_goes_into_debt_and_blocks(self, company: Company) -> None:
+        """Prepaid model: the used days are still charged (the balance goes
+        negative = debt) and the company is blocked until it tops up."""
+        self._cycle(company)
+        total = self._accrue_month(company, 2, 10)
         assert tasks.run_monthly_settlement(dt(2026, 9, 1, 0)) == 1
+        company.refresh_from_db()
         statement = MonthlyStatement.all_objects.get(company=company)
-        assert statement.status == MonthlyStatement.Status.PENDING
+        assert statement.total_uzs == total
+        assert company.balance_uzs == -total
+        assert company.status == Company.Status.SUSPENDED
         assert BillingNotification.all_objects.filter(
-            company=company, kind=BillingNotification.Kind.PAYMENT_DUE
+            company=company, kind=BillingNotification.Kind.BLOCKED
         ).exists()
 
     def test_not_first_of_month_is_noop(self, company: Company) -> None:
+        """Before the cycle ends nothing is settled or rolled."""
+        subscription = self._cycle(company)
         self._accrue_month(company, 1, 5)
-        assert tasks.run_monthly_settlement(dt(2026, 9, 2, 0)) == 0
+        assert tasks.run_monthly_settlement(dt(2026, 8, 31, 23)) == 0
+        assert not MonthlyStatement.all_objects.filter(company=company).exists()
+        subscription.refresh_from_db()
+        assert subscription.current_period_end == dt(2026, 9, 1, 0)
 
 
 class TestOverdueBlocking:
