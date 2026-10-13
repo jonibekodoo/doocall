@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.utils import timezone
 
 from apps.billing import services
 from apps.billing.models import Invoice, PricingSetting, Subscription
-from apps.billing.tasks import run_invoice_generation
+from apps.billing.tasks import run_invoice_generation, run_monthly_settlement
 from apps.companies.models import Company
 
 from .conftest import PRICE, make_operators
@@ -83,23 +83,34 @@ class TestInvoiceSweepTask:
     def test_only_due_subscriptions_are_invoiced(
         self, company: Company, subscription: Subscription, pricing: PricingSetting
     ) -> None:
+        """Prepaid billing cycles superseded period-end invoices: the sweep
+        issues none, and only cycles that have ENDED are settled/rolled."""
         make_operators(company, 1)
-        # A second company whose period is NOT over yet.
+        now = datetime(2026, 9, 1, 0, 30, tzinfo=UTC)
+        due_end = datetime(2026, 9, 1, tzinfo=UTC)
+        subscription.current_period_start = datetime(2026, 8, 1, tzinfo=UTC)
+        subscription.current_period_end = due_end
+        subscription.save()
+        # A second company whose cycle is NOT over yet.
         other = Company.objects.create(name="Fresh Co", slug="fresh-co")
-        now = timezone.now()
-        Subscription.all_objects.create(
+        fresh_end = datetime(2026, 9, 30, tzinfo=UTC)
+        fresh = Subscription.all_objects.create(
             company=other,
             status=Subscription.Status.ACTIVE,
             price_per_operator_uzs=PRICE,
-            current_period_start=now - timedelta(days=1),
-            current_period_end=now + timedelta(days=29),
+            current_period_start=datetime(2026, 8, 31, tzinfo=UTC),
+            current_period_end=fresh_end,
         )
 
-        count = run_invoice_generation(now)
+        assert run_invoice_generation(now) == 0
+        assert Invoice.all_objects.count() == 0
 
-        assert count == 1
-        assert Invoice.all_objects.filter(company=company).count() == 1
-        assert Invoice.all_objects.filter(company=other).count() == 0
+        assert run_monthly_settlement(now) == 1
+        subscription.refresh_from_db()
+        fresh.refresh_from_db()
+        assert subscription.current_period_start == due_end
+        assert subscription.current_period_end == datetime(2026, 10, 1, tzinfo=UTC)
+        assert fresh.current_period_end == fresh_end
 
     def test_suspended_subscription_not_invoiced(
         self, company: Company, subscription: Subscription

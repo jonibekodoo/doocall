@@ -147,21 +147,30 @@ class TestManualPaymentApproval:
     def test_apply_payment_is_idempotent(self, trial_company: Company) -> None:
         subscription = Subscription.all_objects.get(company=trial_company)
         services.activate(subscription)
-        first_end = subscription.current_period_end
+        cycle = (subscription.current_period_start, subscription.current_period_end)
 
         payment = Payment.all_objects.create(
             company=trial_company, provider=Payment.Provider.MANUAL, amount_uzs=PRICE
         )
+        # A second delivery racing the first holds a stale PENDING copy.
+        stale = Payment.all_objects.get(pk=payment.pk)
         services.apply_payment(payment)
+        trial_company.refresh_from_db()
+        assert trial_company.balance_uzs == PRICE
+        # Billing cycles: a top-up on an ACTIVE subscription only raises the
+        # balance — it does not move the cycle (payment date → next month).
         subscription.refresh_from_db()
-        extended_end = subscription.current_period_end
-        assert extended_end is not None and first_end is not None
-        assert extended_end > first_end
+        assert (subscription.current_period_start, subscription.current_period_end) == cycle
 
-        # Webhook retry / double click — must NOT extend again.
+        # Webhook retry / double click (same or stale instance) — no 2nd credit.
         services.apply_payment(payment)
-        subscription.refresh_from_db()
-        assert subscription.current_period_end == extended_end
+        services.apply_payment(stale)
+        trial_company.refresh_from_db()
+        assert trial_company.balance_uzs == PRICE
+        assert stale.status == Payment.Status.APPROVED
+        assert (
+            AuditLog.objects.filter(company=trial_company, action="payment.applied").count() == 1
+        )
 
 
 class TestCeleryTaskWrappers:
@@ -177,10 +186,18 @@ class TestCeleryTaskWrappers:
         assert cleanup_expired_audio() == 0
 
     def test_generate_due_invoices_task(self, trial_company: Company) -> None:
-        from apps.billing.tasks import generate_due_invoices
+        """The invoice sweep is superseded by prepaid billing cycles: still
+        schedulable, but it issues nothing — the cycle is settled instead."""
+        from apps.billing.tasks import generate_due_invoices, settle_monthly_statements
 
         subscription = Subscription.all_objects.get(company=trial_company)
         services.activate(subscription)
-        frozen = (timezone.now() + timedelta(days=31)).isoformat()
-        assert generate_due_invoices(now_iso=frozen) == 1
-        assert Invoice.all_objects.filter(company=trial_company).count() == 1
+        cycle_end = subscription.current_period_end
+        assert cycle_end is not None
+        frozen = (cycle_end + timedelta(days=1)).isoformat()
+        assert generate_due_invoices(now_iso=frozen) == 0
+        assert Invoice.all_objects.filter(company=trial_company).count() == 0
+
+        assert settle_monthly_statements(now_iso=frozen) == 1
+        subscription.refresh_from_db()
+        assert subscription.current_period_start == cycle_end
