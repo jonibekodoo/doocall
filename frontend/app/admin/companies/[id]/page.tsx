@@ -1,13 +1,24 @@
 "use client";
 
-/** Company detail: subscription, seats, payments, actions, edit, impersonation. */
+/** Company detail: subscription, seats, payments, actions, edit, impersonation,
+ * integrator assignment (+ history) and cashbacks. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Eye, KeyRound, Pencil, Plug, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Coins,
+  Eye,
+  History,
+  KeyRound,
+  Pencil,
+  Plug,
+  Trash2,
+  UserCog,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { CompanyStats } from "@/components/company/CompanyStats";
 import { confirmDialog } from "@/components/ui/Confirm";
@@ -17,9 +28,13 @@ import {
   companyAction,
   deleteAdminCompany,
   fetchAdminCompany,
+  fetchCompanyIntegratorHistory,
+  fetchIntegrators,
   impersonate,
+  reassignCompanyIntegrator,
   resetCompanyUserPassword,
   updateAdminCompany,
+  type IntegratorRef,
 } from "@/lib/api/admin";
 import { setAccessToken } from "@/lib/api/client";
 import { formatUzs } from "@/lib/format";
@@ -315,9 +330,146 @@ function ResetPasswordDialog({
   );
 }
 
+function ReassignIntegratorDialog({
+  currentId,
+  pending,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  currentId: number | null;
+  pending: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (integratorId: number | null, note: string) => void;
+}) {
+  const t = useTranslations("admin.companyDetail");
+  const { data } = useQuery({
+    queryKey: ["a-integrators"],
+    queryFn: fetchIntegrators,
+  });
+  const [query, setQuery] = useState("");
+  // undefined = nothing picked yet; null = "no integrator".
+  const [selected, setSelected] = useState<number | null | undefined>(undefined);
+  const [note, setNote] = useState("");
+  const options = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return (data?.integrators ?? [])
+      .filter((row) => row.status === "active")
+      .filter(
+        (row) =>
+          !needle ||
+          `${row.name} ${row.company_name}`.toLowerCase().includes(needle),
+      );
+  }, [data, query]);
+  const valid = selected !== undefined && selected !== currentId;
+
+  const option = (id: number | null, label: string, hint?: string) => (
+    <li key={id ?? "none"}>
+      <label
+        className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-surface-2 ${
+          selected === id ? "bg-accent-soft/60" : ""
+        }`}
+      >
+        <input
+          type="radio"
+          name="integrator"
+          checked={selected === id}
+          onChange={() => setSelected(id)}
+          data-testid={`integrator-option-${id ?? "none"}`}
+        />
+        <span className="flex-1 truncate">
+          {label}
+          {hint && <span className="text-fg-muted"> · {hint}</span>}
+        </span>
+        {id === currentId && (
+          <span className="text-xs text-fg-faint">{t("currentIntegrator")}</span>
+        )}
+      </label>
+    </li>
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-4"
+      role="dialog"
+    >
+      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-lg">
+        <h2 className="mb-3 text-base font-semibold">
+          {currentId ? t("changeIntegrator") : t("assignIntegrator")}
+        </h2>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("integratorSearch")}
+          data-testid="integrator-search"
+          className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+        />
+        <ul className="max-h-56 divide-y divide-border overflow-y-auto rounded-md border border-border">
+          {option(null, t("noIntegratorOption"))}
+          {options.map((row) => option(row.id, row.name, row.company_name))}
+          {data && options.length === 0 && (
+            <li className="px-3 py-3 text-center text-xs text-fg-faint">
+              {t("integratorsEmpty")}
+            </li>
+          )}
+        </ul>
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block text-xs text-fg-muted">
+            {t("integratorNote")}
+          </span>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            rows={2}
+            data-testid="integrator-note"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2"
+          />
+        </label>
+        <p className="mt-3 rounded-md bg-warning/10 px-3 py-2 text-xs text-warning">
+          {t("reassignNotice")}
+        </p>
+        {error && (
+          <p
+            role="alert"
+            data-testid="reassign-error"
+            className="mt-3 text-sm font-medium text-danger"
+          >
+            {error}
+          </p>
+        )}
+        <div className="mt-3 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-sm"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            data-testid="reassign-submit"
+            disabled={!valid || pending}
+            onClick={() => onSubmit(selected ?? null, note.trim())}
+            className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-40"
+          >
+            {t("reassignSubmit")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function integratorLabel(ref: IntegratorRef | null) {
+  if (!ref) return "—";
+  return ref.company_name ? `${ref.name} (${ref.company_name})` : ref.name;
+}
+
 export default function AdminCompanyDetailPage() {
   const t = useTranslations("admin.companyDetail");
   const tc = useTranslations("common");
+  const ti = useTranslations("admin.integratorDetail");
   const params = useParams<{ id: string }>();
   const companyId = Number(params.id);
   const queryClient = useQueryClient();
@@ -327,6 +479,7 @@ export default function AdminCompanyDetailPage() {
   const [extendOpen, setExtendOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
   const [passwordUser, setPasswordUser] = useState<{
     id: number;
     email: string;
@@ -335,6 +488,11 @@ export default function AdminCompanyDetailPage() {
   const { data, isPending } = useQuery({
     queryKey: ["a-company", companyId],
     queryFn: () => fetchAdminCompany(companyId),
+    enabled: Number.isFinite(companyId),
+  });
+  const history = useQuery({
+    queryKey: ["a-company-integrator-history", companyId],
+    queryFn: () => fetchCompanyIntegratorHistory(companyId),
     enabled: Number.isFinite(companyId),
   });
   // Hooks before the early returns below (React hook rules).
@@ -389,6 +547,22 @@ export default function AdminCompanyDetailPage() {
       useToastStore.getState().push({ kind: "error", text: error.message }),
   });
 
+  const reassign = useMutation({
+    mutationFn: (body: { integrator_id: number | null; note?: string }) =>
+      reassignCompanyIntegrator(companyId, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["a-company", companyId] });
+      queryClient.invalidateQueries({
+        queryKey: ["a-company-integrator-history", companyId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["a-companies"] });
+      setReassignOpen(false);
+      useToastStore
+        .getState()
+        .push({ kind: "success", text: t("integratorChanged") });
+    },
+  });
+
   const startImpersonation = async () => {
     const body = await impersonate(companyId);
     // Persist for the cabinet banner + restore path back to admin.
@@ -408,6 +582,12 @@ export default function AdminCompanyDetailPage() {
     return <div className="h-64 animate-pulse rounded-lg bg-surface-2" />;
   if (!data) return null;
   const company = data.company;
+  const integratorName = company.integrator_id
+    ? `${company.integrator_name ?? `#${company.integrator_id}`}${
+        company.integrator_company ? ` (${company.integrator_company})` : ""
+      }`
+    : null;
+  const cashbacks = company.cashbacks ?? [];
 
   return (
     <div data-testid="admin-company-detail">
@@ -451,10 +631,9 @@ export default function AdminCompanyDetailPage() {
                     })}
               </span>
             )}
-            {company.integrator_id && (
+            {integratorName && (
               <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs font-semibold text-accent">
-                {t("integrator")} #{company.integrator_id} ·{" "}
-                {company.acquired_via}
+                {t("integrator")}: {integratorName}
               </span>
             )}
           </p>
@@ -514,8 +693,22 @@ export default function AdminCompanyDetailPage() {
 
       {/* Full company info — every field on its own line */}
       <section className="mt-6 rounded-lg border border-border bg-surface">
-        <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
+        <p className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm font-semibold">
           {t("infoTitle")}
+          {isSuper && (
+            <button
+              type="button"
+              data-testid="reassign-integrator-btn"
+              onClick={() => {
+                reassign.reset();
+                setReassignOpen(true);
+              }}
+              className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
+            >
+              <UserCog className="size-3.5" />
+              {company.integrator_id ? t("changeIntegrator") : t("assignIntegrator")}
+            </button>
+          )}
         </p>
         <dl className="grid gap-x-8 gap-y-0 px-4 py-1 sm:grid-cols-2">
           {(
@@ -533,11 +726,20 @@ export default function AdminCompanyDetailPage() {
                   : t("retentionDefault"),
               ],
               [
-                "acquiredLabel",
-                company.integrator_id
-                  ? `${company.acquired_via} · #${company.integrator_id}`
-                  : company.acquired_via,
+                "integrator",
+                company.integrator_id ? (
+                  <Link
+                    href={`/admin/integrators/${company.integrator_id}`}
+                    data-testid="company-integrator-link"
+                    className="text-accent hover:underline"
+                  >
+                    {integratorName}
+                  </Link>
+                ) : (
+                  "—"
+                ),
               ],
+              ["acquiredLabel", company.acquired_via || "—"],
               [
                 "integrationsLabel",
                 company.integrations.filter((i) => i.is_enabled).length
@@ -783,6 +985,129 @@ export default function AdminCompanyDetailPage() {
         </section>
       </div>
 
+      {/* Integrator change log (who / when / old → new) */}
+      <section
+        className="mt-6 rounded-lg border border-border bg-surface"
+        data-testid="integrator-history"
+      >
+        <p className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm font-semibold">
+          <History className="size-4 text-accent" />
+          {t("historyTitle")}
+        </p>
+        {(history.data?.history ?? []).length === 0 ? (
+          <p className="px-4 py-6 text-center text-xs text-fg-faint">
+            {history.isPending ? "…" : t("historyEmpty")}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-fg-muted">
+                <tr className="border-b border-border">
+                  <th className="px-4 py-2 font-medium">{t("historyDate")}</th>
+                  <th className="px-4 py-2 font-medium">{t("historyActor")}</th>
+                  <th className="px-4 py-2 font-medium">{t("historyChange")}</th>
+                  <th className="px-4 py-2 font-medium">{t("historyNote")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {history.data?.history.map((entry) => (
+                  <tr key={entry.id} data-testid={`history-row-${entry.id}`}>
+                    <td className="tnum whitespace-nowrap px-4 py-2">
+                      {new Date(entry.at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2">
+                      {entry.actor?.email ?? t("historySystem")}
+                    </td>
+                    <td className="px-4 py-2">
+                      {integratorLabel(entry.from)} → {integratorLabel(entry.to)}
+                    </td>
+                    <td className="px-4 py-2 text-fg-muted">{entry.note || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* Cashback accruals on this company's payments */}
+      <section
+        className="mt-6 rounded-lg border border-border bg-surface"
+        data-testid="company-cashbacks"
+      >
+        <p className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm font-semibold">
+          <Coins className="size-4 text-accent" />
+          {t("cashbacksTitle")}
+        </p>
+        {cashbacks.length === 0 ? (
+          <p className="px-4 py-6 text-center text-xs text-fg-faint">
+            {t("cashbacksEmpty")}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-fg-muted">
+                <tr className="border-b border-border">
+                  <th className="px-4 py-2 font-medium">{t("historyDate")}</th>
+                  <th className="px-4 py-2 font-medium">{t("cashbackPayment")}</th>
+                  <th className="px-4 py-2 font-medium">{t("integrator")}</th>
+                  <th className="px-4 py-2 text-right font-medium">%</th>
+                  <th className="px-4 py-2 text-right font-medium">
+                    {t("cashbackAmount")}
+                  </th>
+                  <th className="px-4 py-2 font-medium">{t("cashbackStatus")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {cashbacks.map((cashback) => (
+                  <tr key={cashback.id} data-testid={`cashback-row-${cashback.id}`}>
+                    <td className="tnum whitespace-nowrap px-4 py-2">
+                      {new Date(cashback.created_at).toLocaleString()}
+                    </td>
+                    <td className="tnum px-4 py-2">#{cashback.payment_id}</td>
+                    <td className="px-4 py-2">
+                      <Link
+                        href={`/admin/integrators/${cashback.integrator_id}`}
+                        className="hover:text-accent hover:underline"
+                      >
+                        {cashback.integrator_name}
+                      </Link>
+                    </td>
+                    <td className="tnum px-4 py-2 text-right">
+                      {Number(cashback.percent)}%
+                    </td>
+                    <td className="tnum whitespace-nowrap px-4 py-2 text-right">
+                      {formatUzs(cashback.amount_uzs)} UZS
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs">
+                        {["accrued", "reversed", "paid_out"].includes(cashback.status)
+                          ? ti(`acc_${cashback.status}` as "acc_accrued")
+                          : cashback.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {reassignOpen && (
+        <ReassignIntegratorDialog
+          currentId={company.integrator_id}
+          pending={reassign.isPending}
+          error={reassign.error ? reassign.error.message : null}
+          onClose={() => setReassignOpen(false)}
+          onSubmit={(integratorId, note) =>
+            reassign.mutate({
+              integrator_id: integratorId,
+              ...(note ? { note } : {}),
+            })
+          }
+        />
+      )}
       {extendOpen && (
         <ExtendTrialDialog
           onClose={() => setExtendOpen(false)}

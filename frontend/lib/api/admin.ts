@@ -178,11 +178,55 @@ export const fetchAdminCompany = (id: number) =>
         last_login: string | null;
       }>;
       integrations: AdminCompanyIntegration[];
+      /** Cashback accruals on this company's payments (absent on older backends). */
+      cashbacks?: AdminCompanyCashback[];
       /** Paylov auto-payment summary (absent on older backends). */
       autopay?: { is_enabled: boolean; card: string | null; last_status: string } | null;
       stats: CompanyStatsData;
     };
   }>(`/companies/${id}`);
+
+export interface AdminCompanyCashback {
+  id: number;
+  payment_id: number;
+  integrator_id: number;
+  integrator_name: string;
+  percent: string | number;
+  amount_uzs: number;
+  status: string;
+  created_at: string;
+}
+
+export interface IntegratorRef {
+  id: number;
+  name: string;
+  company_name: string;
+}
+
+export interface IntegratorHistoryEntry {
+  id: number;
+  at: string;
+  actor: { id: number; email: string } | null;
+  from: IntegratorRef | null;
+  to: IntegratorRef | null;
+  note: string;
+}
+
+/** Superadmin: set/change (null = remove) the company's integrator. Payments
+ * after the change accrue cashback to the new integrator. */
+export const reassignCompanyIntegrator = (
+  id: number,
+  body: { integrator_id: number | null; note?: string },
+) =>
+  post<{ success: boolean; company: AdminCompanyRow; entry: IntegratorHistoryEntry }>(
+    abs(`/companies/${id}/reassign`),
+    body,
+  );
+
+export const fetchCompanyIntegratorHistory = (id: number) =>
+  g<{ success: boolean; history: IntegratorHistoryEntry[] }>(
+    `/companies/${id}/integrator-history`,
+  );
 
 export interface AdminCompanyIntegration {
   kind: "crm" | "webhook" | "api";
