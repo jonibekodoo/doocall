@@ -1,4 +1,4 @@
-"""Per-company CRM integrations (amoCRM / Bitrix24 / Odoo).
+"""Per-company CRM integrations (amoCRM / Bitrix24 / Odoo / Kotib Analytics).
 
 The "custom" integration (signed webhook + public API) lives on the Company
 model itself (``webhook_url``/``webhook_secret``/``api_key``) — this model
@@ -17,6 +17,7 @@ class CrmIntegration(TenantModel):
         AMOCRM = "amocrm", "amoCRM / Kommo"
         BITRIX24 = "bitrix24", "Bitrix24"
         ODOO = "odoo", "Odoo"
+        KOTIB = "kotib", "Kotib Analytics"
 
     provider = models.CharField(max_length=20, choices=Provider.choices)
     is_enabled = models.BooleanField(default=False)

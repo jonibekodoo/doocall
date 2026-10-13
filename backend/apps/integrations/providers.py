@@ -16,9 +16,14 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from django.conf import settings
 
 from apps.calls.models import CallRecord
+
+if TYPE_CHECKING:
+    from apps.companies.models import Company
 
 TIMEOUT = 15
 
@@ -27,6 +32,7 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "amocrm": ("base_url", "access_token"),
     "bitrix24": ("webhook_url",),
     "odoo": ("url", "db", "login", "api_key"),
+    "kotib": ("api_key", "webhook_url", "webhook_secret"),
 }
 
 # Values masked in GET responses and preserved on save when left masked.
@@ -34,11 +40,18 @@ SECRET_FIELDS: dict[str, tuple[str, ...]] = {
     "amocrm": ("access_token",),
     "bitrix24": ("webhook_url",),
     "odoo": ("api_key",),
+    # webhook_url embeds Kotib's secret token; none of these leave the server.
+    "kotib": ("api_key", "webhook_url", "webhook_secret"),
 }
 
 
 class ProviderError(Exception):
     """Delivery/validation failure surfaced to the cabinet UI and status row."""
+
+
+class KotibGone(ProviderError):
+    """Kotib answered 410 — the integration was switched off on their side;
+    the dispatcher disables it instead of retrying forever."""
 
 
 def _http_json(
@@ -419,9 +432,173 @@ def _odoo_send(config: dict[str, Any], record: CallRecord, record_url: str | Non
         _odoo_execute(config, uid, "res.partner", "message_post", [partner_id], body=body_html)
 
 
+# ── Kotib Analytics (AI call analytics) ────────────────────────────────────
+# Connect/disconnect are explicit calls from the cabinet; calls then flow as
+# the signed call.received webhook to the URL Kotib returned on connect, and
+# Kotib pulls the details itself via our public API (calls.get/users.list).
+KOTIB_ERROR_MESSAGES = {  # fallback when Kotib sends no human message
+    "INVALID_API_KEY": "Kotib API kaliti noto'g'ri",
+    "MISSING_FIELD": "Kotib: majburiy maydon yetishmaydi",
+    "INVALID_ACCOUNT": "Kotib: akkaunt nomi noto'g'ri formatda",
+    "DOOCALL_AUTH_FAILED": "Kotib DooCall API kalitini rad etdi",
+    "DOOCALL_UNAVAILABLE": (
+        "Kotib DooCall API'ga ulana olmadi — birozdan keyin qayta urinib ko'ring"
+    ),
+    "NOT_FOUND": "Kotib: bu akkaunt ulanmagan",
+}
+KOTIB_GONE_ERROR = "Kotib: integratsiya o'chirilgan (410)"
+
+
+class KotibError(ProviderError):
+    """Connect/disconnect rejected by Kotib; ``code`` is Kotib's error_code."""
+
+    def __init__(self, message: str, *, code: str = "", status: int = 0) -> None:
+        super().__init__(message)
+        self.code = code
+        self.status = status
+
+
+def _kotib_error(status: int, raw: bytes) -> KotibError:
+    try:
+        body = json.loads(raw) if raw else {}
+    except ValueError:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    code = str(body.get("error_code") or "")
+    message = str(body.get("message") or "").strip() or KOTIB_ERROR_MESSAGES.get(
+        code, f"Kotib: HTTP {status}"
+    )
+    return KotibError(message[:300], code=code, status=status)
+
+
+def _kotib_post(path: str, api_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """POST to Kotib's integration API. The key travels only in X-API-Key —
+    it never appears in URLs, error messages or logs."""
+    base = _clean_base(settings.KOTIB_BASE_URL)
+    request = urllib.request.Request(  # noqa: S310 - fixed partner base URL
+        f"{base}/{path}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "X-API-Key": api_key},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # noqa: S310
+            raw = response.read()
+    except urllib.error.HTTPError as exc:
+        raise _kotib_error(exc.code, exc.read()) from None
+    except urllib.error.URLError as exc:
+        raise KotibError(f"Kotib'ga ulanib bo'lmadi: {exc.reason}") from None
+    try:
+        body = json.loads(raw) if raw else {}
+    except ValueError:
+        raise KotibError("Kotib: non-JSON response") from None
+    if not isinstance(body, dict) or body.get("success") is False:
+        raise _kotib_error(200, raw)
+    return body
+
+
+def kotib_connect(
+    config_api_key: str,
+    account: str,
+    user_name: str,
+    doocall_api_key: str,
+    webhook_secret: str,
+) -> dict[str, Any]:
+    """Register (or refresh — idempotent) this account on Kotib's side.
+
+    Returns ``{company, webhook_url, employees}``; ``employees`` may be
+    ``None`` (Kotib could not list operators yet — the connection still
+    stands)."""
+    body = _kotib_post(
+        "connect",
+        config_api_key,
+        {
+            "account": account,
+            "user_name": user_name,
+            "api_key": doocall_api_key,
+            "webhook_secret": webhook_secret,
+        },
+    )
+    webhook_url = str(body.get("webhook_url") or "").strip()
+    if not webhook_url.startswith("https://"):
+        raise KotibError("Kotib: webhook_url javobda yo'q")
+    employees = body.get("employees")
+    return {
+        "company": str(body.get("company") or ""),
+        "webhook_url": webhook_url,
+        "employees": employees if isinstance(employees, dict) else None,
+    }
+
+
+def kotib_disconnect(api_key: str, account: str) -> None:
+    """Tell Kotib to stop; 404 NOT_FOUND means it is already disconnected."""
+    try:
+        _kotib_post("disconnect", api_key, {"account": account})
+    except KotibError as exc:
+        if exc.status == 404:
+            return
+        raise
+
+
+def _kotib_test(config: dict[str, Any], company: Company | None) -> str:
+    """Re-run connect with the stored key + secret (idempotent per Kotib's
+    spec) — also re-syncs the company's current DooCall API key."""
+    if company is None or not company.api_key:
+        raise ProviderError("Kotib: kompaniya API kaliti yo'q")
+    result = kotib_connect(
+        config["api_key"],
+        company.slug,
+        str(config.get("user_name") or ""),
+        company.api_key,
+        config["webhook_secret"],
+    )
+    return result["company"] or "ok"
+
+
+def _kotib_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
+    from apps.web.tasks import sign_webhook, webhook_payload
+
+    # Sign exactly the bytes that go on the wire.
+    body = json.dumps(webhook_payload(record)).encode()
+    request = urllib.request.Request(  # noqa: S310 - URL returned by Kotib connect
+        config["webhook_url"],
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Doocall-Signature": sign_webhook(config["webhook_secret"], body),
+        },
+        method="POST",
+    )
+    # Errors name only the status: the webhook URL carries a secret token.
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # noqa: S310
+            response.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 410:
+            raise KotibGone(KOTIB_GONE_ERROR) from None
+        if exc.code == 401:
+            raise ProviderError("Kotib: signature rejected — re-save the integration") from None
+        if exc.code == 404:
+            raise ProviderError("Kotib: unknown webhook URL — re-save the integration") from None
+        raise ProviderError(f"Kotib: HTTP {exc.code}") from None
+    except urllib.error.URLError as exc:
+        raise ProviderError(f"Kotib: connection failed: {exc.reason}") from None
+
+
+def kotib_wants(record: CallRecord) -> bool:
+    """Kotib analyses only answered calls with speech; others are skipped."""
+    return record.call_status == CallRecord.CallStatus.ANSWERED and record.duration > 0
+
+
 # ── Dispatch table ─────────────────────────────────────────────────────────
 _TESTS = {"amocrm": _amocrm_test, "bitrix24": _bitrix24_test, "odoo": _odoo_test}
-_SENDERS = {"amocrm": _amocrm_send, "bitrix24": _bitrix24_send, "odoo": _odoo_send}
+_SENDERS = {
+    "amocrm": _amocrm_send,
+    "bitrix24": _bitrix24_send,
+    "odoo": _odoo_send,
+    "kotib": _kotib_send,
+}
 
 
 def validate_config(provider: str, config: dict[str, Any]) -> None:
@@ -430,8 +607,12 @@ def validate_config(provider: str, config: dict[str, Any]) -> None:
         raise ProviderError(f"missing fields: {', '.join(missing)}")
 
 
-def test_connection(provider: str, config: dict[str, Any]) -> str:
+def test_connection(
+    provider: str, config: dict[str, Any], *, company: Company | None = None
+) -> str:
     validate_config(provider, config)
+    if provider == "kotib":
+        return _kotib_test(config, company)
     return _TESTS[provider](config)
 
 
