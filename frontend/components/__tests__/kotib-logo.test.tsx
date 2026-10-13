@@ -52,7 +52,11 @@ describe("landing integrations strip", () => {
       "aria-hidden",
       "true",
     );
-    expect(within(link).getByText("Kotib")).toBeInTheDocument();
+    // #981BFF on light tiles, lighter purple only on the dark (#222625) tile.
+    expect(within(link).getByText("Kotib")).toHaveClass(
+      "text-[#981BFF]",
+      "dark:[[data-theme=dark]_&]:text-[#B77BFF]",
+    );
     // Internal docs tiles stay in the same tab.
     expect(screen.getByRole("link", { name: /amoCRM/ })).not.toHaveAttribute(
       "target",

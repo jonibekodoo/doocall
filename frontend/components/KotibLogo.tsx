@@ -48,14 +48,16 @@ export function KotibLogo({
   );
 }
 
-/** Tile lockup: the mark + bold "Kotib" wordmark. The tiles switch to
- * bg-surface-2 under `dark:`, so the wordmark lightens with the same variant;
- * #A64DFF stays ≥3.6:1 on both light and dark surface-2. */
+/** Tile lockup: the mark + bold "Kotib" wordmark. Tiles are `bg-white
+ * dark:bg-surface-2`, and surface-2 follows the app theme ([data-theme]), so
+ * the tile is only dark (#222625) under OS-dark AND data-theme=dark. The
+ * wordmark mirrors that: #981BFF on white/#f1f1ee (5.34 / 4.71:1), #B77BFF on
+ * #222625 (5.31:1) — WCAG AA everywhere. */
 export function KotibTileLogo() {
   return (
     <span className="inline-flex items-center gap-1.5">
       <KotibLogo className="h-6 w-auto" decorative />
-      <span className="text-lg font-extrabold text-[#981BFF] dark:text-[#A64DFF]">
+      <span className="text-lg font-extrabold text-[#981BFF] dark:[[data-theme=dark]_&]:text-[#B77BFF]">
         Kotib
       </span>
     </span>
