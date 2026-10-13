@@ -5,6 +5,8 @@
 
 import { useEffect, useState } from "react";
 
+import { KotibTileLogo } from "@/components/KotibLogo";
+
 interface Tile {
   id: number;
   name: string;
@@ -43,14 +45,7 @@ const SPECIAL = [
   {
     key: "kotib",
     href: "https://kotib.ai",
-    logo: (
-      <span className="text-lg font-extrabold" style={{ color: "#5B3DF5" }}>
-        kotib
-        <sup className="ml-0.5 rounded bg-[#5B3DF5] px-1 text-[10px] font-bold text-white">
-          AI
-        </sup>
-      </span>
-    ),
+    logo: <KotibTileLogo />,
   },
 ] as const;
 

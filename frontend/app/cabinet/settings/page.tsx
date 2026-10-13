@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import { AutoPayCard } from "@/components/billing/AutoPayCard";
 import { CredentialsDialog } from "@/components/CredentialsDialog";
+import { KotibTileLogo } from "@/components/KotibLogo";
 import { PaylovPayDialog } from "@/components/PaylovPayDialog";
 import { confirmDialog, promptDialog } from "@/components/ui/Confirm";
 import { Pagination, usePagination } from "@/components/ui/Pagination";
@@ -618,15 +619,8 @@ const SPECIAL_TILES = [
   {
     provider: "kotib",
     label: "Kotib Analytics",
-    style: { color: "#5B3DF5" },
-    logo: (
-      <span className="text-lg font-extrabold" style={{ color: "#5B3DF5" }}>
-        kotib
-        <sup className="ml-0.5 rounded bg-[#5B3DF5] px-1 text-[10px] font-bold text-white">
-          AI
-        </sup>
-      </span>
-    ),
+    style: { color: "#981BFF" },
+    logo: <KotibTileLogo />,
   },
 ] as const;
 
