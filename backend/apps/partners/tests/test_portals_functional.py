@@ -55,9 +55,19 @@ class TestAdminPortalFlows:
         assert [c["slug"] for c in listing["companies"]] == ["lapsed-co"]
         assert listing["companies"][0]["trial_expired"] is True
 
+        # status=trial is live trials only (the status cards partition the
+        # total: active + trial + expired + suspended), so lapsed-co is out.
         trials = client.get("/api/admin/v1/companies?status=trial").json()
         by_slug = {c["slug"]: c["trial_expired"] for c in trials["companies"]}
-        assert by_slug == {"lapsed-co": True, "fresh-co": False}
+        assert by_slug == {"fresh-co": False}
+        stats = trials["stats"]
+        assert stats["expired"] == 1
+        assert sum(stats[k] for k in ("active", "trial", "expired", "suspended")) == stats["total"]
+
+        everyone = client.get("/api/admin/v1/companies").json()
+        flags = {c["slug"]: c["trial_expired"] for c in everyone["companies"]}
+        assert flags["lapsed-co"] is True
+        assert flags["fresh-co"] is False
 
     def test_company_lifecycle_actions(self, platform_admin: User, bound_company: Company) -> None:
         client = client_for(platform_admin)
