@@ -15,7 +15,10 @@ import hmac
 from datetime import datetime, timezone as dt_timezone
 from typing import Any
 
+from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views import View
 from drf_spectacular.utils import extend_schema
 from rest_framework import status as http
@@ -76,24 +79,38 @@ def _call_body(record: CallRecord) -> dict[str, Any]:
     }
 
 
+def _same_key(stored: Any, api_key: str) -> bool:
+    stored = str(stored or "")
+    return bool(stored) and hmac.compare_digest(stored.encode(), api_key.encode())
+
+
 def _kotib_company(api_key: str) -> Company | None:
-    """Company of the ENABLED Kotib integration holding this key, if any."""
+    """Company of the Kotib integration holding this key: the active key of an
+    ENABLED integration, or the not-yet-expired pending key staged while
+    connect is in flight (Kotib verifies it via account.info/users.list)."""
     integration = (
-        CrmIntegration.all_objects.filter(
-            provider=CrmIntegration.Provider.KOTIB,
-            is_enabled=True,
-            config__doocall_api_key=api_key,
+        CrmIntegration.all_objects.filter(provider=CrmIntegration.Provider.KOTIB)
+        .filter(
+            Q(is_enabled=True, config__doocall_api_key=api_key)
+            | Q(config__pending_doocall_api_key=api_key)
         )
         .select_related("company")
         .first()
     )
     if integration is None:
         return None
-    stored = str(integration.config.get("doocall_api_key") or "")
-    if not stored or not hmac.compare_digest(stored.encode(), api_key.encode()):
-        return None
+    config = integration.config
     company: Company = integration.company
-    return company
+    if integration.is_enabled and _same_key(config.get("doocall_api_key"), api_key):
+        return company
+    until = parse_datetime(str(config.get("pending_doocall_api_key_until") or ""))
+    if (
+        until is not None
+        and timezone.now() < until
+        and _same_key(config.get("pending_doocall_api_key"), api_key)
+    ):
+        return company
+    return None
 
 
 class CustomApiView(APIView):

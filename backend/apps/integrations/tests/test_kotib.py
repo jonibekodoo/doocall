@@ -98,6 +98,12 @@ def _row(company: Company) -> CrmIntegration:
     return CrmIntegration.all_objects.get(company=company, provider="kotib")
 
 
+def _assert_never_connected(company: Company) -> None:
+    """A failed first connect leaves (at most) a disabled, empty row."""
+    for row in CrmIntegration.all_objects.filter(company=company, provider="kotib"):
+        assert row.is_enabled is False and row.config == {}
+
+
 class TestConnect:
     def test_success_stores_config_and_hides_secrets(
         self, client: APIClient, company: Company, kotib: Any
@@ -206,7 +212,7 @@ class TestConnect:
         response = _connect(client)
         assert response.status_code == 400
         assert "webhook_url" in response.json()["message"]
-        assert not CrmIntegration.all_objects.filter(company=company, provider="kotib").exists()
+        _assert_never_connected(company)
 
     @pytest.mark.parametrize(
         ("status", "code", "message", "expected"),
@@ -234,7 +240,7 @@ class TestConnect:
         assert expected in response.json()["message"]
         assert KOTIB_KEY not in response.json()["message"]
         assert not CrmIntegration.all_objects.filter(company=company, is_enabled=True).exists()
-        assert not CrmIntegration.all_objects.filter(company=company, provider="kotib").exists()
+        _assert_never_connected(company)
 
     def test_failed_resave_keeps_previous_secret(
         self, client: APIClient, company: Company, kotib: Any
@@ -553,7 +559,7 @@ class TestNoRedirects:
         assert response.status_code == 400
         message = response.json()["message"]
         assert KOTIB_KEY not in message and "stolen" not in message
-        assert not CrmIntegration.all_objects.filter(company=company, provider="kotib").exists()
+        _assert_never_connected(company)
         assert _Redirector.hits == [("/kotib/connect", KOTIB_KEY)]
 
     def test_disconnect_does_not_follow_redirect(self, server: str) -> None:
@@ -578,3 +584,121 @@ class TestNoRedirects:
         with pytest.raises(providers.ProviderError, match="redirect refused"):
             providers.send_call("kotib", config, call, None)
         assert [path for path, _ in _Redirector.hits] == ["/hook"]
+
+
+class TestConnectCallback:
+    """Kotib verifies the candidate key via our public API *while* connect is
+    in flight — it must already authenticate then (pending key)."""
+
+    AUTH_USER = "admin@integr-co.uz"
+
+    def _public(self, key: str, action: str) -> int:
+        response = APIClient().post(
+            PUBLIC,
+            {"user_name": self.AUTH_USER, "api_key": key, "action": action},
+            format="json",
+        )
+        return int(response.status_code)
+
+    def _fake_connect(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        seen: list[dict[str, Any]],
+        *,
+        fail: bool = False,
+        during: Any = None,
+        probe_keys: tuple[str, ...] = (),
+    ) -> None:
+        def fake(kotib_key: str, account: str, user_name: str, key: str, secret: str) -> Any:
+            if during is not None:
+                during(key)
+            seen.append(
+                {
+                    "key": key,
+                    "user_name": user_name,
+                    "account.info": self._public(key, "account.info"),
+                    "users.list": self._public(key, "users.list"),
+                    "probes": {probe: self._public(probe, "account.info") for probe in probe_keys},
+                }
+            )
+            if fail:
+                raise providers.KotibError("DooCall rejected", code="DOOCALL_AUTH_FAILED")
+            return {"company": "My Company", "webhook_url": HOOK, "employees": None}
+
+        monkeypatch.setattr(providers, "kotib_connect", fake)
+
+    def test_callback_succeeds_during_connect_and_key_keeps_working(
+        self, client: APIClient, company: Company, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+        self._fake_connect(monkeypatch, seen)
+        response = _connect(client)
+        assert response.status_code == 200
+        call = seen[0]
+        assert call["user_name"] == self.AUTH_USER
+        assert call["account.info"] == 200 and call["users.list"] == 200
+
+        row = _row(company)
+        assert row.config["doocall_api_key"] == call["key"]
+        assert not any(k.startswith("pending_") for k in row.config)
+        assert "pending" not in json.dumps(response.json())
+        assert self._public(call["key"], "account.info") == 200
+
+    def test_expired_pending_key_is_rejected(
+        self, client: APIClient, company: Company, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def expire(key: str) -> None:
+            row = _row(company)
+            row.config = {
+                **row.config,
+                "pending_doocall_api_key_until": "2000-01-01T00:00:00+00:00",
+            }
+            row.save()
+
+        seen: list[dict[str, Any]] = []
+        self._fake_connect(monkeypatch, seen, fail=True, during=expire)
+        assert _connect(client).status_code == 400
+        assert seen[0]["account.info"] == 401
+
+    def test_pending_key_dies_after_failed_connect(
+        self, client: APIClient, company: Company, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+        self._fake_connect(monkeypatch, seen, fail=True)
+        response = _connect(client)
+        assert response.status_code == 400
+        assert seen[0]["account.info"] == 200  # it was usable while in flight
+        assert self._public(seen[0]["key"], "account.info") == 401
+        _assert_never_connected(company)
+        assert response.json()["message"] == "DooCall rejected"
+
+    def test_resave_keeps_old_key_and_rotates_only_on_success(
+        self, client: APIClient, company: Company, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+        self._fake_connect(monkeypatch, seen)
+        masked = _connect(client).json()["integration"]["config"]["api_key"]
+        old = seen[0]["key"]
+
+        # Plain re-save: same key reused, works throughout.
+        self._fake_connect(monkeypatch, seen, probe_keys=(old,))
+        assert _connect(client, masked).status_code == 200
+        assert seen[1]["key"] == old and seen[1]["probes"][old] == 200
+
+        # New Kotib key but Kotib fails: old key keeps working, candidate dies.
+        self._fake_connect(monkeypatch, seen, fail=True, probe_keys=(old,))
+        assert _connect(client, "another-kotib-key-0001").status_code == 400
+        failed = seen[2]["key"]
+        assert failed != old and seen[2]["probes"][old] == 200
+        assert seen[2]["account.info"] == 200
+        assert self._public(old, "account.info") == 200
+        assert self._public(failed, "account.info") == 401
+        assert _row(company).is_enabled is True
+
+        # New Kotib key, success: rotated — old key revoked, new one active.
+        self._fake_connect(monkeypatch, seen, probe_keys=(old,))
+        assert _connect(client, "another-kotib-key-0001").status_code == 200
+        new = seen[3]["key"]
+        assert new not in (old, failed) and seen[3]["probes"][old] == 200
+        assert self._public(old, "account.info") == 401
+        assert self._public(new, "account.info") == 200
