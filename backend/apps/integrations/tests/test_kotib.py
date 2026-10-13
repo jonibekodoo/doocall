@@ -57,7 +57,8 @@ def _http_error(status: int, body: dict[str, Any] | None = None) -> urllib.error
 
 
 class FakeKotib:
-    """Queue of responses (dict → 200 JSON, int/tuple → HTTPError)."""
+    """Queue of responses (dict → 200 JSON, int/tuple → HTTPError,
+    exception instance → raised as-is)."""
 
     def __init__(self, *responses: Any) -> None:
         self.responses = list(responses)
@@ -66,6 +67,8 @@ class FakeKotib:
     def __call__(self, request: Any) -> _Response:
         self.requests.append(request)
         result = self.responses.pop(0)
+        if isinstance(result, BaseException):
+            raise result
         if isinstance(result, tuple):
             raise _http_error(*result)
         if isinstance(result, int):
@@ -541,6 +544,25 @@ class TestNoRedirects:
             providers.kotib_connect(KOTIB_KEY, "integr-co", "a@b.uz", "k" * 32, "s" * 64)
         assert exc.value.status == 302
         assert _Redirector.hits == [("/kotib/connect", KOTIB_KEY)]  # only the original hop
+
+    def test_cabinet_connect_redirect_saves_nothing(
+        self, server: str, client: APIClient, company: Company
+    ) -> None:
+        with override_settings(KOTIB_BASE_URL=f"{server}/kotib"):
+            response = _connect(client)
+        assert response.status_code == 400
+        message = response.json()["message"]
+        assert KOTIB_KEY not in message and "stolen" not in message
+        assert not CrmIntegration.all_objects.filter(company=company, provider="kotib").exists()
+        assert _Redirector.hits == [("/kotib/connect", KOTIB_KEY)]
+
+    def test_disconnect_does_not_follow_redirect(self, server: str) -> None:
+        with (
+            override_settings(KOTIB_BASE_URL=f"{server}/kotib"),
+            pytest.raises(providers.KotibError),
+        ):
+            providers.kotib_disconnect(KOTIB_KEY, "integr-co")
+        assert _Redirector.hits == [("/kotib/disconnect", KOTIB_KEY)]
 
     def test_webhook_send_does_not_follow_redirect(
         self, server: str, call: CallRecord, monkeypatch: pytest.MonkeyPatch

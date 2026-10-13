@@ -32,7 +32,7 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "amocrm": ("base_url", "access_token"),
     "bitrix24": ("webhook_url",),
     "odoo": ("url", "db", "login", "api_key"),
-    "kotib": ("api_key", "webhook_url", "webhook_secret", "doocall_api_key"),
+    "kotib": ("api_key", "webhook_url", "webhook_secret"),
 }
 
 # Values masked in GET responses and preserved on save when left masked.
@@ -589,6 +589,8 @@ def _kotib_test(config: dict[str, Any], company: Company | None) -> str:
     spec). Kotib gets only its own revocable key, never Company.api_key."""
     if company is None:
         raise ProviderError("Kotib: kompaniya topilmadi")
+    if not config.get("doocall_api_key"):
+        raise ProviderError("Kotib: integratsiyani qayta saqlang")
     result = kotib_connect(
         config["api_key"],
         company.slug,
