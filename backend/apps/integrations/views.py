@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
+from secrets import token_hex
 from typing import Any, cast
 
 from drf_spectacular.utils import extend_schema
@@ -16,6 +19,8 @@ from apps.web.permissions import AdminCabinetView, CabinetView
 from . import providers
 from .models import CrmCatalogEntry, CrmDelivery, CrmIntegration
 
+logger = logging.getLogger(__name__)
+
 DELIVERIES_PAGE = 50
 
 PROVIDERS = tuple(CrmIntegration.Provider.values)
@@ -25,6 +30,14 @@ CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
     "amocrm": ("base_url", "access_token", "responsible_user_id", "region"),
     "bitrix24": ("webhook_url", "user_id", "account", "region"),
     "odoo": ("url", "db", "login", "api_key"),
+    # webhook_url / webhook_secret are stored too but NEVER leave the server.
+    "kotib": (
+        "api_key",
+        "company_name",
+        "employees_created",
+        "employees_existing",
+        "employees_created_inactive",
+    ),
 }
 
 
@@ -91,6 +104,8 @@ class IntegrationDetailView(AdminCabinetView):
     def put(self, request: Request, provider: str) -> Response:
         provider = self._provider(provider)
         integration = CrmIntegration.objects.filter(provider=provider).first()
+        if provider == CrmIntegration.Provider.KOTIB:
+            return self._put_kotib(request, integration)
         existing = dict(integration.config) if integration else {}
         config = _merge_config(provider, dict(request.data.get("config") or {}), existing)
         is_enabled = bool(request.data.get("is_enabled", integration.is_enabled if integration else False))
@@ -117,6 +132,83 @@ class IntegrationDetailView(AdminCabinetView):
         )
         return Response({"success": True, "integration": _body(integration, provider)})
 
+    def _put_kotib(self, request: Request, integration: CrmIntegration | None) -> Response:
+        """Kotib: saving = (re)connect on Kotib's side with a fresh webhook
+        secret; the returned webhook URL + secret live only in this row's
+        config (Company.webhook_url stays the customer's own webhook).
+
+        Kotib reads our public API with its OWN key (``doocall_api_key``),
+        never Company.api_key — wiping it on disconnect revokes access."""
+        is_enabled = bool(
+            request.data.get("is_enabled", integration.is_enabled if integration else False)
+        )
+        if not is_enabled:
+            return self._disconnect(request, "kotib", integration)
+        existing = dict(integration.config) if integration else {}
+        incoming = str((request.data.get("config") or {}).get("api_key") or "").strip()
+        masked_echo = "…" in incoming or incoming == "•••"
+        api_key = incoming if incoming and not masked_echo else str(existing.get("api_key") or "")
+        if not api_key:
+            raise ApiError(ErrorCode.MISSING_FIELD, "missing fields: api_key", 400)
+
+        company = self.company
+        # Reuse Kotib's key on a plain re-save; a new Kotib key (possibly a
+        # different Kotib company) gets a fresh one.
+        doocall_api_key = str(existing.get("doocall_api_key") or "")
+        if not doocall_api_key or api_key != existing.get("api_key"):
+            doocall_api_key = uuid.uuid4().hex
+        user = cast(User, request.user)
+        user_name = user.email or user.username
+        webhook_secret = token_hex(32)
+        try:
+            result = providers.kotib_connect(
+                api_key, company.slug, user_name, doocall_api_key, webhook_secret
+            )
+        except providers.ProviderError as exc:
+            # Nothing is enabled; the new secret/key are dropped (a key that
+            # was never stored can't authenticate).
+            raise ApiError(ErrorCode.MISSING_FIELD, str(exc), 400) from None
+
+        employees = result["employees"]
+        config = {
+            "api_key": api_key,
+            "webhook_url": result["webhook_url"],
+            "webhook_secret": webhook_secret,
+            "doocall_api_key": doocall_api_key,
+            "user_name": user_name,
+            "company_name": result["company"],
+            # null = Kotib could not list operators yet (connection still saved).
+            **{
+                f"employees_{key}": None if employees is None else employees.get(key)
+                for key in ("created", "existing", "created_inactive")
+            },
+        }
+        if integration is None:
+            integration = CrmIntegration.all_objects.create(
+                company=company,
+                provider="kotib",
+                config=config,
+                is_enabled=True,
+                last_status="ok",
+            )
+        else:
+            integration.config = config
+            integration.is_enabled = True
+            integration.last_status = "ok"
+            integration.last_error = ""
+            integration.save(
+                update_fields=["config", "is_enabled", "last_status", "last_error", "updated_at"]
+            )
+        AuditLog.objects.create(
+            company=company,
+            actor=user,
+            action="settings.integration_saved",
+            target_model="integrations.CrmIntegration",
+            target_id=str(integration.pk),
+            changes={"provider": "kotib", "is_enabled": True},
+        )
+        return Response({"success": True, "integration": _body(integration, "kotib")})
+
     @extend_schema(summary="Disconnect a CRM integration (disable + wipe credentials)")
     def delete(self, request: Request, provider: str) -> Response:
         """Hard disconnect: nothing is delivered to this CRM any more and the
@@ -124,6 +216,22 @@ class IntegrationDetailView(AdminCabinetView):
         rows, so flipping it off is what actually stops the traffic."""
         provider = self._provider(provider)
         integration = CrmIntegration.objects.filter(provider=provider).first()
+        return self._disconnect(request, provider, integration)
+
+    def _disconnect(
+        self, request: Request, provider: str, integration: CrmIntegration | None
+    ) -> Response:
+        if integration is not None and provider == CrmIntegration.Provider.KOTIB:
+            api_key = str(integration.config.get("api_key") or "")
+            if api_key:
+                try:
+                    providers.kotib_disconnect(api_key, self.company.slug)
+                except providers.ProviderError as exc:
+                    # Best effort: wipe locally anyway; Kotib 410s the old URL
+                    # once it is disconnected there.
+                    logger.warning(
+                        "kotib disconnect failed for company %s: %s", self.company.pk, exc
+                    )
         if integration is not None:
             integration.is_enabled = False
             integration.config = {}
@@ -249,7 +357,7 @@ class IntegrationTestView(AdminCabinetView):
         if integration is None or not integration.config:
             raise ApiError(ErrorCode.MISSING_FIELD, "integration not configured", 400)
         try:
-            detail = providers.test_connection(provider, integration.config)
+            detail = providers.test_connection(provider, integration.config, company=self.company)
         except providers.ProviderError as exc:
             integration.last_status = "error"
             integration.last_error = str(exc)[:500]

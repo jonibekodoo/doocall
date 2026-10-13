@@ -30,10 +30,19 @@ def deliver(
     The integration's ``last_*`` fields keep the quick "is it healthy?"
     summary; ``CrmDelivery`` is the full history. Exceptions are swallowed
     into the row — callers never see them, so one failing CRM can't stop
-    delivery to the others."""
+    delivery to the others. Kotib's 410 (switched off on their side)
+    disables the integration so we stop posting to a dead URL."""
+    update_fields = ["last_status", "last_error", "last_delivery_at"]
     try:
         providers.send_call(integration.provider, integration.config, record, record_url)
         status, error = CrmDelivery.Status.OK, ""
+    except providers.KotibGone:
+        status, error = CrmDelivery.Status.ERROR, providers.KOTIB_GONE_ERROR
+        integration.is_enabled = False
+        # Revoke Kotib's public-API key along with the integration.
+        integration.config = {k: v for k, v in integration.config.items() if k != "doocall_api_key"}
+        update_fields += ["is_enabled", "config"]
+        logger.warning("integration %s/kotib disabled: Kotib answered 410", record.company_id)
     except Exception as exc:  # noqa: BLE001 - keep other CRMs delivering
         status, error = CrmDelivery.Status.ERROR, str(exc)[:500]
         logger.warning(
@@ -46,7 +55,7 @@ def deliver(
     integration.last_status = status
     integration.last_error = error
     integration.last_delivery_at = timezone.now()
-    integration.save(update_fields=["last_status", "last_error", "last_delivery_at"])
+    integration.save(update_fields=update_fields)
     return CrmDelivery.all_objects.create(
         company=record.company,
         call=record,
@@ -90,6 +99,10 @@ def dispatch_call(record_id: int) -> int:
     record_url = public_record_url(record)
     sent = 0
     for integration in integrations:
+        if integration.provider == CrmIntegration.Provider.KOTIB and not providers.kotib_wants(
+            record
+        ):
+            continue  # Kotib ignores missed/zero-length calls — no delivery row
         if deliver(integration, record, record_url).status == CrmDelivery.Status.OK:
             sent += 1
     return sent

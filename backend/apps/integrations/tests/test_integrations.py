@@ -28,7 +28,7 @@ class TestCabinetSettings:
         )
         body = client.get(BASE).json()
         by_provider = {row["provider"]: row for row in body["integrations"]}
-        assert set(by_provider) == {"amocrm", "bitrix24", "odoo"}
+        assert set(by_provider) == {"amocrm", "bitrix24", "odoo", "kotib"}
         amo = by_provider["amocrm"]
         assert amo["is_enabled"] is True
         assert "secret-token-abcdef" not in str(amo)

@@ -302,6 +302,11 @@ PAYLOV_CONSUMER_SECRET = env("PAYLOV_CONSUMER_SECRET", "")
 PAYLOV_API_USERNAME = env("PAYLOV_API_USERNAME", "")
 PAYLOV_API_PASSWORD = env("PAYLOV_API_PASSWORD", "")
 
+# ── Kotib Analytics (AI call analytics connector) ──
+KOTIB_BASE_URL = env(
+    "KOTIB_BASE_URL", "https://business.kotib.ai/api/v1/integration/doocall"
+)
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "dooCall Mobile API",
     "DESCRIPTION": "Call-recording device API — contract per docs/backend-api-docs.md "
