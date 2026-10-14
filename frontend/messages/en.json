@@ -197,6 +197,8 @@
     "apiParamsNote": "Use this address and API key in the settings of third-party systems to integrate them with DooCall. After changing the key, update it in the connected systems too — the old key stops working.",
     "apiDocsLink": "API documentation for developers",
     "country": "Country",
+    "phoneCode": "Phone code",
+    "phoneCodeNote": "Numbers entered without a country code (e.g. 90 123 45 67) are saved with this code. Until the mobile app is updated, numbers from devices follow the app's own setting.",
     "timezone": "Time zone",
     "balance": "Balance",
     "monthAccrued": "Accrued this month",
