@@ -1,12 +1,14 @@
 """Shared phone-number normalization — contract §1 (backend-api-docs.md).
 
-The default (``phone_code="998"``) mirrors the device's
-``RecordUploader.formatPhone()`` exactly:
+The Android app sends numbers raw (exactly as dialled/typed); the server
+adds the country code here. The default (``phone_code="998"``) keeps the
+original §1 rules:
 
 * starts with ``+``  → returned unchanged (after separator cleanup);
 * 9 digits          → prefixed with ``+998`` (local Uzbek subscriber number);
 * 12 digits         → prefixed with ``+``;
-* anything else     → returned as-is (cleaned) — the server must not guess.
+* anything else     → returned as-is (cleaned) — the server must not guess
+  (e.g. 7-digit landlines without an area code, short codes, ``*100#``).
 
 Companies outside Uzbekistan carry their own ``Company.phone_code`` (country
 calling code, digits only). For a code with a known national-number length
@@ -104,7 +106,7 @@ def normalize_phone(raw: str | None, phone_code: str = DEFAULT_PHONE_CODE) -> st
 
     code = phone_code or DEFAULT_PHONE_CODE
     if code == DEFAULT_PHONE_CODE:
-        # Device-mirror rules, unchanged (any 12 digits get a "+").
+        # Original §1 rules, unchanged (any 12 digits get a "+").
         if len(cleaned) == 9:
             return f"+998{cleaned}"
         if len(cleaned) == 12:
