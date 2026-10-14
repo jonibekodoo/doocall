@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import secrets
 import uuid
 from datetime import timedelta
@@ -19,7 +20,7 @@ from apps.api.errors import ApiError, ErrorCode
 from apps.billing import services as billing
 from apps.billing.models import Payment, Subscription
 from apps.core.models import AuditLog
-from apps.core.phone import normalize_phone
+from apps.core.phone import normalize_phone, phone_code_for_country
 
 from .permissions import AdminCabinetView, CabinetView
 from .tasks import deliver_webhook
@@ -158,7 +159,7 @@ class UsersView(CabinetView):
                         company=self.company,
                         operator=profile,
                         sim_slot=slot,
-                        number=normalize_phone(number),
+                        number=normalize_phone(number, self.company.phone_code),
                     )
             AuditLog.objects.create(
                 company=self.company,
@@ -293,7 +294,7 @@ class SimCardView(AdminCabinetView):
         if "recording_enabled" in request.data:
             sim.recording_enabled = bool(request.data["recording_enabled"])
         if number := request.data.get("number"):
-            sim.number = normalize_phone(number)
+            sim.number = normalize_phone(number, self.company.phone_code)
         sim.save()
         return Response(
             {
@@ -324,6 +325,8 @@ def _account_body(company: Any) -> dict[str, Any]:
         **{k: flags[k] for k in ACCOUNT_FLAGS},
         "country": company.country,
         "timezone": company.timezone,
+        # Default calling code for numbers without one (digits, no "+").
+        "phone_code": company.phone_code,
     }
 
 
@@ -347,6 +350,16 @@ class AccountSettingsView(AdminCabinetView):
                 raise ApiError(ErrorCode.MISSING_FIELD, "country must be ISO alpha-2", 400)
             company.country = country
             update_fields.append("country")
+            # A new country brings its calling code unless one is sent too.
+            if "phone_code" not in request.data and (code := phone_code_for_country(country)):
+                company.phone_code = code
+                update_fields.append("phone_code")
+        if "phone_code" in request.data:
+            phone_code = str(request.data["phone_code"] or "").strip().lstrip("+")
+            if not re.fullmatch(r"[0-9]{1,4}", phone_code):
+                raise ApiError(ErrorCode.MISSING_FIELD, "phone_code must be 1–4 digits", 400)
+            company.phone_code = phone_code
+            update_fields.append("phone_code")
         if "timezone" in request.data:
             from apps.core.tz import is_valid_zone
 

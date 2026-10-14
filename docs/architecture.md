@@ -94,9 +94,31 @@ with tenant_context(company):
 
 ## Phone normalization (contract §1)
 
-`apps.core.phone.normalize_phone` is the single implementation used by the
-API layer, seeds and admin: `+…` kept; 9 digits → `+998…`; 12 digits → `+…`;
-anything else passes through untouched (the server never guesses).
+The Android app sends numbers raw — exactly as dialled/typed, no country
+code added on the device — so the server alone is responsible for it.
+`apps.core.phone.normalize_phone(raw, phone_code)` is the single
+implementation used by the API layer, seeds and admin. `phone_code` is the
+company's default calling code (`Company.phone_code`, digits only, default
+`998`; set from the country in Settings → Account, or explicitly).
+
+- `+…` is always kept as sent (e.g. a real Uzbek number dialled
+  internationally from a Tajik company).
+- `998` (default): 9 digits → `+998…`, 12 digits → `+…`.
+- Other codes with a known national length (`DIAL_CODES`, CIS + common):
+  national length → `+{code}…`; `{code}` + national length → `+…`; code `7`
+  also maps 11 digits starting with `8` → `+7…`; TJ/KG (`992`/`996`) drop a
+  single leading trunk `0`. Uzbekistan gets no trunk-0 rule.
+- Anything else passes through untouched (cleaned) — the server never
+  guesses: numbers shorter than the national length (local landlines like
+  `2212345`, short codes like `1234`, `*100#`) and any digits for a code
+  whose national length is unknown.
+
+Every company-scoped call site passes the company's code (device auth SIMs,
+upload numbers, cabinet SIM/operator forms, contacts, call/contact search);
+lead capture (`partners.crm`) has no company and keeps the default.
+`manage.py fix_phone_code --company <slug> --from 998 --to 992 [--apply]`
+rewrites one company's already-stored `+{from}` numbers (dry-run by
+default, audited on apply).
 
 ## Billing chain
 

@@ -54,7 +54,7 @@ qaytarishi mumkin.
 | Content-Type | `application/json` har doim. |
 | Autentifikatsiya | HTTP header EMAS — **`api_key` har doim JSON body ichida**, `user_name` bilan birga (`RecordUploader.kt:84-97`). |
 | Vaqt formati | `"yyyy-MM-dd HH:mm:ss"` — qurilma **lokal** vaqt zonasida (UTC emas) — `RecordUploader.kt:83`. |
-| Raqam formati | E.164'ga yaqin: `+` bilan boshlansa o'zgarmaydi; 9 xonali bo'lsa boshiga `+998`; 12 xonali bo'lsa boshiga `+` (`RecordUploader.formatPhone()`, `:133-141`). **`from`/`to`/`operator_number`/`counterparty_number` — ISTISNOSIZ shu formatdagi to'liq raqam.** |
+| Raqam formati | Qurilma raqamlarni **xom holda — foydalanuvchi tergan/terilgan ko'rinishda** yuboradi, davlat kodini qo'shmaydi (`from`/`to`/`operator_number`/`counterparty_number`, `/auth`dagi `phone_numbers[].number`). Davlat kodini **server** kompaniyaning `phone_code`i (standart `998`) bo'yicha qo'shadi: `+` bilan boshlansa o'zgarmaydi; milliy uzunlikda (998/992/996 uchun 9 xona) bo'lsa boshiga `+{kod}`; `{kod}` + milliy uzunlik bo'lsa boshiga `+`; `998` uchun istalgan 12 xonaga `+`; `7` uchun `8` bilan boshlangan 11 xona → `+7`; TJ/KG uchun bosh `0` tashlanadi. Milliy uzunlikdan qisqa raqamlar (shahar raqami `2212345`, qisqa kodlar `1234`, `*100#`) va boshqa hamma narsa **o'zgarishsiz** saqlanadi — server taxmin qilmaydi. |
 | Dedup kaliti | `call_id` — `CallRecordEntity.callId`. Server UNIQUE cheklov qo'yishi shart. |
 | Javob konverti | Har bir endpoint kamida `"success": boolean` qaytaradi (`LoginResponse` naqshiga mos). Xatolik — `"message"` + `"error_code"` (§9). |
 
@@ -68,7 +68,7 @@ Room jadvali: `call_records` (`callId` UNIQUE index), `data/CallRecordEntity.kt`
 |---|---|---|
 | `id` | `Long` | Faqat local DB PK. Serverga yuborilmaydi. |
 | `callId` | `String` | Barqaror unikal ID — server **dedup kaliti**. |
-| `phoneNumber` | `String` | Qarama-qarshi tomon raqami (xom). `formatPhone()` orqali normalizatsiya. |
+| `phoneNumber` | `String` | Qarama-qarshi tomon raqami (xom, terilgan ko'rinishda). Serverda kompaniya `phone_code`i bo'yicha normalizatsiya qilinadi (§1). |
 | `callType` | `String` | `"inbound"` \| `"outbound"` (`"internal"` rejalashtirilgan). |
 | `callStatus` | `String` | `"answered"` \| `"no_answer"` (`"busy"`, `"failed"` rejalashtirilgan). |
 | `duration` | `Long` | Soniyalarda. |
