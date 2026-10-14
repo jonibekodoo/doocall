@@ -167,6 +167,8 @@
     "deactivated": "O'chirilgan",
     "seatNote": "Faol operatorlar tariflanadi",
     "record": "Yozib olish",
+    "contactImport": "Kontaktlarni import qilish",
+    "pin": "PIN-kod",
     "setNumber": "Raqam kiritish",
     "deleteDevice": "Qurilmani o'chirish",
     "online": "Onlayn",

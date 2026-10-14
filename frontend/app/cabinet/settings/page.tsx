@@ -498,8 +498,8 @@ function TogglesTab({ mode }: { mode: "callsSms" | "account" }) {
     mode === "callsSms"
       ? ([["recording_enabled", t("record")]] as const)
       : ([
-          ["contact_import_enabled", "Импорт контактов"],
-          ["pin_enabled", "PIN-код"],
+          ["contact_import_enabled", t("contactImport")],
+          ["pin_enabled", t("pin")],
         ] as const);
   return (
     <div className="max-w-md space-y-3">

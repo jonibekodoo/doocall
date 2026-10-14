@@ -167,6 +167,8 @@
     "deactivated": "Deactivated",
     "seatNote": "Active operators are billed",
     "record": "Record",
+    "contactImport": "Contact import",
+    "pin": "PIN code",
     "setNumber": "Set number",
     "deleteDevice": "Delete device",
     "online": "Online",
