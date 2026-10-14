@@ -11,7 +11,7 @@ docs: **`/api/docs/`** (Swagger UI), schema at **`/api/schema/`**.
 | Method | POST only, `Content-Type: application/json` |
 | Auth | `api_key` in the JSON body **or** `Authorization: Bearer <api_key>` (§10; header wins). `user_name` in the body is cross-checked against the key's operator. |
 | Time | Device sends `"yyyy-MM-dd HH:mm:ss"` in device-local time; server stores the raw string verbatim (`*_time_local`) **and** aware UTC (assumes device TZ == server `TZ`, default `Asia/Tashkent`) |
-| Numbers | `from`/`to`/`operator_number`/`counterparty_number` normalized server-side by the §1 rule (`+` kept / 9→`+998` / 12→`+`) |
+| Numbers | `from`/`to`/`operator_number`/`counterparty_number` normalized server-side by the §1 rule (`+` kept / 9→`+998` / 12→`+`) — using the company's `phone_code` (default `998`, see below) |
 | Dedup | `UNIQUE (company, call_id)` |
 | Envelope | success: `{"success": true, …}` · error: `{"success": false, "message", "error_code", …}` |
 | Throttling | per-endpoint scopes (env-tunable): auth 30/min, upload 300/min, calls_list 60/min, stats 60/min, log 10/min. 429 → `THROTTLED` envelope |
@@ -36,8 +36,17 @@ Accepts the minimal legacy payload (`username`, `password`, `server`) and the
 full one (`phone_numbers[{sim_slot,number}]`, `full_name`, `device{…}`).
 Upserts SimCards (per slot, numbers normalized), Device (per `device_id`,
 `last_seen_at` bumped) and `full_name` on every login. Success:
-`{"success": true, "api_key": "<permanent key>"}` — byte-compatible with the
-legacy client.
+`{"success": true, "api_key": "<permanent key>", "phone_code": "998"}` —
+the legacy client reads only `success`/`api_key`; `phone_code` is an additive
+field (ADR-0002).
+
+`phone_code` is the company's default country calling code — digits only, no
+`+` (e.g. `"998"` Uzbekistan, `"992"` Tajikistan, `"7"` Kazakhstan/Russia).
+The app should use it instead of a hardcoded `+998` when it formats a number
+that has no country code. The server applies the same default: a `+…` number
+is always stored as sent, and a number without `+` is completed with the
+company's code (`apps.core.phone.normalize_phone(raw, phone_code)`). Numbers
+the app has already prefixed (today: `+998`) are never rewritten.
 
 ### POST `/api/call/v1/upload` (§5)
 Full CDR + optional Base64 audio (`audio_file`) + optional second source

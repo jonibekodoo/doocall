@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
@@ -30,6 +31,13 @@ class Company(models.Model):
         max_length=2, blank=True, default="UZ", help_text="ISO 3166-1 alpha-2"
     )
     timezone = models.CharField(max_length=64, blank=True, default="Asia/Tashkent")
+    # Default country calling code (digits, no "+") for numbers typed or
+    # received without one — apps.core.phone.normalize_phone(raw, phone_code).
+    phone_code = models.CharField(
+        max_length=4,
+        default="998",
+        validators=[RegexValidator(r"^\d{1,4}$", "1–4 digits")],
+    )
     # Prepaid balance: payments top it up; monthly statements deduct from it.
     balance_uzs = models.BigIntegerField(default=0)
 

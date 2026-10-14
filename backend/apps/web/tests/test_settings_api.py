@@ -61,7 +61,7 @@ class TestUsersAndSeats:
             {"username": "new-op", "password": creds["password"]},
             format="json",
         )
-        assert mobile.json() == {"success": True, "api_key": creds["api_key"]}
+        assert mobile.json() == {"success": True, "api_key": creds["api_key"], "phone_code": "998"}
 
     def test_user_name_globally_unique_across_companies(
         self, client: APIClient, company: Company, other_company_noise: Company
@@ -154,6 +154,7 @@ class TestAccountToggles:
             "pin_enabled": False,
             "country": "UZ",
             "timezone": "Asia/Tashkent",
+            "phone_code": "998",
         }
         updated = client.put(
             f"{BASE}/account", {"pin_enabled": True, "recording_enabled": False}, format="json"

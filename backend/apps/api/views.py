@@ -152,7 +152,10 @@ class AuthView(BaseApiView):
                     company=operator.company,
                     operator=operator,
                     sim_slot=entry["sim_slot"],
-                    defaults={"number": normalize_phone(entry["number"]), "is_active": True},
+                    defaults={
+                        "number": normalize_phone(entry["number"], operator.company.phone_code),
+                        "is_active": True,
+                    },
                 )
 
             device_info = data["device"]
@@ -170,8 +173,14 @@ class AuthView(BaseApiView):
                     },
                 )
 
-        # Byte-compatible §4 success body.
-        return Response({"success": True, "api_key": operator.api_key})
+        # §4 success body + additive phone_code (ADR-0002: old apps ignore it).
+        return Response(
+            {
+                "success": True,
+                "api_key": operator.api_key,
+                "phone_code": operator.company.phone_code,
+            }
+        )
 
 
 class UploadView(BaseApiView):
@@ -231,10 +240,11 @@ class UploadView(BaseApiView):
             audio_items.append((kind, filename, payload))
 
         # ── Normalize numbers (contract §1 — Phase 2 shared utility) ───────
-        from_number = normalize_phone(data["from"])
-        to_number = normalize_phone(data["to"])
-        operator_number = normalize_phone(data.get("operator_number") or "") or None
-        counterparty_number = normalize_phone(data["counterparty_number"])
+        code = company.phone_code
+        from_number = normalize_phone(data["from"], code)
+        to_number = normalize_phone(data["to"], code)
+        operator_number = normalize_phone(data.get("operator_number") or "", code) or None
+        counterparty_number = normalize_phone(data["counterparty_number"], code)
 
         # ── Backend contact catalogue → resolved_name (§5.4) ───────────────
         contact_phone = (
