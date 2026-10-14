@@ -12,12 +12,13 @@ export function formatDuration(totalSeconds: number): string {
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/** "+998901234567" → "+998 90 123-45-67"; foreign/short numbers pass through. */
+/** "+998901234567" → "+998 90 123-45-67"; Tajik (+992) and Kyrgyz (+996)
+ * numbers share the 9-digit 2-3-2-2 grouping. Other/short numbers pass through. */
 export function formatPhone(raw: string | null | undefined): string {
   if (!raw) return "—";
-  const m = /^\+998(\d{2})(\d{3})(\d{2})(\d{2})$/.exec(raw);
+  const m = /^\+(998|992|996)(\d{2})(\d{3})(\d{2})(\d{2})$/.exec(raw);
   if (!m) return raw;
-  return `+998 ${m[1]} ${m[2]}-${m[3]}-${m[4]}`;
+  return `+${m[1]} ${m[2]} ${m[3]}-${m[4]}-${m[5]}`;
 }
 
 /** 300000 → "300 000" (narrow no-break space groups). */

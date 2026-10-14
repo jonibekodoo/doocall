@@ -423,23 +423,39 @@ function DevicesTab() {
 }
 
 // ── Tab 3 + 5: toggles (calls&SMS + account share the settings API) ────────
-const COUNTRIES: Array<{ code: string; name: string; tz: string }> = [
-  { code: "UZ", name: "Uzbekistan", tz: "Asia/Tashkent" },
-  { code: "KZ", name: "Kazakhstan", tz: "Asia/Almaty" },
-  { code: "KG", name: "Kyrgyzstan", tz: "Asia/Bishkek" },
-  { code: "TJ", name: "Tajikistan", tz: "Asia/Dushanbe" },
-  { code: "TM", name: "Turkmenistan", tz: "Asia/Ashgabat" },
-  { code: "RU", name: "Russia", tz: "Europe/Moscow" },
-  { code: "AZ", name: "Azerbaijan", tz: "Asia/Baku" },
-  { code: "TR", name: "Türkiye", tz: "Europe/Istanbul" },
-  { code: "AE", name: "UAE", tz: "Asia/Dubai" },
-  { code: "SA", name: "Saudi Arabia", tz: "Asia/Riyadh" },
-  { code: "GB", name: "United Kingdom", tz: "Europe/London" },
-  { code: "DE", name: "Germany", tz: "Europe/Berlin" },
-  { code: "US", name: "USA", tz: "America/New_York" },
-  { code: "IN", name: "India", tz: "Asia/Kolkata" },
-  { code: "CN", name: "China", tz: "Asia/Shanghai" },
+/** Country → default time zone + calling code (digits, no "+"). The one list
+ * behind the Davlat, Telefon kodi and Vaqt mintaqasi selects. */
+const COUNTRIES: Array<{
+  code: string;
+  name: string;
+  tz: string;
+  phone: string;
+}> = [
+  { code: "UZ", name: "Uzbekistan", tz: "Asia/Tashkent", phone: "998" },
+  { code: "KZ", name: "Kazakhstan", tz: "Asia/Almaty", phone: "7" },
+  { code: "KG", name: "Kyrgyzstan", tz: "Asia/Bishkek", phone: "996" },
+  { code: "TJ", name: "Tajikistan", tz: "Asia/Dushanbe", phone: "992" },
+  { code: "TM", name: "Turkmenistan", tz: "Asia/Ashgabat", phone: "993" },
+  { code: "RU", name: "Russia", tz: "Europe/Moscow", phone: "7" },
+  { code: "AZ", name: "Azerbaijan", tz: "Asia/Baku", phone: "994" },
+  { code: "TR", name: "Türkiye", tz: "Europe/Istanbul", phone: "90" },
+  { code: "AE", name: "UAE", tz: "Asia/Dubai", phone: "971" },
+  { code: "SA", name: "Saudi Arabia", tz: "Asia/Riyadh", phone: "966" },
+  { code: "GB", name: "United Kingdom", tz: "Europe/London", phone: "44" },
+  { code: "DE", name: "Germany", tz: "Europe/Berlin", phone: "49" },
+  { code: "US", name: "USA", tz: "America/New_York", phone: "1" },
+  { code: "IN", name: "India", tz: "Asia/Kolkata", phone: "91" },
+  { code: "CN", name: "China", tz: "Asia/Shanghai", phone: "86" },
 ];
+
+/** Calling-code options: one per code, countries sharing it (+7) joined. */
+const PHONE_CODES: Array<{ code: string; label: string }> = Array.from(
+  COUNTRIES.reduce((codes, { phone, name }) => {
+    codes.set(phone, [...(codes.get(phone) ?? []), name]);
+    return codes;
+  }, new Map<string, string[]>()),
+  ([code, names]) => ({ code, label: `+${code} — ${names.join(" / ")}` }),
+);
 
 const TIMEZONES = [
   "Asia/Tashkent",
@@ -482,8 +498,8 @@ function TogglesTab({ mode }: { mode: "callsSms" | "account" }) {
     mode === "callsSms"
       ? ([["recording_enabled", t("record")]] as const)
       : ([
-          ["contact_import_enabled", "Импорт контактов"],
-          ["pin_enabled", "PIN-код"],
+          ["contact_import_enabled", t("contactImport")],
+          ["pin_enabled", t("pin")],
         ] as const);
   return (
     <div className="max-w-md space-y-3">
@@ -517,8 +533,11 @@ function TogglesTab({ mode }: { mode: "callsSms" | "account" }) {
                 );
                 save.mutate({
                   country: event.target.value,
-                  // Picking a country pre-sets its default zone (still editable).
-                  ...(picked ? { timezone: picked.tz } : {}),
+                  // Picking a country pre-sets its default zone and calling
+                  // code (both still editable).
+                  ...(picked
+                    ? { timezone: picked.tz, phone_code: picked.phone }
+                    : {}),
                 });
               }}
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -534,6 +553,35 @@ function TogglesTab({ mode }: { mode: "callsSms" | "account" }) {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-fg-muted">
+              {t("phoneCode")}
+            </span>
+            <select
+              value={settings.phone_code}
+              data-testid="account-phone-code"
+              onChange={(event) =>
+                save.mutate({ phone_code: event.target.value })
+              }
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+            >
+              {!PHONE_CODES.some(
+                (item) => item.code === settings.phone_code,
+              ) && (
+                <option value={settings.phone_code}>
+                  {settings.phone_code ? `+${settings.phone_code}` : "—"}
+                </option>
+              )}
+              {PHONE_CODES.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs leading-relaxed text-fg-faint">
+              {t("phoneCodeNote")}
+            </span>
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs text-fg-muted">

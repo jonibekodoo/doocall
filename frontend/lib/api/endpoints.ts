@@ -276,6 +276,8 @@ export interface AccountSettings {
   pin_enabled: boolean;
   country: string;
   timezone: string;
+  /** Default calling code (digits, no "+") for numbers typed without one. */
+  phone_code: string;
 }
 export const fetchAccountSettings = () =>
   get<{ success: boolean; settings: AccountSettings }>("/settings/account");
