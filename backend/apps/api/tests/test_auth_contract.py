@@ -46,7 +46,7 @@ class TestAuthContract:
 
         assert response.status_code == 200
         # §4 success body — exactly these keys.
-        assert response.json() == {"success": True, "api_key": DOC_API_KEY}
+        assert response.json() == {"success": True, "api_key": DOC_API_KEY, "phone_code": "998"}
 
     def test_full_payload_upserts_everything(
         self, client: APIClient, operator: OperatorProfile
@@ -54,7 +54,7 @@ class TestAuthContract:
         response = client.post(AUTH_URL, FULL_PAYLOAD, format="json")
 
         assert response.status_code == 200
-        assert response.json() == {"success": True, "api_key": DOC_API_KEY}
+        assert response.json() == {"success": True, "api_key": DOC_API_KEY, "phone_code": "998"}
 
         operator.refresh_from_db()
         assert operator.full_name == "Jonibek Yorqulov"

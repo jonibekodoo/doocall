@@ -43,7 +43,8 @@ def contact_body(contact: Contact) -> dict[str, Any]:
 
 
 def save_phones(contact: Contact, phones: list[str]) -> None:
-    normalized = [normalize_phone(p) for p in phones if normalize_phone(p)]
+    code = contact.company.phone_code
+    normalized = [n for p in phones if (n := normalize_phone(p, code))]
     contact.phones.all().delete()
     ContactPhone.objects.bulk_create(
         ContactPhone(contact=contact, number=n) for n in dict.fromkeys(normalized)
@@ -62,9 +63,8 @@ class ContactsView(CabinetView):
             call_count=Count("phones__number", distinct=False)
         )
         if q := request.query_params.get("q", "").strip():
-            qs = qs.filter(
-                Q(name__icontains=q) | Q(phones__number__icontains=normalize_phone(q) or q)
-            ).distinct()
+            number = normalize_phone(q, self.company.phone_code) or q
+            qs = qs.filter(Q(name__icontains=q) | Q(phones__number__icontains=number)).distinct()
         responsible = request.query_params.get("responsible")
         if responsible and responsible.isdigit():
             qs = qs.filter(responsible_id=int(responsible))
@@ -144,7 +144,7 @@ class ContactFromCallView(CabinetView):
         name = (request.data.get("name") or "").strip() or (
             record.counterparty_name or record.counterparty_number
         )
-        number = normalize_phone(record.counterparty_number)
+        number = normalize_phone(record.counterparty_number, self.company.phone_code)
         existing = ContactPhone.objects.filter(contact__company=self.company, number=number).first()
         if existing is not None:
             raise ApiError(

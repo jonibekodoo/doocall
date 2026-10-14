@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from apps.api import storage
 from apps.api.errors import ApiError, ErrorCode
 from apps.calls.models import CallRecord
-from apps.core.phone import normalize_phone
+from apps.core.phone import company_phone_code, normalize_phone
 
 from .models import DEFAULT_CALL_COLUMNS, CallColumnPreference, ExportJob
 from .permissions import CabinetView
@@ -64,7 +64,7 @@ def filtered_calls(params: Any) -> QuerySet[CallRecord]:
     if status_f := params.get("status"):
         qs = qs.filter(call_status=status_f)
     if search := params.get("search", "").strip():
-        normalized = normalize_phone(search)
+        normalized = normalize_phone(search, company_phone_code())
         qs = qs.filter(
             Q(counterparty_name__icontains=search)
             | Q(resolved_name__icontains=search)

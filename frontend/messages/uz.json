@@ -197,6 +197,8 @@
     "apiParamsNote": "API manzil va kalitni tashqi tizimlar sozlamalarida ko'rsating — ular DooCall bilan shu orqali integratsiya qilinadi. Diqqat: kalit almashtirilgach eski kalit ishlamay qoladi, uni ulangan tizimlarda ham yangilang.",
     "apiDocsLink": "Dasturchilar uchun API hujjatlari",
     "country": "Davlat",
+    "phoneCode": "Telefon kodi",
+    "phoneCodeNote": "Davlat kodisiz terilgan raqamlar (masalan, 90 123 45 67) shu kod bilan saqlanadi. Mobil ilova yangilanmaguncha qurilmadan kelgan raqamlar ilovaning o'z sozlamasi bo'yicha qoladi.",
     "timezone": "Vaqt mintaqasi",
     "balance": "Balans",
     "monthAccrued": "Shu oy hisoblangan",
