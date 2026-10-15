@@ -92,3 +92,50 @@ class CrmCatalogEntry(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class CallAnalysis(TenantModel):
+    """Kotib AI analysis of one call (``analysis.completed`` webhook).
+
+    One row per Kotib ``audio_data_id`` per company — re-sends overwrite it
+    (latest wins). ``call`` is our matched CallRecord (phone + start time);
+    it stays NULL until a re-send finds it. Kotib's ``audio_file_url`` needs
+    the Kotib API key, so it is deliberately not stored."""
+
+    call = models.ForeignKey(
+        "calls.CallRecord",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ai_analyses",
+    )
+    audio_data_id = models.BigIntegerField()
+    audio_file_id = models.BigIntegerField(null=True, blank=True)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    final_score = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    conversation_text = models.TextField(blank=True, default="")
+    # [{key, name, score, comment (sanitized HTML), is_violation}]
+    prompt_scores = models.JSONField(default=list, blank=True)
+    client_phone = models.CharField(max_length=32, blank=True, default="")
+    client_summary = models.TextField(blank=True, default="")
+    # [{key, name, value (any JSON)}]
+    client_answers = models.JSONField(default=list, blank=True)
+    has_violation = models.BooleanField(default=False)
+    signature_verified = models.BooleanField(default=False)
+    received_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta(TenantModel.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "audio_data_id"], name="uniq_analysis_per_company"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["company", "-start_time"], name="call_analysis_start_idx"),
+            models.Index(fields=["company", "call"], name="call_analysis_call_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"analysis {self.audio_data_id} ({self.company_id})"
