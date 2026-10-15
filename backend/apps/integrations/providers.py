@@ -387,6 +387,8 @@ def b24_options(config: dict[str, Any]) -> dict[str, Any]:
 # ("without leads": inquiries become deals + contacts/companies).
 B24_CRM_MODES = {1: "classic", 2: "simple"}
 B24_MODE_TTL = timedelta(hours=24)
+# The only config keys a delivery may write back (tasks.deliver).
+B24_MODE_CACHE_KEYS = ("crm_mode", "crm_mode_checked_at", "crm_mode_assumed")
 B24_MODE_RETRY_TTL = timedelta(hours=1)  # after a failed detection
 B24_LEAD_FALLBACK_NOTE = (
     "Bitrix24 portal lidlarsiz (oddiy CRM) — lid o'rniga kontakt yaratildi; "
