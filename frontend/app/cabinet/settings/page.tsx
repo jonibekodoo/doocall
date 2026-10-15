@@ -683,7 +683,14 @@ function IntegrationTab() {
     queryKey: ["s-webhook"],
     queryFn: fetchWebhook,
   });
-  const { data: integrations } = useQuery({
+  const tCrm = useTranslations("crm");
+  const tc = useTranslations("common");
+  const {
+    data: integrations,
+    isError: integrationsFailed,
+    refetch: refetchIntegrations,
+    isFetching: integrationsFetching,
+  } = useQuery({
     queryKey: ["s-integrations"],
     queryFn: fetchIntegrations,
   });
@@ -720,10 +727,12 @@ function IntegrationTab() {
       }),
   });
 
+  // A failed request means the state is UNKNOWN — never show it as "off".
   const statusFor = (provider: string) => {
     const row = integrations?.integrations.find(
       (integration) => integration.provider === provider,
     );
+    if (integrationsFailed && !row) return "unknown";
     if (!row?.is_enabled) return null;
     return row.last_status === "error" ? "error" : "ok";
   };
@@ -735,6 +744,23 @@ function IntegrationTab() {
         <p className="border-b border-border px-4 py-2.5 text-sm font-semibold">
           {t("crmSystems")}
         </p>
+        {integrationsFailed && (
+          <div
+            role="alert"
+            data-testid="crm-tiles-error"
+            className="mx-4 mt-4 flex flex-wrap items-center gap-3 rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger"
+          >
+            <span className="flex-1">{tCrm("loadError")}</span>
+            <button
+              type="button"
+              disabled={integrationsFetching}
+              onClick={() => refetchIntegrations()}
+              className="rounded-md border border-border px-3 py-1 text-xs text-fg hover:bg-surface-2 disabled:opacity-50"
+            >
+              {tc("retry")}
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 xl:grid-cols-4">
           {SPECIAL_TILES.map((tile) => {
             const status = statusFor(tile.provider);
@@ -747,9 +773,14 @@ function IntegrationTab() {
               >
                 {status && (
                   <span
+                    data-testid={`crm-tile-status-${tile.provider}`}
+                    data-status={status}
+                    title={status === "unknown" ? tCrm("loadError") : undefined}
                     className={cn(
                       "absolute right-2 top-2 size-2.5 rounded-full",
-                      status === "ok" ? "bg-accent" : "bg-danger",
+                      status === "ok" && "bg-accent",
+                      status === "error" && "bg-danger",
+                      status === "unknown" && "border-2 border-fg-faint",
                     )}
                   />
                 )}

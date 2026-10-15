@@ -96,8 +96,9 @@ describe("Kotib integration page", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Integration — Kotib Analytics",
     );
+    // The form appears once the integration row has loaded.
+    expect(await screen.findByTestId("crm-field-api_key")).toBeInTheDocument();
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
-    expect(screen.getByTestId("crm-field-api_key")).toBeInTheDocument();
     expect(screen.getByText("Kotib API key")).toBeInTheDocument();
     expect(screen.queryByTestId("crm-enabled")).not.toBeInTheDocument();
     expect(screen.queryByTestId("crm-connected-info")).not.toBeInTheDocument();

@@ -433,7 +433,11 @@
       "retryOk": "Qayta yuborildi",
       "retryFail": "Qayta yuborib bo'lmadi",
       "empty": "Hali yuborishlar yo'q"
-    }
+    },
+    "loadError": "Ma'lumotni yuklab bo'lmadi. Integratsiya holati noma'lum — hech narsa o'zgartirilmadi.",
+    "sessionExpired": "Sessiya muddati tugagan yoki bu sahifaga ruxsat yo'q. Qayta kiring.",
+    "impersonationExpired": "Mijoz sifatida kirish muddati tugagan. Admin paneliga qayting va qayta kiring.",
+    "backToAdmin": "Admin paneliga qaytish"
   },
   "myCalls": {
     "title": "Mening qo'ng'iroqlarim"

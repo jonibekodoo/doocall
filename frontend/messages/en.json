@@ -433,7 +433,11 @@
       "retryOk": "Resent",
       "retryFail": "Resend failed",
       "empty": "No deliveries yet"
-    }
+    },
+    "loadError": "Couldn't load the data. The integration status is unknown — nothing was changed.",
+    "sessionExpired": "Your session has expired or you don't have access to this page. Please sign in again.",
+    "impersonationExpired": "The impersonation session has expired. Go back to the admin panel and start it again.",
+    "backToAdmin": "Back to admin"
   },
   "myCalls": {
     "title": "My calls"
