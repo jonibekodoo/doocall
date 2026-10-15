@@ -145,3 +145,23 @@ export interface ContactRow {
   phones: string[];
   created_at: string;
 }
+
+/** Bitrix24 card options (saved with the integration config). */
+export type Bitrix24CreateCard = "auto" | "lead" | "contact" | "deal" | "none";
+
+export interface Bitrix24CardOptions {
+  save_external_calls: boolean;
+  create_card: Bitrix24CreateCard;
+  /** Bitrix24 SOURCE id for leads — A-Z, 0-9, _ (≤ 50); "" = CALL. */
+  lead_source: string;
+  only_answered: boolean;
+}
+
+/** Read-only portal CRM mode detected by the backend. */
+export interface Bitrix24PortalMode {
+  /** "classic" = with leads, "simple" = no leads, "" = not checked yet. */
+  crm_mode: "classic" | "simple" | "";
+  crm_mode_checked_at: string | null;
+  /** Detection failed → treated as "simple" (no leads) for safety. */
+  crm_mode_assumed: boolean;
+}
