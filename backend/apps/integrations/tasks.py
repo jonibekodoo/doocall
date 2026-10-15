@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+from typing import Any
 
 from celery import shared_task
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from apps.calls.models import CallRecord
@@ -33,24 +35,22 @@ def deliver(
     delivery to the others. Kotib's 410 (switched off on their side)
     disables the integration so we stop posting to a dead URL."""
     update_fields = ["last_status", "last_error", "last_delivery_at"]
+    # The sender works on a COPY: a delivery never writes the whole config
+    # back (the admin may disconnect or re-save while a slow send runs).
     config_before = dict(integration.config)
+    work = dict(integration.config)
     note = ""
     try:
-        # Senders may refresh cache keys in the config (Bitrix24 CRM mode).
-        note = (
-            providers.send_call(integration.provider, integration.config, record, record_url) or ""
-        )
+        note = providers.send_call(integration.provider, work, record, record_url) or ""
         status, error = CrmDelivery.Status.OK, note[:500]
     except providers.CallSkipped as exc:
         # The integration's own options exclude this call — not a failure.
         status, error = CrmDelivery.Status.OK, f"skipped: {exc}"[:500]
     except providers.KotibGone:
         status, error = CrmDelivery.Status.ERROR, providers.KOTIB_GONE_ERROR
-        integration.is_enabled = False
-        # Revoke Kotib's public-API key along with the integration.
-        integration.config = {k: v for k, v in integration.config.items() if k != "doocall_api_key"}
-        update_fields += ["is_enabled", "config"]
-        logger.warning("integration %s/kotib disabled: Kotib answered 410", record.company_id)
+        if _disable_kotib(integration.pk, config_before.get("webhook_url")):
+            integration.is_enabled = False
+            logger.warning("integration %s/kotib disabled: Kotib answered 410", record.company_id)
     except Exception as exc:  # noqa: BLE001 - keep other CRMs delivering
         status, error = CrmDelivery.Status.ERROR, str(exc)[:500]
         logger.warning(
@@ -60,8 +60,14 @@ def deliver(
             record.pk,
             exc,
         )
-    if integration.config != config_before and "config" not in update_fields:
-        update_fields.append("config")
+    # Bitrix24 CRM-mode cache refreshed by the sender: merge just those keys.
+    cache = {
+        key: work[key]
+        for key in providers.B24_MODE_CACHE_KEYS
+        if key in work and work[key] != config_before.get(key)
+    }
+    if cache and _merge_cache(integration.pk, cache, config_before.get("webhook_url")):
+        integration.config = {**integration.config, **cache}
     integration.last_status = status
     # Errors, or a success warning (note) — never the "skipped" marker.
     integration.last_error = error if status == CrmDelivery.Status.ERROR else note[:500]
@@ -75,6 +81,41 @@ def deliver(
         error=error,
         is_retry=is_retry,
     )
+
+
+def _locked_current(pk: int, sent_to: Any) -> CrmIntegration | None:
+    """The integration row, locked, if it is still enabled and still points
+    at the URL the delivery used (else a disconnect/re-save happened)."""
+    row: CrmIntegration | None = (
+        CrmIntegration.all_objects.select_for_update().filter(pk=pk).first()
+    )
+    if row is None or not row.is_enabled or row.config.get("webhook_url") != sent_to:
+        return None
+    return row
+
+
+def _merge_cache(pk: int, cache: dict[str, Any], sent_to: Any) -> bool:
+    """Merge cache keys into the CURRENT stored config (dropped if stale)."""
+    with transaction.atomic():
+        row = _locked_current(pk, sent_to)
+        if row is None:
+            return False
+        row.config = {**row.config, **cache}
+        row.save(update_fields=["config"])
+        return True
+
+
+def _disable_kotib(pk: int, sent_to: Any) -> bool:
+    """Kotib 410: disable + revoke Kotib's public-API key on the CURRENT
+    row — unless it was meanwhile disconnected or reconnected elsewhere."""
+    with transaction.atomic():
+        row = _locked_current(pk, sent_to)
+        if row is None:
+            return False
+        row.is_enabled = False
+        row.config = {k: v for k, v in row.config.items() if k != "doocall_api_key"}
+        row.save(update_fields=["is_enabled", "config", "updated_at"])
+        return True
 
 
 def record_signature(server_id_hex: str) -> str:
