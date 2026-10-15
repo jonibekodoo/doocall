@@ -274,6 +274,7 @@ export function CrmProviderPage({
   connectedInfo,
   formExtra,
   extraConfig,
+  saveBlocked = false,
 }: {
   provider: CrmIntegrationRow["provider"];
   title: string;
@@ -292,6 +293,8 @@ export function CrmProviderPage({
   formExtra?: ReactNode;
   /** Non-string config values (e.g. a mapping) merged into the saved config. */
   extraConfig?: Record<string, unknown>;
+  /** Provider-side validation failed (e.g. an invalid formExtra value). */
+  saveBlocked?: boolean;
 }) {
   const t = useTranslations("crm");
   const queryClient = useQueryClient();
@@ -473,8 +476,8 @@ export function CrmProviderPage({
             <button
               type="button"
               data-testid="crm-connect"
-              disabled={locked || save.isPending}
-              onClick={() => !locked && save.mutate()}
+              disabled={locked || saveBlocked || save.isPending}
+              onClick={() => !locked && !saveBlocked && save.mutate()}
               className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50"
             >
               {t("connect")}
