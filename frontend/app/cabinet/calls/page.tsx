@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
+import { CallAiBadge } from "@/app/cabinet/ai/ai-shared";
 import { DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import { CallMapButton } from "@/components/CallMapButton";
@@ -263,6 +264,13 @@ function CallsInner() {
               {CRM_LABEL[mark.provider] ?? mark.provider} {mark.status === "ok" ? "✓" : "✗"}
             </span>
           ))}
+          {row.ai && (
+            <CallAiBadge
+              analysisId={row.ai.analysis_id}
+              score={row.ai.final_score}
+              title={t("aiScore")}
+            />
+          )}
         </div>
       ),
     },
