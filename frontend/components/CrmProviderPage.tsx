@@ -5,7 +5,7 @@
  * back link, guide note, info box, region radios, config form, connect/test. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw, Unplug } from "lucide-react";
+import { AlertTriangle, ArrowLeft, RefreshCw, Unplug } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
@@ -22,6 +22,7 @@ import {
   saveIntegration,
   testIntegration,
 } from "@/lib/api/endpoints";
+import { ApiError } from "@/lib/api/client";
 import { formatPhone } from "@/lib/format";
 
 /** Per-call delivery log for one CRM: filter (all / errors), paging, retry. */
@@ -189,6 +190,65 @@ function DeliveryLog({ provider, canRetry }: { provider: string; canRetry: boole
   );
 }
 
+/** The integrations list could not be loaded: the real state is UNKNOWN, so
+ * never fall back to an empty / "disabled" form that could be saved over the
+ * stored config. 401/403 = expired session (or impersonation) / no access. */
+function LoadError({
+  error,
+  onRetry,
+  retrying,
+}: {
+  error: unknown;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  const t = useTranslations("crm");
+  const tc = useTranslations("common");
+  const tAuth = useTranslations("auth");
+  const authFailure =
+    error instanceof ApiError && (error.status === 401 || error.status === 403);
+  const impersonating =
+    typeof window !== "undefined" &&
+    Boolean(window.sessionStorage.getItem("doocall_impersonation"));
+  return (
+    <div
+      role="alert"
+      data-testid="crm-load-error"
+      className="mt-5 max-w-xl space-y-3 rounded-md border border-danger/40 bg-danger/5 p-4 text-sm"
+    >
+      <p className="flex items-start gap-2 font-medium text-danger">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+        {t("loadError")}
+      </p>
+      {authFailure && (
+        <p data-testid="crm-session-expired">
+          {impersonating ? t("impersonationExpired") : t("sessionExpired")}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {authFailure ? (
+          <Link
+            href={impersonating ? "/admin" : "/login"}
+            data-testid="crm-relogin"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:opacity-90"
+          >
+            {impersonating ? t("backToAdmin") : tAuth("login")}
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          data-testid="crm-load-retry"
+          disabled={retrying}
+          onClick={onRetry}
+          className="rounded-md border border-border px-4 py-2 text-sm hover:bg-surface-2 disabled:opacity-50"
+        >
+          {tc("retry")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export interface CrmField {
   key: string;
   label: string;
@@ -235,13 +295,16 @@ export function CrmProviderPage({
 }) {
   const t = useTranslations("crm");
   const queryClient = useQueryClient();
-  const { data } = useQuery({
+  const { data, isPending, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["s-integrations"],
     queryFn: fetchIntegrations,
   });
   const row = data?.integrations.find(
     (integration) => integration.provider === provider,
   );
+  // Only a successfully loaded row may be edited/saved — never a blank
+  // stand-in after a failed request (it would overwrite the real config).
+  const locked = !row || isError;
 
   const [form, setForm] = useState<Record<string, string>>({});
   const [enabled, setEnabled] = useState(false);
@@ -327,143 +390,158 @@ export function CrmProviderPage({
         {info}
       </div>
 
-      {downloadHref && (
-        <a
-          href={downloadHref}
-          data-testid="crm-app-download"
-          className="mt-4 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:opacity-90"
-        >
-          ⬇ {t("downloadApp")}
-        </a>
-      )}
-
-      {regions && (
-        <div className="mt-5 space-y-2">
-          <p className="text-sm font-medium">{regions.label}</p>
-          {regions.options.map((option) => (
-            <label
-              key={option.value}
-              className="flex items-center gap-2 text-sm"
-            >
-              <input
-                type="radio"
-                name={`${provider}-region`}
-                checked={(form.region ?? regions.options[0].value) === option.value}
-                onChange={() => set("region", option.value)}
-                className="accent-[var(--accent)]"
-              />
-              {option.label}
-            </label>
+      {isPending ? (
+        <div data-testid="crm-loading" className="mt-5 max-w-md space-y-3">
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="h-9 animate-pulse rounded-md bg-surface-3" />
           ))}
         </div>
-      )}
+      ) : !row ? (
+        <LoadError error={error} onRetry={() => refetch()} retrying={isFetching} />
+      ) : (
+        <>
+          {isError && (
+            <LoadError error={error} onRetry={() => refetch()} retrying={isFetching} />
+          )}
+          {downloadHref && (
+            <a
+              href={downloadHref}
+              data-testid="crm-app-download"
+              className="mt-4 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:opacity-90"
+            >
+              ⬇ {t("downloadApp")}
+            </a>
+          )}
 
-      <div className="mt-5 space-y-3">
-        {fields.map((field) => (
-          <label key={field.key} className="block max-w-md text-sm">
-            <span className="mb-1 block text-xs text-fg-muted">
-              {field.label}
-            </span>
-            <input
-              value={form[field.key] ?? ""}
-              onChange={(event) => set(field.key, event.target.value)}
-              placeholder={field.placeholder}
-              autoComplete="off"
-              data-testid={`crm-field-${field.key}`}
-              className={
-                "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm" +
-                (field.secret ? " font-mono" : "")
-              }
-            />
-          </label>
-        ))}
-        {!alwaysEnabled && (
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(event) => setEnabled(event.target.checked)}
-              data-testid="crm-enabled"
-              className="size-4 accent-[var(--accent)]"
-            />
-            {t("enabled")}
-          </label>
-        )}
-      </div>
+          {regions && (
+            <div className="mt-5 space-y-2">
+              <p className="text-sm font-medium">{regions.label}</p>
+              {regions.options.map((option) => (
+                <label
+                  key={option.value}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <input
+                    type="radio"
+                    name={`${provider}-region`}
+                    checked={(form.region ?? regions.options[0].value) === option.value}
+                    onChange={() => set("region", option.value)}
+                    className="accent-[var(--accent)]"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          )}
 
-      {formExtra}
+          <div className="mt-5 space-y-3">
+            {fields.map((field) => (
+              <label key={field.key} className="block max-w-md text-sm">
+                <span className="mb-1 block text-xs text-fg-muted">
+                  {field.label}
+                </span>
+                <input
+                  value={form[field.key] ?? ""}
+                  onChange={(event) => set(field.key, event.target.value)}
+                  placeholder={field.placeholder}
+                  autoComplete="off"
+                  data-testid={`crm-field-${field.key}`}
+                  className={
+                    "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm" +
+                    (field.secret ? " font-mono" : "")
+                  }
+                />
+              </label>
+            ))}
+            {!alwaysEnabled && (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(event) => setEnabled(event.target.checked)}
+                  data-testid="crm-enabled"
+                  className="size-4 accent-[var(--accent)]"
+                />
+                {t("enabled")}
+              </label>
+            )}
+          </div>
 
-      <div className="mt-5 flex items-center gap-2">
-        <button
-          type="button"
-          data-testid="crm-connect"
-          disabled={save.isPending}
-          onClick={() => save.mutate()}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50"
-        >
-          {t("connect")}
-        </button>
-        <button
-          type="button"
-          data-testid="crm-test"
-          disabled={!row?.configured || test.isPending}
-          onClick={() => test.mutate()}
-          className="rounded-md border border-border px-4 py-2 text-sm disabled:opacity-50"
-        >
-          {t("test")}
-        </button>
-        {(row?.configured || row?.is_enabled) && (
-          <button
-            type="button"
-            data-testid="crm-disconnect"
-            disabled={disconnect.isPending}
-            onClick={async () =>
-              (await confirmDialog(t("disconnectConfirm", { title }), {
-                danger: true,
-                confirmLabel: t("disconnect"),
-              })) && disconnect.mutate()
-            }
-            className="inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-4 py-2 text-sm font-medium text-danger hover:bg-danger/5 disabled:opacity-50"
-          >
-            <Unplug className="size-4" /> {t("disconnect")}
-          </button>
-        )}
-        {row?.last_status === "ok" && (
-          <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">
-            {t("statusOk")}
-          </span>
-        )}
-        {row?.last_status === "error" && (
-          <span
-            title={row.last_error}
-            className="max-w-xs truncate rounded-full bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger"
-          >
-            {t("statusError")}: {row.last_error}
-          </span>
-        )}
-      </div>
-      {showSaveError && save.isError && (
-        <p
-          role="alert"
-          data-testid="crm-save-error"
-          className="mt-3 max-w-md rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger"
-        >
-          {save.error.message}
-        </p>
-      )}
-      {connectedInfo && row?.is_enabled && row.configured && (
-        <div data-testid="crm-connected-info" className="mt-4">
-          {connectedInfo(row.config)}
-        </div>
-      )}
-      {row?.last_delivery_at && (
-        <p className="mt-2 text-xs text-fg-faint">
-          {t("lastDelivery")}: {row.last_delivery_at.slice(0, 16).replace("T", " ")}
-        </p>
-      )}
+          {formExtra}
 
-      {(row?.configured || row?.last_delivery_at) && (
-        <DeliveryLog provider={provider} canRetry={Boolean(row?.is_enabled && row?.configured)} />
+          <div className="mt-5 flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="crm-connect"
+              disabled={locked || save.isPending}
+              onClick={() => !locked && save.mutate()}
+              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50"
+            >
+              {t("connect")}
+            </button>
+            <button
+              type="button"
+              data-testid="crm-test"
+              disabled={locked || !row?.configured || test.isPending}
+              onClick={() => test.mutate()}
+              className="rounded-md border border-border px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {t("test")}
+            </button>
+            {(row?.configured || row?.is_enabled) && (
+              <button
+                type="button"
+                data-testid="crm-disconnect"
+                disabled={locked || disconnect.isPending}
+                onClick={async () =>
+                  (await confirmDialog(t("disconnectConfirm", { title }), {
+                    danger: true,
+                    confirmLabel: t("disconnect"),
+                  })) && disconnect.mutate()
+                }
+                className="inline-flex items-center gap-1.5 rounded-md border border-danger/40 px-4 py-2 text-sm font-medium text-danger hover:bg-danger/5 disabled:opacity-50"
+              >
+                <Unplug className="size-4" /> {t("disconnect")}
+              </button>
+            )}
+            {row?.last_status === "ok" && (
+              <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">
+                {t("statusOk")}
+              </span>
+            )}
+            {row?.last_status === "error" && (
+              <span
+                title={row.last_error}
+                className="max-w-xs truncate rounded-full bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger"
+              >
+                {t("statusError")}: {row.last_error}
+              </span>
+            )}
+          </div>
+          {showSaveError && save.isError && (
+            <p
+              role="alert"
+              data-testid="crm-save-error"
+              className="mt-3 max-w-md rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-sm text-danger"
+            >
+              {save.error.message}
+            </p>
+          )}
+          {connectedInfo && row?.is_enabled && row.configured && (
+            <div data-testid="crm-connected-info" className="mt-4">
+              {connectedInfo(row.config)}
+            </div>
+          )}
+          {row?.last_delivery_at && (
+            <p className="mt-2 text-xs text-fg-faint">
+              {t("lastDelivery")}: {row.last_delivery_at.slice(0, 16).replace("T", " ")}
+            </p>
+          )}
+
+          {(row?.configured || row?.last_delivery_at) && (
+            <DeliveryLog provider={provider} canRetry={Boolean(row?.is_enabled && row?.configured)} />
+          )}
+        </>
       )}
     </div>
   );
