@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 from zoneinfo import ZoneInfo
 
@@ -40,6 +40,21 @@ def printed_password(output: str) -> str:
     match = re.search(r"^Password:\s+(\S+)$", output, re.MULTILINE)
     assert match, output
     return match.group(1)
+
+
+TASHKENT = ZoneInfo("Asia/Tashkent")
+
+
+def freeze_now(monkeypatch: pytest.MonkeyPatch, local: str) -> datetime:
+    """Pin ``timezone.now()`` to 2026-10-14 ``local`` (HH:MM, Asia/Tashkent).
+
+    Returned UTC-aware like the real ``timezone.now()``, so code that takes
+    ``.date()`` of it sees the UTC date — the case that matters around
+    Tashkent midnight (UTC+5)."""
+    hour, minute = map(int, local.split(":"))
+    frozen = datetime(2026, 10, 14, hour, minute, tzinfo=TASHKENT).astimezone(UTC)
+    monkeypatch.setattr(timezone, "now", lambda: frozen)
+    return frozen
 
 
 def real_company(slug: str = "real-co", *, operators: int = 1) -> Company:
@@ -116,6 +131,30 @@ class TestCreate:
         assert OperatorProfile.all_objects.filter(company=company).count() == 3
         assert User.objects.get(company=company, is_company_admin=True).email == "boss@acme.uz"
         assert "Cabinet login: boss@acme.uz" in out
+
+    @pytest.mark.parametrize(
+        ("local", "today_min", "today_max"),
+        [
+            ("00:10", 0, 0),  # office closed: nothing yet today, nothing in the future
+            ("08:05", 0, 4),  # the first five minutes of the working day
+            ("15:30", 5, N_CALLS),
+            ("23:55", 5, N_CALLS),
+        ],
+    )
+    def test_today_is_filled_up_to_now_never_beyond(
+        self, monkeypatch: pytest.MonkeyPatch, local: str, today_min: int, today_max: int
+    ) -> None:
+        now = freeze_now(monkeypatch, local)
+        run()
+        today = now.astimezone(TASHKENT).date()
+        starts = CallRecord.all_objects.filter(company__slug="demo").values_list(
+            "start_time", flat=True
+        )
+        assert max(starts) <= now
+        today_calls = sum(1 for s in starts if s.astimezone(TASHKENT).date() == today)
+        # Calls follow the 8–20 working day: none before the office opens,
+        # today's share once the day is under way.
+        assert today_min <= today_calls <= today_max
 
     def test_same_seed_is_deterministic(self) -> None:
         def per_operator() -> list[tuple[str, str, int]]:
@@ -277,7 +316,13 @@ class TestBillingSkipsDemo:
 
 
 class TestAdminKpisExcludeDemo:
-    def test_dashboard_leaderboard_and_series(self) -> None:
+    # Frozen clock incl. 00:10 Tashkent: the dashboard used to build its day
+    # keys from the UTC date, which dropped today's calls until 05:00 local.
+    @pytest.mark.parametrize("local", ["00:10", "15:30", "23:55"])
+    def test_dashboard_leaderboard_and_series(
+        self, monkeypatch: pytest.MonkeyPatch, local: str
+    ) -> None:
+        freeze_now(monkeypatch, local)
         real = real_company("real-co")
         CallRecord.all_objects.create(
             company=real,
