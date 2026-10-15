@@ -212,6 +212,8 @@ export function CrmProviderPage({
   alwaysEnabled = false,
   showSaveError = false,
   connectedInfo,
+  formExtra,
+  extraConfig,
 }: {
   provider: CrmIntegrationRow["provider"];
   title: string;
@@ -226,6 +228,10 @@ export function CrmProviderPage({
   showSaveError?: boolean;
   /** Extra details rendered while the integration is enabled and configured. */
   connectedInfo?: (config: Record<string, string>) => ReactNode;
+  /** Provider-specific editor rendered under the fields (saved by Connect). */
+  formExtra?: ReactNode;
+  /** Non-string config values (e.g. a mapping) merged into the saved config. */
+  extraConfig?: Record<string, unknown>;
 }) {
   const t = useTranslations("crm");
   const queryClient = useQueryClient();
@@ -250,7 +256,7 @@ export function CrmProviderPage({
     mutationFn: () =>
       saveIntegration(provider, {
         is_enabled: alwaysEnabled || enabled,
-        config: form,
+        config: extraConfig ? { ...form, ...extraConfig } : form,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["s-integrations"] });
@@ -384,6 +390,8 @@ export function CrmProviderPage({
           </label>
         )}
       </div>
+
+      {formExtra}
 
       <div className="mt-5 flex items-center gap-2">
         <button
