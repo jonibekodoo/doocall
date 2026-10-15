@@ -190,7 +190,10 @@ def _company_body(company: Company) -> dict[str, Any]:
 class AdminDashboardView(StaffView):
     @extend_schema(summary="Platform KPIs")
     def get(self, request: Request) -> Response:
-        now = timezone.now()
+        # Local time: day keys and "today" must use the same zone as the
+        # DB-side TruncDate (TIME_ZONE, Asia/Tashkent) — UTC dates drop the
+        # first five local hours of every day.
+        now = timezone.localtime()
         # Demo tenants (create_demo_account) are kept out of every platform KPI.
         companies = Company.objects.exclude(billing.demo_q()).aggregate(
             total=Count("id"),
@@ -270,7 +273,7 @@ class AdminCallsTodayView(StaffView):
     def get(self, request: Request) -> Response:
         from apps.calls.models import CallRecord
 
-        now = timezone.now()
+        now = timezone.localtime()  # local midnight, not UTC midnight (05:00 Tashkent)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         rows = (
             CallRecord.all_objects.exclude(billing.demo_q("company__"))
@@ -822,10 +825,12 @@ class AdminPaymentStatsView(StaffView):
             .order_by("-c")
         ]
 
-        # Approved revenue over the last 30 days (daily buckets, company tz-agnostic UTC).
+        # Approved revenue over the last 30 days, daily buckets in local time
+        # (TruncDate groups by TIME_ZONE, so the day keys must be local too).
         from django.db.models.functions import TruncDate
 
-        since = timezone.now() - timedelta(days=30)
+        now = timezone.localtime()
+        since = now - timedelta(days=30)
         day_rows = dict(
             approved.filter(approved_at__gte=since)
             .annotate(day=TruncDate("approved_at"))
@@ -835,7 +840,7 @@ class AdminPaymentStatsView(StaffView):
         )
         series = []
         for offset in range(29, -1, -1):
-            day = (timezone.now() - timedelta(days=offset)).date()
+            day = (now - timedelta(days=offset)).date()
             series.append(int(day_rows.get(day, 0) or 0))
 
         pending = Payment.all_objects.filter(status=Payment.Status.PENDING).aggregate(
