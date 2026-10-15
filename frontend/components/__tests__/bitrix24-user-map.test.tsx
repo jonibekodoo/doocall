@@ -231,6 +231,11 @@ describe("Bitrix24 operator mapping", () => {
         webhook_url: "http…xyz/",
         user_id: "1",
         user_map: { "4": "9" },
+        // Card options: defaults for a row saved before they existed.
+        save_external_calls: true,
+        create_card: "auto",
+        lead_source: "CALL",
+        only_answered: false,
       },
     });
   });

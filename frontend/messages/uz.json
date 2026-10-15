@@ -383,7 +383,28 @@
       "usersError": "Bitrix24 foydalanuvchilarini yuklab bo'lmadi: {error}. Foydalanuvchi ID'larini qo'lda kiriting (yoki vebhukka «user» huquqini qo'shing).",
       "manualPlaceholder": "Bitrix24 ID",
       "noOperators": "Operatorlar hali yo'q",
-      "unknownUser": "ID {id} (ro'yxatda yo'q)"
+      "unknownUser": "ID {id} (ro'yxatda yo'q)",
+      "saveTitle": "Qo'ng'iroqlarni saqlash",
+      "saveExternal": "Bitrix24'dan tashqarida qilingan qo'ng'iroqlarni saqlash (kartochka yaratish)",
+      "unknownNumber": "Noma'lum raqam uchun",
+      "modeSimple": "Portal rejimi: lidlarsiz (oddiy CRM) — lid yaratilmaydi",
+      "modeAssumed": "Portal rejimi aniqlanmadi — xavfsizlik uchun lid yaratilmaydi",
+      "modeClassic": "Portal rejimi: klassik (lidlar bilan)",
+      "card_auto": "Avtomatik (tavsiya etiladi)",
+      "card_autoHint": "Klassik portalda — lid, lidlarsiz portalda — kontakt va bitim",
+      "card_lead": "Lid",
+      "card_leadHint": "Har bir yangi raqam uchun lid yaratiladi",
+      "card_leadNoLeads": "Bu portalda lid yaratilmaydi — o'rniga kontakt yaratiladi",
+      "card_contact": "Kontakt",
+      "card_contactHint": "Yangi raqam uchun kontakt yaratiladi",
+      "card_deal": "Kontakt + Bitim",
+      "card_dealHint": "Kontakt va unga bog'langan bitim yaratiladi",
+      "card_none": "Kartochka yaratmaslik",
+      "card_noneHint": "Qo'ng'iroq Bitrix24'ga kartochkasiz saqlanadi",
+      "knownNumberNote": "Raqam CRM'da allaqachon bo'lsa, qo'ng'iroq mavjud kartochkaga biriktiriladi — takroriy kartochka yaratilmaydi.",
+      "leadSource": "Lid manbai",
+      "leadSourceHint": "Bitrix24 manba kodi: faqat A–Z, 0–9 va _ (50 belgigacha). Bo'sh qoldirilsa — CALL.",
+      "onlyAnswered": "Faqat javob berilgan qo'ng'iroqlarni yuborish"
     },
     "odoo": {
       "info": "1) Quyidagi tugma orqali DooCall Odoo 19 ilovasini yuklab olib, addons papkasiga chiqarib o'rnating (Apps → DooCall). 2) Odoo'da administrator huquqli foydalanuvchi uchun API kalit yarating (yozuvlar faqat shu foydalanuvchi orqali yoziladi, qolganlar uchun read-only) (Preferences → Account Security → API Keys) va quyidagi maydonlarni to'ldiring. Ilova o'rnatilgach har bir qo'ng'iroq kontakt/lid ichida audio player bilan ko'rinadi; ilovasiz — faqat chatter yozuvi.",
@@ -433,7 +454,11 @@
       "retryOk": "Qayta yuborildi",
       "retryFail": "Qayta yuborib bo'lmadi",
       "empty": "Hali yuborishlar yo'q"
-    }
+    },
+    "loadError": "Ma'lumotni yuklab bo'lmadi. Integratsiya holati noma'lum — hech narsa o'zgartirilmadi.",
+    "sessionExpired": "Sessiya muddati tugagan yoki bu sahifaga ruxsat yo'q. Qayta kiring.",
+    "impersonationExpired": "Mijoz sifatida kirish muddati tugagan. Admin paneliga qayting va qayta kiring.",
+    "backToAdmin": "Admin paneliga qaytish"
   },
   "myCalls": {
     "title": "Mening qo'ng'iroqlarim"
