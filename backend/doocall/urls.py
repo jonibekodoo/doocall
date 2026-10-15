@@ -9,6 +9,7 @@ from apps.integrations.views_public import (
     CrmLogoView,
     CustomApiView,
     IntegratorLogoView,
+    KotibAnalysisWebhookView,
     OdooAppDownloadView,
     ProviderLogoView,
     PublicCrmCatalogView,
@@ -41,6 +42,12 @@ urlpatterns = [
     re_path(r"^api/v1/?$", CustomApiView.as_view(), name="public-api"),
     # Permanent recording link for CRMs (302 → presigned MinIO URL).
     path("api/public/rec/<str:rec_id>", RecordRedirectView.as_view(), name="public-rec"),
+    # Kotib AI analysis results (per-company secret token, optional HMAC).
+    path(
+        "api/public/kotib/analysis/<str:token>",
+        KotibAnalysisWebhookView.as_view(),
+        name="public-kotib-analysis",
+    ),
     path("api/public/crm-logo/<int:entry_id>", CrmLogoView.as_view(), name="public-crm-logo"),
     path(
         "api/public/integrator-logo/<int:integrator_id>",

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.integrations import views as integration_views
+from apps.integrations import views_ai
 
 from . import (
     views,
@@ -86,6 +87,25 @@ urlpatterns = [
         "settings/integrations",
         integration_views.IntegrationsView.as_view(),
         name="integrations",
+    ),
+    # ── Kotib AI analysis (inbound webhook settings) ──────────────────────
+    path(
+        "settings/integrations/kotib/analysis",
+        integration_views.KotibAnalysisSecretView.as_view(),
+        name="kotib-analysis-secret",
+    ),
+    path(
+        "settings/integrations/kotib/analysis/rotate",
+        integration_views.KotibAnalysisRotateView.as_view(),
+        name="kotib-analysis-rotate",
+    ),
+    # ── AI analyses (Kotib results) ───────────────────────────────────────
+    path("ai/status", views_ai.AiStatusView.as_view(), name="ai-status"),
+    path("ai/analyses", views_ai.AiAnalysesView.as_view(), name="ai-analyses"),
+    path(
+        "ai/analyses/<int:analysis_id>",
+        views_ai.AiAnalysisDetailView.as_view(),
+        name="ai-analysis-detail",
     ),
     path(
         "settings/integrations/catalog",

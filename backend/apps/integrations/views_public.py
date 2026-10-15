@@ -12,14 +12,17 @@
 from __future__ import annotations
 
 import hmac
+import json
 from datetime import datetime, timezone as dt_timezone
 from typing import Any
 
 from django.db.models import Q
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 from drf_spectacular.utils import extend_schema
 from rest_framework import status as http
 from rest_framework.request import Request
@@ -419,3 +422,73 @@ class PublicCrmCatalogView(View):
             for e in CrmCatalogEntry.objects.filter(is_active=True)
         ]
         return JsonResponse({"success": True, "entries": entries})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class KotibAnalysisWebhookView(View):
+    """``POST /api/public/kotib/analysis/<token>`` — Kotib pushes one
+    ``analysis.completed`` message per analysed call. Fast DB-only work (Kotib
+    waits ≤10 s, then retries); the same call may arrive again (latest wins).
+
+    404 unknown token · 410 integration disabled · 401 bad/missing signature
+    (once a secret is saved) · 413 body > 2 MB · 400 malformed · 200 stored or
+    ignored (other events)."""
+
+    def post(self, request: HttpRequest, token: str) -> HttpResponse:
+        from django.core.exceptions import RequestDataTooBig
+        from django.db import IntegrityError, transaction
+
+        from . import kotib_analysis as ka
+
+        def reply(code: int, **body: Any) -> JsonResponse:
+            return JsonResponse({"success": code == 200, **body}, status=code)
+
+        integration = ka.find_integration(token)
+        if integration is None:
+            return reply(404, message="unknown endpoint")
+        company = integration.company
+        sub = domains.company_subdomain(request.get_host())
+        if sub is not None and sub != company.slug:
+            return reply(404, message="unknown endpoint")
+        if not integration.is_enabled:
+            return reply(410, message="integration disabled")
+
+        try:
+            length = int(request.META.get("CONTENT_LENGTH") or 0)
+        except ValueError:
+            length = 0
+        if length > ka.MAX_BODY_BYTES:
+            return reply(413, message="body too large")
+        try:
+            raw = request.body
+        except RequestDataTooBig:
+            return reply(413, message="body too large")
+        if len(raw) > ka.MAX_BODY_BYTES:
+            return reply(413, message="body too large")
+
+        secret = str(integration.config.get("analysis_secret") or "")
+        if secret and not ka.signature_ok(
+            secret, raw, request.headers.get("X-Kotib-Signature", "")
+        ):
+            return reply(401, message="invalid signature")
+
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            return reply(400, message="invalid JSON")
+        if not isinstance(payload, dict):
+            return reply(400, message="invalid JSON")
+        if payload.get("event") != ka.EVENT:
+            return reply(200, status="ignored")
+
+        for attempt in range(2):  # a concurrent duplicate may win the insert
+            try:
+                with transaction.atomic():
+                    analysis = ka.store(company, payload, verified=bool(secret))
+                break
+            except ka.PayloadError as exc:
+                return reply(400, message=str(exc))
+            except IntegrityError:
+                if attempt:
+                    raise
+        return reply(200, status="stored", matched=analysis.call_id is not None)

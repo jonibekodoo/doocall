@@ -136,12 +136,17 @@ class TestConnect:
 
         body = response.json()["integration"]
         assert body["is_enabled"] is True
+        analysis_url = body["config"].pop("analysis_webhook_url")
+        assert analysis_url.endswith(row.config["analysis_token"])
         assert body["config"] == {
             "api_key": "koti…6789",
             "company_name": "My Company",
             "employees_created": 12,
             "employees_existing": 1,
             "employees_created_inactive": 2,
+            "analysis_secret": "",
+            "analysis_last_received_at": None,
+            "analysis_count": 0,
         }
         listing = client.get("/api/web/v1/settings/integrations").json()
         for text in (str(body), str(listing)):
