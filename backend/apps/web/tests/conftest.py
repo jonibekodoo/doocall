@@ -108,3 +108,12 @@ def other_company_noise(db: Any) -> Company:
             start_time=timezone.now() - timedelta(hours=i),
         )
     return other
+
+
+@pytest.fixture(autouse=True)
+def _public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Webhook URLs pass the SSRF guard's DNS check offline: every name
+    resolves to a public address unless a test patches ``netguard.resolve``."""
+    from apps.core import netguard
+
+    monkeypatch.setattr(netguard, "resolve", lambda host, port: ["93.184.216.34"])

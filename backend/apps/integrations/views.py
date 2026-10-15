@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import timedelta
 from secrets import token_hex
@@ -14,9 +15,12 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.accounts.models import User
+from apps.accounts.models import OperatorProfile, User
 from apps.api.errors import ApiError, ErrorCode
+from apps.companies.models import Company
+from apps.core import netguard
 from apps.core.models import AuditLog
+from apps.core.phone import normalize_phone
 from apps.web.permissions import AdminCabinetView, CabinetView
 
 from . import kotib_analysis, providers
@@ -32,10 +36,14 @@ KOTIB_PENDING_TTL = timedelta(minutes=5)
 
 PROVIDERS = tuple(CrmIntegration.Provider.values)
 
+# Customer-typed outbound address per provider (Kotib's base URL is ours).
+URL_FIELDS = {"bitrix24": "webhook_url", "amocrm": "base_url", "odoo": "url"}
+
 # Non-secret defaults shown in an empty form.
 CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
     "amocrm": ("base_url", "access_token", "responsible_user_id", "region"),
-    "bitrix24": ("webhook_url", "user_id", "account", "region"),
+    # user_map: {"<OperatorProfile id>": "<Bitrix24 user id>"}; user_id = fallback.
+    "bitrix24": ("webhook_url", "user_id", "account", "region", "user_map"),
     "odoo": ("url", "db", "login", "api_key"),
     # webhook_url / webhook_secret are stored too but NEVER leave the server.
     "kotib": (
@@ -62,6 +70,8 @@ def _body(integration: CrmIntegration | None, provider: str) -> dict[str, Any]:
         field: (_mask(config.get(field, "")) if field in secrets else config.get(field, ""))
         for field in CONFIG_FIELDS[provider]
     }
+    if "user_map" in shown:
+        shown["user_map"] = dict(config.get("user_map") or {})
     if provider == CrmIntegration.Provider.KOTIB:
         shown.update(_kotib_analysis_fields(integration))
     return {
@@ -98,12 +108,55 @@ def _kotib_analysis_fields(integration: CrmIntegration | None) -> dict[str, Any]
     }
 
 
-def _merge_config(provider: str, incoming: dict[str, Any], existing: dict[str, Any]) -> dict[str, Any]:
+def _clean_user_map(raw: Any, company: Company) -> dict[str, str]:
+    """Validate a Bitrix24 ``user_map``: keys are THIS company's operator ids,
+    values positive integer strings; empty values are dropped."""
+    if raw in (None, ""):
+        return {}
+    if not isinstance(raw, dict):
+        raise ApiError(ErrorCode.MISSING_FIELD, "user_map must be an object", 400)
+    cleaned: dict[str, str] = {}
+    for key, value in raw.items():
+        user = "" if value is None else str(value).strip()
+        if not user:
+            continue
+        if not re.fullmatch(r"[1-9][0-9]{0,9}", user):
+            raise ApiError(
+                ErrorCode.MISSING_FIELD,
+                f"user_map[{key}]: Bitrix24 user id must be a positive integer",
+                400,
+            )
+        cleaned[str(key).strip()] = user
+    ids = {k for k in cleaned if k.isdigit()}
+    known = {
+        str(pk)
+        for pk in OperatorProfile.all_objects.filter(
+            company=company, pk__in=[int(k) for k in ids]
+        ).values_list("pk", flat=True)
+    }
+    if unknown := sorted(set(cleaned) - known):
+        raise ApiError(
+            ErrorCode.MISSING_FIELD, f"user_map: unknown operator id(s) {', '.join(unknown)}", 400
+        )
+    return cleaned
+
+
+def _merge_config(
+    provider: str,
+    incoming: dict[str, Any],
+    existing: dict[str, Any],
+    company: Company | None = None,
+) -> dict[str, Any]:
     """Masked secret values ("aBcD…wxyz") keep the previously stored secret."""
     merged = dict(existing)
     secrets = providers.SECRET_FIELDS.get(provider, ())
     for field in CONFIG_FIELDS[provider]:
         if field not in incoming:
+            continue
+        if field == "user_map":
+            if company is None:  # pragma: no cover - always passed by the view
+                raise ValueError("company required to validate user_map")
+            merged[field] = _clean_user_map(incoming[field], company)
             continue
         value = str(incoming.get(field) or "").strip()
         if field in secrets and ("…" in value or value == "•••"):
@@ -140,8 +193,19 @@ class IntegrationDetailView(AdminCabinetView):
         if provider == CrmIntegration.Provider.KOTIB:
             return self._put_kotib(request, integration)
         existing = dict(integration.config) if integration else {}
-        config = _merge_config(provider, dict(request.data.get("config") or {}), existing)
+        config = _merge_config(
+            provider, dict(request.data.get("config") or {}), existing, self.company
+        )
         is_enabled = bool(request.data.get("is_enabled", integration.is_enabled if integration else False))
+        # SSRF guard: the CRM address must be a public https host (checked
+        # again right before every request).
+        if url := str(config.get(URL_FIELDS.get(provider, "")) or "").strip():
+            try:
+                netguard.check_url(url)
+            except netguard.UnsafeURL as exc:
+                raise ApiError(
+                    ErrorCode.MISSING_FIELD, f"CRM manzili rad etildi: {exc}", 400
+                ) from None
         if is_enabled:
             try:
                 providers.validate_config(provider, config)
@@ -466,3 +530,136 @@ class KotibAnalysisRotateView(AdminCabinetView):
             target_id=str(integration.pk),
         )
         return Response({"success": True, "integration": _body(integration, "kotib")})
+
+
+B24_SCOPE_ERROR = (
+    "Bitrix24 vebhukida «user» (Foydalanuvchilar) ruxsati yo'q — vebhukka shu "
+    "ruxsatni qo'shing yoki ID'larni qo'lda kiriting"
+)
+B24_PHONE_FIELDS = ("PERSONAL_MOBILE", "WORK_PHONE", "PERSONAL_PHONE")
+
+
+def _name_key(*parts: Any) -> str:
+    return " ".join(" ".join(str(p or "") for p in parts).lower().split())
+
+
+def _unique_suggestions(candidates: dict[str, set[str]]) -> dict[str, str]:
+    """operator → its single candidate, unless that Bitrix24 user is also the
+    single candidate of another operator (ambiguous → skipped)."""
+    single = {op: next(iter(ids)) for op, ids in candidates.items() if len(ids) == 1}
+    claimed: dict[str, int] = {}
+    for b24_id in single.values():
+        claimed[b24_id] = claimed.get(b24_id, 0) + 1
+    return {op: b24_id for op, b24_id in single.items() if claimed[b24_id] == 1}
+
+
+def b24_suggestions(
+    operators: list[dict[str, Any]], users: list[dict[str, Any]], phone_code: str
+) -> dict[str, str]:
+    """Phone match first (operator SIM numbers vs Bitrix24 phones), then an
+    exact case-insensitive full-name match (NAME LAST_NAME either order).
+    Only unambiguous pairs are suggested."""
+    by_phone: dict[str, set[str]] = {}
+    by_name: dict[str, set[str]] = {}
+    for user in users:
+        b24_id = str(user.get("ID") or "")
+        if not b24_id:
+            continue
+        for field in B24_PHONE_FIELDS:
+            if number := normalize_phone(str(user.get(field) or ""), phone_code):
+                by_phone.setdefault(number, set()).add(b24_id)
+        first, last = user.get("NAME"), user.get("LAST_NAME")
+        for key in {_name_key(first, last), _name_key(last, first)}:
+            if key:
+                by_name.setdefault(key, set()).add(b24_id)
+
+    phone_candidates: dict[str, set[str]] = {}
+    for op in operators:
+        ids: set[str] = set()
+        for number in op["phones"]:
+            ids |= by_phone.get(normalize_phone(number, phone_code), set())
+        if ids:
+            phone_candidates[str(op["id"])] = ids
+    suggestions = _unique_suggestions(phone_candidates)
+
+    used = set(suggestions.values())
+    name_candidates = {
+        str(op["id"]): by_name.get(_name_key(op["full_name"]), set()) - used
+        for op in operators
+        if str(op["id"]) not in phone_candidates and _name_key(op["full_name"])
+    }
+    suggestions.update(_unique_suggestions({k: v for k, v in name_candidates.items() if v}))
+    return suggestions
+
+
+def _b24_user_id(user: dict[str, Any]) -> str:
+    value = user.get("ID")
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        return ""
+    return str(value) if re.fullmatch(r"[1-9][0-9]{0,9}", str(value)) else ""
+
+
+def _b24_text(user: dict[str, Any], field: str) -> str:
+    value = user.get(field)
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        return ""
+    return providers.safe_text(value)
+
+
+class Bitrix24UsersView(AdminCabinetView):
+    @extend_schema(summary="Bitrix24 users + DooCall operators + mapping suggestions")
+    def get(self, request: Request) -> Response:
+        integration = CrmIntegration.objects.filter(
+            provider=CrmIntegration.Provider.BITRIX24
+        ).first()
+        if integration is None or not str(integration.config.get("webhook_url") or "").strip():
+            raise ApiError(ErrorCode.MISSING_FIELD, "Bitrix24 is not configured", 400)
+        operators = [
+            {
+                "id": op.pk,
+                "full_name": op.full_name,
+                "user_name": op.user_name,
+                "phones": [sim.number for sim in op.sim_cards.all() if sim.number],
+            }
+            for op in OperatorProfile.objects.prefetch_related("sim_cards").order_by(
+                "full_name", "user_name"
+            )
+        ]
+        try:
+            raw_users = providers.bitrix24_users(integration.config)
+        except providers.ProviderError as exc:
+            text = str(exc)
+            if "insufficient_scope" not in text.lower():
+                logger.warning("bitrix24 user.get failed for company %s: %s", self.company.pk, text)
+            error = (
+                B24_SCOPE_ERROR
+                if "insufficient_scope" in text.lower() or "access_denied" in text.lower()
+                else f"Bitrix24: {text[:300]}"
+            )
+            return Response({"success": False, "error": error, "operators": operators})
+        # Only rows that look like Bitrix24 users, only parsed scalar fields.
+        raw_users = [user for user in raw_users if _b24_user_id(user)]
+        users = [
+            {
+                "id": _b24_user_id(user),
+                "name": " ".join(
+                    p for p in (_b24_text(user, "NAME"), _b24_text(user, "LAST_NAME")) if p
+                )
+                or _b24_text(user, "EMAIL"),
+                "email": _b24_text(user, "EMAIL"),
+                "phone": next(
+                    (p for f in B24_PHONE_FIELDS if (p := _b24_text(user, f))),
+                    "",
+                ),
+                "position": _b24_text(user, "WORK_POSITION"),
+            }
+            for user in raw_users
+        ]
+        return Response(
+            {
+                "success": True,
+                "users": users,
+                "operators": operators,
+                "suggestions": b24_suggestions(operators, raw_users, self.company.phone_code),
+            }
+        )
