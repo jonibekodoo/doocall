@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from apps.accounts.models import OperatorProfile, User
 from apps.api.errors import ApiError, ErrorCode
 from apps.companies.models import Company
+from apps.core import netguard
 from apps.core.models import AuditLog
 from apps.core.phone import normalize_phone
 from apps.web.permissions import AdminCabinetView, CabinetView
@@ -34,6 +35,9 @@ DELIVERIES_PAGE = 50
 KOTIB_PENDING_TTL = timedelta(minutes=5)
 
 PROVIDERS = tuple(CrmIntegration.Provider.values)
+
+# Customer-typed outbound address per provider (Kotib's base URL is ours).
+URL_FIELDS = {"bitrix24": "webhook_url", "amocrm": "base_url", "odoo": "url"}
 
 # Non-secret defaults shown in an empty form.
 CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
@@ -193,6 +197,15 @@ class IntegrationDetailView(AdminCabinetView):
             provider, dict(request.data.get("config") or {}), existing, self.company
         )
         is_enabled = bool(request.data.get("is_enabled", integration.is_enabled if integration else False))
+        # SSRF guard: the CRM address must be a public https host (checked
+        # again right before every request).
+        if url := str(config.get(URL_FIELDS.get(provider, "")) or "").strip():
+            try:
+                netguard.check_url(url)
+            except netguard.UnsafeURL as exc:
+                raise ApiError(
+                    ErrorCode.MISSING_FIELD, f"CRM manzili rad etildi: {exc}", 400
+                ) from None
         if is_enabled:
             try:
                 providers.validate_config(provider, config)
@@ -579,6 +592,20 @@ def b24_suggestions(
     return suggestions
 
 
+def _b24_user_id(user: dict[str, Any]) -> str:
+    value = user.get("ID")
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        return ""
+    return str(value) if re.fullmatch(r"[1-9][0-9]{0,9}", str(value)) else ""
+
+
+def _b24_text(user: dict[str, Any], field: str) -> str:
+    value = user.get(field)
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        return ""
+    return providers.safe_text(value)
+
+
 class Bitrix24UsersView(AdminCabinetView):
     @extend_schema(summary="Bitrix24 users + DooCall operators + mapping suggestions")
     def get(self, request: Request) -> Response:
@@ -610,22 +637,23 @@ class Bitrix24UsersView(AdminCabinetView):
                 else f"Bitrix24: {text[:300]}"
             )
             return Response({"success": False, "error": error, "operators": operators})
+        # Only rows that look like Bitrix24 users, only parsed scalar fields.
+        raw_users = [user for user in raw_users if _b24_user_id(user)]
         users = [
             {
-                "id": str(user.get("ID") or ""),
+                "id": _b24_user_id(user),
                 "name": " ".join(
-                    str(user[f]).strip() for f in ("NAME", "LAST_NAME") if user.get(f)
+                    p for p in (_b24_text(user, "NAME"), _b24_text(user, "LAST_NAME")) if p
                 )
-                or str(user.get("EMAIL") or ""),
-                "email": str(user.get("EMAIL") or ""),
+                or _b24_text(user, "EMAIL"),
+                "email": _b24_text(user, "EMAIL"),
                 "phone": next(
-                    (str(user[f]) for f in B24_PHONE_FIELDS if user.get(f)),
+                    (p for f in B24_PHONE_FIELDS if (p := _b24_text(user, f))),
                     "",
                 ),
-                "position": str(user.get("WORK_POSITION") or ""),
+                "position": _b24_text(user, "WORK_POSITION"),
             }
             for user in raw_users
-            if user.get("ID")
         ]
         return Response(
             {
