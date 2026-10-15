@@ -43,7 +43,18 @@ URL_FIELDS = {"bitrix24": "webhook_url", "amocrm": "base_url", "odoo": "url"}
 CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
     "amocrm": ("base_url", "access_token", "responsible_user_id", "region"),
     # user_map: {"<OperatorProfile id>": "<Bitrix24 user id>"}; user_id = fallback.
-    "bitrix24": ("webhook_url", "user_id", "account", "region", "user_map"),
+    # + moizvonki-style card options (providers.B24_DEFAULTS).
+    "bitrix24": (
+        "webhook_url",
+        "user_id",
+        "account",
+        "region",
+        "user_map",
+        "save_external_calls",
+        "create_card",
+        "lead_source",
+        "only_answered",
+    ),
     "odoo": ("url", "db", "login", "api_key"),
     # webhook_url / webhook_secret are stored too but NEVER leave the server.
     "kotib": (
@@ -72,6 +83,12 @@ def _body(integration: CrmIntegration | None, provider: str) -> dict[str, Any]:
     }
     if "user_map" in shown:
         shown["user_map"] = dict(config.get("user_map") or {})
+    if provider == CrmIntegration.Provider.BITRIX24:
+        shown.update(providers.b24_options(config))
+        # Detected portal mode: "classic" (with leads) | "simple" (no leads) | "".
+        shown["crm_mode"] = config.get("crm_mode") or ""
+        shown["crm_mode_checked_at"] = config.get("crm_mode_checked_at")
+        shown["crm_mode_assumed"] = bool(config.get("crm_mode_assumed"))
     if provider == CrmIntegration.Provider.KOTIB:
         shown.update(_kotib_analysis_fields(integration))
     return {
@@ -141,6 +158,39 @@ def _clean_user_map(raw: Any, company: Company) -> dict[str, str]:
     return cleaned
 
 
+# True/False also match the ints 1/0.
+_TRUE = {True, "1", "true", "yes", "on"}
+_FALSE = {False, "0", "false", "no", "off"}
+
+
+def _clean_b24_option(field: str, raw: Any) -> Any:
+    """Validate one Bitrix24 card option (400 on a bad value)."""
+    default = providers.B24_DEFAULTS[field]
+    if isinstance(default, bool):
+        value = raw.strip().lower() if isinstance(raw, str) else raw
+        if not isinstance(value, bool | int | str):
+            raise ApiError(ErrorCode.MISSING_FIELD, f"{field} must be true or false", 400)
+        if value in _TRUE:
+            return True
+        if value in _FALSE:
+            return False
+        raise ApiError(ErrorCode.MISSING_FIELD, f"{field} must be true or false", 400)
+    value = str(raw if raw is not None else "").strip()
+    if field == "create_card":
+        value = value.lower() or default
+        if value not in providers.B24_CARD_MODES:
+            modes = ", ".join(providers.B24_CARD_MODES)
+            raise ApiError(ErrorCode.MISSING_FIELD, f"create_card must be one of: {modes}", 400)
+        return value
+    # lead_source: a Bitrix24 SOURCE status id (CALL, WEB, UC_ABC123, …).
+    value = value.upper() or default
+    if not re.fullmatch(r"[A-Z0-9_]{1,50}", value):
+        raise ApiError(
+            ErrorCode.MISSING_FIELD, "lead_source must be a Bitrix24 source id (A-Z, 0-9, _)", 400
+        )
+    return value
+
+
 def _merge_config(
     provider: str,
     incoming: dict[str, Any],
@@ -157,6 +207,9 @@ def _merge_config(
             if company is None:  # pragma: no cover - always passed by the view
                 raise ValueError("company required to validate user_map")
             merged[field] = _clean_user_map(incoming[field], company)
+            continue
+        if provider == CrmIntegration.Provider.BITRIX24 and field in providers.B24_DEFAULTS:
+            merged[field] = _clean_b24_option(field, incoming[field])
             continue
         value = str(incoming.get(field) or "").strip()
         if field in secrets and ("…" in value or value == "•••"):
@@ -211,6 +264,9 @@ class IntegrationDetailView(AdminCabinetView):
                 providers.validate_config(provider, config)
             except providers.ProviderError as exc:
                 raise ApiError(ErrorCode.MISSING_FIELD, str(exc), 400) from None
+            if provider == CrmIntegration.Provider.BITRIX24:
+                # Fresh portal mode (leads / simple CRM) on every save.
+                providers.b24_refresh_mode(config, force=True)
         if integration is None:
             integration = CrmIntegration.all_objects.create(
                 company=self.company, provider=provider, config=config, is_enabled=is_enabled
@@ -477,7 +533,11 @@ class IntegrationTestView(AdminCabinetView):
             return Response({"success": False, "error": str(exc)[:500]}, status=502)
         integration.last_status = "ok"
         integration.last_error = ""
-        integration.save(update_fields=["last_status", "last_error"])
+        update_fields = ["last_status", "last_error"]
+        if provider == CrmIntegration.Provider.BITRIX24:
+            providers.b24_refresh_mode(integration.config, force=True)
+            update_fields.append("config")
+        integration.save(update_fields=update_fields)
         return Response({"success": True, "detail": detail})
 
 

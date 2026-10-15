@@ -371,6 +371,10 @@ class TestBitrix24Adapter:
         seen: list[tuple[str, Any]] = []
 
         def fake_http(url: str, payload: Any = None, *, headers: Any = None, method: Any = None):
+            if url.endswith("searchCrmEntities.json"):
+                return {"result": []}  # unknown number (card options: test_bitrix24_cards)
+            if url.endswith("crm.settings.mode.get.json"):
+                return {"result": 1}  # classic portal (with leads)
             seen.append((url, payload))
             result = results[len(seen) - 1]
             if isinstance(result, Exception):

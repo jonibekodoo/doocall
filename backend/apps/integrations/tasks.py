@@ -33,9 +33,17 @@ def deliver(
     delivery to the others. Kotib's 410 (switched off on their side)
     disables the integration so we stop posting to a dead URL."""
     update_fields = ["last_status", "last_error", "last_delivery_at"]
+    config_before = dict(integration.config)
+    note = ""
     try:
-        providers.send_call(integration.provider, integration.config, record, record_url)
-        status, error = CrmDelivery.Status.OK, ""
+        # Senders may refresh cache keys in the config (Bitrix24 CRM mode).
+        note = (
+            providers.send_call(integration.provider, integration.config, record, record_url) or ""
+        )
+        status, error = CrmDelivery.Status.OK, note[:500]
+    except providers.CallSkipped as exc:
+        # The integration's own options exclude this call — not a failure.
+        status, error = CrmDelivery.Status.OK, f"skipped: {exc}"[:500]
     except providers.KotibGone:
         status, error = CrmDelivery.Status.ERROR, providers.KOTIB_GONE_ERROR
         integration.is_enabled = False
@@ -52,8 +60,11 @@ def deliver(
             record.pk,
             exc,
         )
+    if integration.config != config_before and "config" not in update_fields:
+        update_fields.append("config")
     integration.last_status = status
-    integration.last_error = error
+    # Errors, or a success warning (note) — never the "skipped" marker.
+    integration.last_error = error if status == CrmDelivery.Status.ERROR else note[:500]
     integration.last_delivery_at = timezone.now()
     integration.save(update_fields=update_fields)
     return CrmDelivery.all_objects.create(

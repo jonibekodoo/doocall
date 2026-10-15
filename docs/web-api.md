@@ -89,6 +89,66 @@ Sending: `USER_ID` (register and finish) = `user_map[operator id]`, else
 is registered once more under the fallback user — the delivery counts as
 successful and a warning is logged.
 
+### Bitrix24: calls made outside Bitrix24 and CRM cards (moizvonki-style)
+
+Extra `config` keys of the `bitrix24` integration (non-secret; GET always
+returns them, with these defaults for rows saved before they existed):
+
+| Key | Type / values | Default | Meaning |
+|---|---|---|---|
+| `save_external_calls` | bool (`true`/`false`, also `"1"`/`"0"`, `"yes"`/`"no"`) | `true` | `false` → a call whose number is **not** already in the Bitrix24 CRM is not sent at all (only calls of existing CRM entities are logged) |
+| `create_card` | `"auto"` \| `"lead"` \| `"contact"` \| `"deal"` \| `"none"` | `"auto"` | card for an unknown number (see below) |
+| `lead_source` | Bitrix24 SOURCE id: `A-Z 0-9 _`, ≤ 50 (upper-cased) | `"CALL"` | `CRM_SOURCE` of the lead / `SOURCE_ID` of a created contact or deal |
+| `only_answered` | bool | `false` | `true` → missed calls are not sent |
+
+Invalid values → `400 {message}` naming the key.
+
+Read-only (GET): `crm_mode` — the portal's CRM mode detected via
+`crm.settings.mode.get` (1 → `"classic"`, with leads; 2 → `"simple"`, without
+leads; `""` = not detected yet), `crm_mode_checked_at` (ISO or null) and
+`crm_mode_assumed` (true when detection failed, e.g. no crm scope, and
+`"simple"` was assumed so no lead is ever created). Detected on save (when
+enabled) and on *test*, cached and refreshed every 24 h (1 h when assumed).
+
+Per call: the number is first looked up with
+`telephony.externalcall.searchCrmEntities`.
+- **Known number** (any entity): the call is registered bound to that entity
+  (`CRM_CREATE=0`, `CRM_ENTITY_TYPE`/`CRM_ENTITY_ID`) — never a duplicate.
+- **Unknown number**, `create_card`:
+  - `auto` (default) — classic portal → as `lead`; simple-CRM portal → as
+    `deal` (contact + deal). Never a lead on a portal without leads.
+  - `lead` — `CRM_CREATE=1` + `CRM_SOURCE`; Bitrix24 creates the card itself.
+    On a simple-CRM portal no lead is created: a contact is made instead and
+    the delivery row / `last_error` carry the note "Bitrix24 portal lidlarsiz
+    (oddiy CRM) — lid o'rniga kontakt yaratildi; …" (status stays ok).
+  - `contact` — `crm.contact.add` (NAME = contact/caller name or the number,
+    PHONE WORK, ASSIGNED_BY_ID, SOURCE_ID), call bound to that contact.
+  - `deal` — the contact as above + `crm.deal.add` (TITLE `DooCall: <phone>`,
+    CONTACT_ID, ASSIGNED_BY_ID, SOURCE_ID); the call binds to the contact, the
+    deal links through it.
+  - `none` — `CRM_CREATE=0`: the call stays in Bitrix24 telephony statistics,
+    no card.
+- Responsible user (`USER_ID`, `ASSIGNED_BY_ID`) = the operator's `user_map`
+  entry, else `user_id`, else 1.
+- Skipped calls (`save_external_calls=false` + unknown number, or
+  `only_answered` + missed) get a delivery row `status: "ok"` with
+  `error: "skipped: <reason>"`; the integration's health stays ok.
+- Retries: `EXTERNAL_CALL_ID` dedup as before; a retry finds the contact an
+  earlier attempt created and binds to it (no second contact/deal). If a
+  `deal`-mode attempt created the contact but failed before the deal, the
+  retry binds to the contact without creating the deal.
+
+Webhook scopes: **telephony** + **crm** (required); **user** only for
+`GET …/bitrix24/users`.
+
+**Leads vs. simple CRM (help text):** Bitrix24 portals work in one of two CRM
+modes. *Classic* portals use leads: every new inquiry starts as a lead. In
+*simple CRM* (leads switched off), inquiries go straight to a deal plus a
+contact. With "Avto" DooCall detects the mode and creates a lead on classic
+portals and a contact + deal on portals without leads — it never creates a
+lead on a portal without leads. Pick `contact` or `deal` for the same card
+on every portal, or `none` to keep only the call in telephony statistics.
+
 ## AI analyses (Kotib Analytics results)
 
 Kotib pushes one `analysis.completed` message per analysed call to the
