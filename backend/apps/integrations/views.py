@@ -8,6 +8,7 @@ from datetime import timedelta
 from secrets import token_hex
 from typing import Any, cast
 
+from django.db.models import Count, Max
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
@@ -18,8 +19,8 @@ from apps.api.errors import ApiError, ErrorCode
 from apps.core.models import AuditLog
 from apps.web.permissions import AdminCabinetView, CabinetView
 
-from . import providers
-from .models import CrmCatalogEntry, CrmDelivery, CrmIntegration
+from . import kotib_analysis, providers
+from .models import CallAnalysis, CrmCatalogEntry, CrmDelivery, CrmIntegration
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ def _body(integration: CrmIntegration | None, provider: str) -> dict[str, Any]:
         field: (_mask(config.get(field, "")) if field in secrets else config.get(field, ""))
         for field in CONFIG_FIELDS[provider]
     }
+    if provider == CrmIntegration.Provider.KOTIB:
+        shown.update(_kotib_analysis_fields(integration))
     return {
         "provider": provider,
         "is_enabled": bool(integration and integration.is_enabled),
@@ -71,6 +74,27 @@ def _body(integration: CrmIntegration | None, provider: str) -> dict[str, Any]:
         "last_delivery_at": integration.last_delivery_at.isoformat()
         if integration and integration.last_delivery_at
         else None,
+    }
+
+
+def _kotib_analysis_fields(integration: CrmIntegration | None) -> dict[str, Any]:
+    """Inbound AI-analysis webhook settings shown on the Kotib card. The URL
+    (with its token) is meant for the admin to hand to Kotib; the secret is
+    masked like every other secret."""
+    config = integration.config if integration else {}
+    token = str(config.get("analysis_token") or "")
+    stats: dict[str, Any] = {"n": 0, "last": None}
+    if integration is not None:
+        stats = CallAnalysis.all_objects.filter(company_id=integration.company_id).aggregate(
+            n=Count("id"), last=Max("updated_at")
+        )
+    return {
+        "analysis_webhook_url": kotib_analysis.webhook_url(integration.company, token)
+        if integration is not None and token
+        else "",
+        "analysis_secret": _mask(str(config.get("analysis_secret") or "")),
+        "analysis_last_received_at": stats["last"].isoformat() if stats["last"] else None,
+        "analysis_count": stats["n"],
     }
 
 
@@ -92,6 +116,9 @@ class IntegrationsView(AdminCabinetView):
     @extend_schema(summary="All CRM integrations (secrets masked)")
     def get(self, request: Request) -> Response:
         rows = {i.provider: i for i in CrmIntegration.objects.all()}
+        kotib = rows.get(CrmIntegration.Provider.KOTIB)
+        if kotib is not None and kotib.is_enabled:
+            kotib_analysis.ensure_token(kotib)  # rows connected before the AI webhook
         return Response(
             {
                 "success": True,
@@ -197,6 +224,13 @@ class IntegrationDetailView(AdminCabinetView):
             "webhook_url": result["webhook_url"],
             "webhook_secret": webhook_secret,
             "doocall_api_key": doocall_api_key,
+            # Inbound AI-analysis webhook: kept across re-saves.
+            "analysis_token": existing.get("analysis_token") or kotib_analysis.new_token(),
+            **(
+                {"analysis_secret": existing["analysis_secret"]}
+                if existing.get("analysis_secret")
+                else {}
+            ),
             "user_name": user_name,
             "company_name": result["company"],
             # null = Kotib could not list operators yet (connection still saved).
@@ -381,3 +415,54 @@ class IntegrationTestView(AdminCabinetView):
         integration.last_error = ""
         integration.save(update_fields=["last_status", "last_error"])
         return Response({"success": True, "detail": detail})
+
+
+def _connected_kotib() -> CrmIntegration:
+    integration = CrmIntegration.objects.filter(provider=CrmIntegration.Provider.KOTIB).first()
+    if integration is None or not integration.is_enabled or not integration.config:
+        raise ApiError(ErrorCode.MISSING_FIELD, "Kotib is not connected", 400)
+    connected: CrmIntegration = integration
+    return connected
+
+
+class KotibAnalysisSecretView(AdminCabinetView):
+    @extend_schema(summary="Save/replace the secret Kotib signs analysis webhooks with")
+    def put(self, request: Request) -> Response:
+        """Stored only on our side (Kotib connect is NOT called). Once set,
+        unsigned or wrongly signed analysis messages are rejected (401)."""
+        integration = _connected_kotib()
+        secret = str(request.data.get("secret") or "").strip()
+        if "…" in secret or secret == "•••":
+            return Response({"success": True, "integration": _body(integration, "kotib")})
+        if not secret or len(secret) > 256:
+            raise ApiError(ErrorCode.MISSING_FIELD, "secret must be 1–256 characters", 400)
+        kotib_analysis.ensure_token(integration)
+        integration.config = {**integration.config, "analysis_secret": secret}
+        integration.save(update_fields=["config", "updated_at"])
+        AuditLog.objects.create(
+            company=self.company,
+            actor=cast(User, request.user),
+            action="settings.kotib_analysis_secret_saved",
+            target_model="integrations.CrmIntegration",
+            target_id=str(integration.pk),
+        )
+        return Response({"success": True, "integration": _body(integration, "kotib")})
+
+
+class KotibAnalysisRotateView(AdminCabinetView):
+    @extend_schema(summary="New analysis webhook URL (old one stops working at once)")
+    def post(self, request: Request) -> Response:
+        integration = _connected_kotib()
+        integration.config = {
+            **integration.config,
+            "analysis_token": kotib_analysis.new_token(),
+        }
+        integration.save(update_fields=["config", "updated_at"])
+        AuditLog.objects.create(
+            company=self.company,
+            actor=cast(User, request.user),
+            action="settings.kotib_analysis_url_rotated",
+            target_model="integrations.CrmIntegration",
+            target_id=str(integration.pk),
+        )
+        return Response({"success": True, "integration": _body(integration, "kotib")})

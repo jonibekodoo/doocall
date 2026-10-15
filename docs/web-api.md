@@ -72,6 +72,66 @@ POST (after DB commit): JSON body `{event: "call.received", call_id,
 server_id, …}` with header **`X-Doocall-Signature`** =
 HMAC-SHA256(webhook_secret, raw body). 3 retries with backoff.
 
+## AI analyses (Kotib Analytics results)
+
+Kotib pushes one `analysis.completed` message per analysed call to the
+company's secret URL; the cabinet reads the stored results.
+
+### Inbound webhook — `POST /api/public/kotib/analysis/<token>` (no auth)
+
+- URL: `https://<slug>.<DOMAIN_ROOT>/api/public/kotib/analysis/<token>` —
+  token is per company (`secrets.token_urlsafe(32)`), created on Kotib
+  connect (or lazily when the integrations list is opened), kept across
+  re-saves, replaced by *rotate*, wiped by disconnect.
+- Signature: once the admin saved the secret Kotib gave them, header
+  `X-Kotib-Signature` is required. **Assumption** (Kotib does not name the
+  algorithm): hex HMAC-SHA256 of the raw body with that secret, optional
+  `sha256=` prefix, case-insensitive, constant-time compare. Before a secret
+  is saved, messages are accepted on the token alone and stored with
+  `signature_verified: false`.
+- Responses: `200 {success, status: "stored", matched}` ·
+  `200 {status: "ignored"}` for other events · `400` malformed (bad JSON,
+  `audio_data_id` not a number, dates without offset) · `401` bad/missing
+  signature · `404` unknown token (or a company subdomain that is not the
+  token's company) · `410` Kotib integration disabled · `413` body > 2 MB.
+- Storage (`integrations.CallAnalysis`): one row per (company,
+  `audio_data_id`) — re-sends overwrite it (latest wins).
+  `prompt_scores[].comment` is sanitized with nh3 (structural tags only:
+  div p br b strong i em u ul ol li span table thead tbody tr td th h4 h5
+  small; no attributes, links, images or styles). `audio_file_url` is NOT
+  stored (it needs the Kotib key). `client_data.phone_number` is normalized
+  with the company `phone_code`. `has_violation` = any `is_violation`
+  criterion with a score < 0.
+- Matching to our call: same company, `counterparty_number` == normalized
+  client phone and |start − Kotib start| ≤ 120 s, nearest wins; when Kotib
+  sends start == end, the call's start + duration is compared with the end.
+  Unmatched rows keep `call: null` and are matched again on a re-send.
+
+### Cabinet endpoints
+
+Scoping: tenant-scoped; a non-admin cabinet user who is an operator sees
+only analyses matched to their own calls (unmatched analyses are hidden from
+them).
+
+| Endpoint | Notes |
+|---|---|
+| `GET /ai/status` | `{success, kotib_connected, has_analyses, is_admin}` |
+| `GET /ai/analyses` | `?date_from&date_to` (YYYY-MM-DD, company TZ, on the analysis start) `&employees=1,2&min_score&max_score&violations=1&search=<phone>&page` (30/page) → `{success, count, pages, page, summary: {count, avg_score (1 decimal, null if none), violations}, analyses: [row]}`; row = `{id, call_id (our call id or null), start_time, operator: {id, full_name} \| null, phone, final_score, summary, has_violation}`, newest first |
+| `GET /ai/analyses/<id>` | `{success, analysis: {<row>, end_time, conversation_text, prompt_scores: [{key, name, score, comment_html, is_violation}], client_data: {phone_number, summary, answers: [{key, name, value}]}, call: {id, duration, direction, has_audio} \| null, signature_verified, received_at}}`; 404 when not visible |
+| `GET /calls`, `GET /calls/<id>` | each call additionally has `ai: {analysis_id, final_score} \| null` (latest analysis) |
+
+### Kotib card settings (company admin)
+
+| Endpoint | Notes |
+|---|---|
+| `GET /settings/integrations` | the `kotib` row's `config` additionally has `analysis_webhook_url` ("" until a token exists), `analysis_secret` (masked or ""), `analysis_last_received_at` (ISO or null), `analysis_count` |
+| `PUT /settings/integrations/kotib/analysis` | `{secret}` (1–256 chars; masked echo = unchanged) — stored only on our side, Kotib connect is not called → `{success, integration}`; 400 when Kotib isn't connected |
+| `POST /settings/integrations/kotib/analysis/rotate` | new token → new URL, old URL 404 at once → `{success, integration}` |
+
+Disconnecting Kotib wipes the token and secret (the URL then answers 404)
+but keeps every stored analysis. The token, secret and transcripts are
+never logged; audit rows carry no secrets.
+
 ---
 
 # Phase 10 additions — three-portal architecture

@@ -15,6 +15,7 @@ from apps.api import storage
 from apps.api.errors import ApiError, ErrorCode
 from apps.calls.models import CallRecord
 from apps.core.phone import company_phone_code, normalize_phone
+from apps.integrations.kotib_analysis import ai_marks
 
 from .models import DEFAULT_CALL_COLUMNS, CallColumnPreference, ExportJob
 from .permissions import CabinetView
@@ -91,10 +92,9 @@ class CallsListView(CabinetView):
         total = qs.count()
         pages = max(1, -(-total // PAGE_SIZE))
         offset = (page - 1) * PAGE_SIZE
-        rows = [
-            call_row(r)
-            for r in qs.prefetch_related("crm_deliveries")[offset : offset + PAGE_SIZE]
-        ]
+        records = list(qs.prefetch_related("crm_deliveries")[offset : offset + PAGE_SIZE])
+        marks = ai_marks([r.pk for r in records])
+        rows = [{**call_row(r), "ai": marks.get(r.pk)} for r in records]
 
         return Response(
             {
@@ -138,6 +138,8 @@ class CallDetailView(CabinetView):
                 "longitude": record.longitude,
                 "address": record.address,
                 "audios": audios,
+                # Latest Kotib AI analysis of this call, if any.
+                "ai": ai_marks([record.pk]).get(record.pk),
             }
         )
         return Response({"success": True, "call": body})
