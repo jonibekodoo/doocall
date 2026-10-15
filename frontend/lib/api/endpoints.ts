@@ -501,6 +501,32 @@ export interface CrmIntegrationRow {
   last_delivery_at: string | null;
 }
 
+/** Bitrix24 users + our operators for the operator → USER_ID mapping.
+ * success:false (with ``error``) when the webhook lacks the "user" scope —
+ * operators still come back so IDs can be typed in by hand. */
+export interface Bitrix24User {
+  id: string | number;
+  name: string;
+  email: string;
+  phone: string;
+  position: string;
+}
+export interface Bitrix24Operator {
+  id: number;
+  full_name: string;
+  user_name: string;
+  phones: string[] | string;
+}
+export interface Bitrix24UsersResponse {
+  success: boolean;
+  error?: string;
+  users?: Bitrix24User[];
+  operators: Bitrix24Operator[];
+  suggestions?: Record<string, string>;
+}
+export const fetchBitrix24Users = () =>
+  get<Bitrix24UsersResponse>("/settings/integrations/bitrix24/users");
+
 /** Kotib AI results webhook (connected Kotib only). */
 export const saveKotibAnalysisSecret = (secret: string) =>
   put<{ success: boolean }>("/settings/integrations/kotib/analysis", { secret });
@@ -514,7 +540,7 @@ export const fetchIntegrations = () =>
 
 export const saveIntegration = (
   provider: string,
-  body: { is_enabled: boolean; config: Record<string, string> },
+  body: { is_enabled: boolean; config: Record<string, unknown> },
 ) =>
   put<{ success: boolean; integration: CrmIntegrationRow }>(
     `/settings/integrations/${provider}`,

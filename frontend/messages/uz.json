@@ -370,7 +370,20 @@
       "regionOther": "bitrix24.ua, bitrix24.com va boshqa regionlar",
       "account": "Bitrix24 akkaunt manzili",
       "webhookUrl": "Kiruvchi vebhuk URL",
-      "userId": "Qo'ng'iroqlar uchun Bitrix24 foydalanuvchi ID (odatda 1)"
+      "userId": "Standart Bitrix24 foydalanuvchi ID — moslanmagan operatorlar uchun (odatda 1)",
+      "mapTitle": "Operatorlarni Bitrix24 foydalanuvchilariga moslash",
+      "mapHint": "Har bir operatorning qo'ng'iroqlari tanlangan Bitrix24 foydalanuvchisiga yoziladi; tanlanmaganlar standart ID'ga tushadi. Ro'yxat «Ulash» tugmasi bilan birga saqlanadi.",
+      "colOperator": "Operator",
+      "colBitrixUser": "Bitrix24 foydalanuvchisi",
+      "defaultOption": "— Standart —",
+      "usesDefault": "standart ID: {id}",
+      "autoMatch": "Avtomatik moslash",
+      "autoMatched": "Moslandi: {count} ta operator",
+      "autoMatchedNone": "Avtomatik moslash uchun yangi operator topilmadi",
+      "usersError": "Bitrix24 foydalanuvchilarini yuklab bo'lmadi: {error}. Foydalanuvchi ID'larini qo'lda kiriting (yoki vebhukka «user» huquqini qo'shing).",
+      "manualPlaceholder": "Bitrix24 ID",
+      "noOperators": "Operatorlar hali yo'q",
+      "unknownUser": "ID {id} (ro'yxatda yo'q)"
     },
     "odoo": {
       "info": "1) Quyidagi tugma orqali DooCall Odoo 19 ilovasini yuklab olib, addons papkasiga chiqarib o'rnating (Apps → DooCall). 2) Odoo'da administrator huquqli foydalanuvchi uchun API kalit yarating (yozuvlar faqat shu foydalanuvchi orqali yoziladi, qolganlar uchun read-only) (Preferences → Account Security → API Keys) va quyidagi maydonlarni to'ldiring. Ilova o'rnatilgach har bir qo'ng'iroq kontakt/lid ichida audio player bilan ko'rinadi; ilovasiz — faqat chatter yozuvi.",
