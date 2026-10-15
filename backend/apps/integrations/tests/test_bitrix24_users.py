@@ -54,10 +54,22 @@ class FakeBitrix:
         method = url.rsplit("/", 1)[-1].removesuffix(".json")
         self.calls.append((method, payload))
         self.urls.append(url)
-        body = self.bodies[method].pop(0)
+        queue = self.bodies.get(method)
+        if queue:
+            body = queue.pop(0)
+        elif method == "crm.settings.mode.get":
+            body = {"result": 1}  # classic portal (with leads)
+        else:
+            body = {"result": []}  # e.g. CRM search: unknown number
         if isinstance(body, Exception):
             raise body
         return body
+
+    @property
+    def sends(self) -> list[tuple[str, Any]]:
+        """Calls other than the CRM lookup (register/finish/…)."""
+        lookups = ("telephony.externalcall.searchCrmEntities", "crm.settings.mode.get")
+        return [c for c in self.calls if c[0] not in lookups]
 
 
 def _install(monkeypatch: pytest.MonkeyPatch, **bodies: list[Any]) -> FakeBitrix:
@@ -150,10 +162,12 @@ class TestSenderUser:
         config = self._config(operator, user_map={str(operator.pk): "21"})
         providers.send_call("bitrix24", config, call, None)
         assert [m for m, _ in fake.calls] == [
+            "telephony.externalcall.searchCrmEntities",
+            "crm.settings.mode.get",
             "telephony.externalcall.register",
             "telephony.externalcall.finish",
         ]
-        assert fake.calls[0][1]["USER_ID"] == 21 and fake.calls[1][1]["USER_ID"] == 21
+        assert fake.sends[0][1]["USER_ID"] == 21 and fake.sends[1][1]["USER_ID"] == 21
 
     def test_unmapped_operator_uses_fallback(
         self, call: CallRecord, operator: OperatorProfile, monkeypatch: pytest.MonkeyPatch
@@ -166,7 +180,7 @@ class TestSenderUser:
         providers.send_call(
             "bitrix24", self._config(operator, user_map={"99999": "21"}), call, None
         )
-        assert fake.calls[0][1]["USER_ID"] == 7 and fake.calls[1][1]["USER_ID"] == 7
+        assert fake.sends[0][1]["USER_ID"] == 7 and fake.sends[1][1]["USER_ID"] == 7
 
     def test_no_user_id_defaults_to_1(
         self, call: CallRecord, operator: OperatorProfile, monkeypatch: pytest.MonkeyPatch
@@ -177,7 +191,7 @@ class TestSenderUser:
             telephony_externalcall_finish=[{"result": True}],
         )
         providers.send_call("bitrix24", {"webhook_url": HOOK}, call, None)
-        assert fake.calls[0][1]["USER_ID"] == 1
+        assert fake.sends[0][1]["USER_ID"] == 1
 
     def test_rejected_mapped_user_falls_back_once(
         self,
@@ -196,7 +210,7 @@ class TestSenderUser:
         )
         config = self._config(operator, user_map={str(operator.pk): "21"})
         providers.send_call("bitrix24", config, call, None)  # no exception
-        users = [p["USER_ID"] for _, p in fake.calls]
+        users = [p["USER_ID"] for _, p in fake.sends]
         assert users == [21, 7, 7]
         assert "mapped user 21 rejected" in caplog.text
         assert "secrettok" not in caplog.text

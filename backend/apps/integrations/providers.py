@@ -18,9 +18,13 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.calls.models import CallRecord
 from apps.core import netguard
@@ -53,6 +57,11 @@ SECRET_FIELDS: dict[str, tuple[str, ...]] = {
 
 class ProviderError(Exception):
     """Delivery/validation failure surfaced to the cabinet UI and status row."""
+
+
+class CallSkipped(Exception):
+    """The integration's own options say this call must not be sent (not a
+    failure): recorded as an ok delivery with a "skipped" note."""
 
 
 class KotibGone(ProviderError):
@@ -260,7 +269,9 @@ def _b24_call(config: dict[str, Any], method: str, params: dict[str, Any]) -> An
 
 def _bitrix24_test(config: dict[str, Any]) -> str:
     result = _b24_call(config, "profile", {})
-    return str(result.get("NAME") or result.get("ID") or "ok")
+    if not isinstance(result, dict):
+        return "ok"
+    return safe_text(result.get("NAME") or result.get("ID") or "ok")
 
 
 def _b24_attach_recording(
@@ -352,7 +363,135 @@ def bitrix24_users(config: dict[str, Any]) -> list[dict[str, Any]]:
     return users[:B24_USERS_CAP]
 
 
-def _b24_register(config: dict[str, Any], record: CallRecord, user_id: int) -> dict[str, Any]:
+# Moizvonki-style card options (all non-secret, validated on save).
+B24_CARD_MODES = ("auto", "lead", "contact", "deal", "none")
+B24_DEFAULTS: dict[str, Any] = {
+    "save_external_calls": True,  # False → only calls of numbers already in the CRM
+    # unknown number → auto (lead on classic portals, contact + deal on
+    # simple-CRM portals) | lead | contact | deal | none
+    "create_card": "auto",
+    "lead_source": "CALL",  # CRM_SOURCE / SOURCE_ID (crm.status SOURCE id)
+    "only_answered": False,  # True → missed calls are not sent
+}
+
+
+def b24_options(config: dict[str, Any]) -> dict[str, Any]:
+    """Card options with defaults (rows saved before the options existed)."""
+    options = {**B24_DEFAULTS, **{k: config[k] for k in B24_DEFAULTS if k in config}}
+    if options["create_card"] not in B24_CARD_MODES:
+        options["create_card"] = B24_DEFAULTS["create_card"]
+    return options
+
+
+# crm.settings.mode.get (crm scope): 1 = classic (with leads), 2 = simple
+# ("without leads": inquiries become deals + contacts/companies).
+B24_CRM_MODES = {1: "classic", 2: "simple"}
+B24_MODE_TTL = timedelta(hours=24)
+B24_MODE_RETRY_TTL = timedelta(hours=1)  # after a failed detection
+B24_LEAD_FALLBACK_NOTE = (
+    "Bitrix24 portal lidlarsiz (oddiy CRM) — lid o'rniga kontakt yaratildi; "
+    "sozlamada «avto», «kontakt» yoki «bitim»ni tanlang"
+)
+
+
+def b24_detect_mode(config: dict[str, Any]) -> tuple[str, bool]:
+    """(``"classic"``/``"simple"``, assumed). A failure (e.g. no crm scope)
+    assumes simple — never creating leads is the safe side."""
+    try:
+        value = _int_or_none(_b24_call(config, "crm.settings.mode.get", {}))
+        mode = B24_CRM_MODES.get(value) if value is not None else None
+    except ProviderError as exc:
+        logger.warning("bitrix24 crm.settings.mode.get failed (%s); assuming simple CRM", exc)
+        return "simple", True
+    if mode is None:
+        logger.warning("bitrix24 crm.settings.mode.get: unknown value; assuming simple CRM")
+        return "simple", True
+    return mode, False
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value) if not isinstance(value, bool) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def b24_refresh_mode(config: dict[str, Any], *, force: bool = False) -> str:
+    """Portal CRM mode, cached in ``config`` (crm_mode, crm_mode_checked_at,
+    crm_mode_assumed) — re-detected after 24 h (1 h if it was assumed), or
+    when ``force``. Mutates ``config``; the caller persists it."""
+    checked = parse_datetime(str(config.get("crm_mode_checked_at") or ""))
+    ttl = B24_MODE_RETRY_TTL if config.get("crm_mode_assumed") else B24_MODE_TTL
+    cached = config.get("crm_mode")
+    if not force and cached in ("classic", "simple") and checked and timezone.now() - checked < ttl:
+        return str(cached)
+    mode, assumed = b24_detect_mode(config)
+    config.update(
+        crm_mode=mode,
+        crm_mode_checked_at=timezone.now().isoformat(),
+        crm_mode_assumed=assumed,
+    )
+    return mode
+
+
+def _b24_find_entities(config: dict[str, Any], phone: str) -> list[dict[str, Any]]:
+    """CRM entities that already own ``phone`` (telephony scope)."""
+    found = _b24_call(config, "telephony.externalcall.searchCrmEntities", {"PHONE_NUMBER": phone})
+    return [e for e in found if isinstance(e, dict)] if isinstance(found, list) else []
+
+
+def _b24_new_id(result: Any, method: str) -> int:
+    try:
+        return int(result)
+    except (TypeError, ValueError):
+        raise ProviderError(f"{method}: no id returned") from None
+
+
+def _b24_create_contact(
+    config: dict[str, Any], record: CallRecord, user_id: int, source: str
+) -> int:
+    name = record.resolved_name or record.counterparty_name or record.counterparty_number
+    return _b24_new_id(
+        _b24_call(
+            config,
+            "crm.contact.add",
+            {
+                "fields": {
+                    "NAME": name,
+                    "PHONE": [{"VALUE": record.counterparty_number, "VALUE_TYPE": "WORK"}],
+                    "ASSIGNED_BY_ID": user_id,
+                    "SOURCE_ID": source,
+                    "OPENED": "Y",
+                }
+            },
+        ),
+        "crm.contact.add",
+    )
+
+
+def _b24_create_deal(
+    config: dict[str, Any], record: CallRecord, contact_id: int, user_id: int, source: str
+) -> int:
+    return _b24_new_id(
+        _b24_call(
+            config,
+            "crm.deal.add",
+            {
+                "fields": {
+                    "TITLE": f"DooCall: {record.counterparty_number}",
+                    "CONTACT_ID": contact_id,
+                    "ASSIGNED_BY_ID": user_id,
+                    "SOURCE_ID": source,
+                }
+            },
+        ),
+        "crm.deal.add",
+    )
+
+
+def _b24_register(
+    config: dict[str, Any], record: CallRecord, user_id: int, binding: dict[str, Any]
+) -> dict[str, Any]:
     registered = _b24_call(
         config,
         "telephony.externalcall.register",
@@ -361,12 +500,12 @@ def _b24_register(config: dict[str, Any], record: CallRecord, user_id: int) -> d
             "PHONE_NUMBER": record.counterparty_number,
             "TYPE": 2 if record.call_type == CallRecord.CallType.INBOUND else 1,
             "CALL_START_DATE": record.start_time.isoformat(),
-            # Unknown numbers: Bitrix24 creates the lead/contact itself.
-            "CRM_CREATE": 1,
             "SHOW": 0,
             # Dedup guard: repeated dispatch of the same DooCall record
             # within 30 minutes reuses the registered call.
             "EXTERNAL_CALL_ID": record.server_id.hex,
+            # CRM binding / card creation (see _bitrix24_send).
+            **binding,
         },
     )
     if not (registered or {}).get("CALL_ID"):
@@ -375,12 +514,47 @@ def _b24_register(config: dict[str, Any], record: CallRecord, user_id: int) -> d
     return result
 
 
-def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
+def _bitrix24_send(
+    config: dict[str, Any], record: CallRecord, record_url: str | None
+) -> str | None:
+    """Register + finish the call (+ recording) under the operator's Bitrix24
+    user. Unknown numbers get a card per ``create_card``; numbers already in
+    the CRM are bound to their entity and never duplicated (also on retry —
+    the search runs right before anything is created)."""
+    options = b24_options(config)
+    if options["only_answered"] and record.call_status != CallRecord.CallStatus.ANSWERED:
+        raise CallSkipped("missed call (only_answered)")
     # Per-operator user (user_map) with the integration-wide user as fallback.
     user_id = b24_user_for(config, record.operator_id)
     fallback = b24_fallback_user(config)
+    source = options["lead_source"]
+    note: str | None = None
+
+    entities = _b24_find_entities(config, record.counterparty_number)
+    binding: dict[str, Any]
+    if entities:
+        known = entities[0]
+        binding = {"CRM_CREATE": 0}
+        if known.get("CRM_ENTITY_TYPE") and known.get("CRM_ENTITY_ID"):
+            binding |= {
+                "CRM_ENTITY_TYPE": known["CRM_ENTITY_TYPE"],
+                "CRM_ENTITY_ID": known["CRM_ENTITY_ID"],
+            }
+    elif not options["save_external_calls"]:
+        raise CallSkipped("number not in Bitrix24 CRM (save_external_calls off)")
+    else:
+        card = options["create_card"]
+        if card in ("auto", "lead") and b24_refresh_mode(config) == "simple":
+            # Portals without leads never get one from us.
+            if card == "lead":
+                note = B24_LEAD_FALLBACK_NOTE
+            card = "contact" if card == "lead" else "deal"
+        elif card == "auto":
+            card = "lead"
+        binding = _b24_new_card(config, record, card, user_id, source)
+
     try:
-        registered = _b24_register(config, record, user_id)
+        registered = _b24_register(config, record, user_id, binding)
     except ProviderError as exc:
         if user_id == fallback:
             raise
@@ -393,7 +567,7 @@ def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str |
             fallback,
         )
         user_id = fallback
-        registered = _b24_register(config, record, user_id)
+        registered = _b24_register(config, record, user_id, binding)
     _b24_call(
         config,
         "telephony.externalcall.finish",
@@ -406,6 +580,23 @@ def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str |
     )
     if record_url:
         _b24_attach_recording(config, registered, record, record_url)
+    return note
+
+
+def _b24_new_card(
+    config: dict[str, Any], record: CallRecord, card: str, user_id: int, source: str
+) -> dict[str, Any]:
+    """Register binding for an unknown number (card ∈ lead/contact/deal/none)."""
+    if card == "lead":
+        # Bitrix24 creates the lead itself (classic portals only).
+        return {"CRM_CREATE": 1, "CRM_SOURCE": source}
+    if card == "none":
+        return {"CRM_CREATE": 0}  # kept in telephony stats, no card
+    contact_id = _b24_create_contact(config, record, user_id, source)
+    if card == "deal":
+        _b24_create_deal(config, record, contact_id, user_id, source)
+    # The call activity binds to the contact; the deal links via it.
+    return {"CRM_CREATE": 0, "CRM_ENTITY_TYPE": "CONTACT", "CRM_ENTITY_ID": contact_id}
 
 
 # ── Odoo (JSON-RPC) ────────────────────────────────────────────────────────
@@ -767,7 +958,7 @@ def kotib_wants(record: CallRecord) -> bool:
 
 # ── Dispatch table ─────────────────────────────────────────────────────────
 _TESTS = {"amocrm": _amocrm_test, "bitrix24": _bitrix24_test, "odoo": _odoo_test}
-_SENDERS = {
+_SENDERS: dict[str, Callable[[dict[str, Any], CallRecord, str | None], str | None]] = {
     "amocrm": _amocrm_send,
     "bitrix24": _bitrix24_send,
     "odoo": _odoo_send,
@@ -790,6 +981,12 @@ def test_connection(
     return _TESTS[provider](config)
 
 
-def send_call(provider: str, config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
+def send_call(
+    provider: str, config: dict[str, Any], record: CallRecord, record_url: str | None
+) -> str | None:
+    """Deliver one call. Returns an optional warning note for the delivery
+    row (e.g. a Bitrix24 lead turned into a contact on a simple-CRM portal).
+    A sender may update cache keys in ``config`` (callers persist it)."""
     validate_config(provider, config)
-    _SENDERS[provider](config, record, record_url)
+    note: str | None = _SENDERS[provider](config, record, record_url)
+    return note
