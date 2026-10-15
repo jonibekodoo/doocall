@@ -59,6 +59,13 @@ export interface CallRow {
   has_location: boolean;
   /** Latest delivery outcome per connected CRM (empty when none configured). */
   crm: CrmMark[];
+  /** Kotib AI analysis of this call, when one has arrived. */
+  ai?: CallAiMark | null;
+}
+
+export interface CallAiMark {
+  analysis_id: number;
+  final_score: number;
 }
 
 /** A company about to go offline (partner / sales / admin dashboards). */

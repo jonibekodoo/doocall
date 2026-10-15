@@ -501,6 +501,12 @@ export interface CrmIntegrationRow {
   last_delivery_at: string | null;
 }
 
+/** Kotib AI results webhook (connected Kotib only). */
+export const saveKotibAnalysisSecret = (secret: string) =>
+  put<{ success: boolean }>("/settings/integrations/kotib/analysis", { secret });
+export const rotateKotibAnalysisUrl = () =>
+  post<{ success: boolean }>("/settings/integrations/kotib/analysis/rotate");
+
 export const fetchIntegrations = () =>
   get<{ success: boolean; integrations: CrmIntegrationRow[] }>(
     "/settings/integrations",
@@ -592,3 +598,90 @@ export const fetchLicense = () => get<LicenseInfo>("/settings/license");
 
 export const fetchBillingStatus = () =>
   get<BillingStatusResponse>("/billing/status");
+
+// ── AI analysis (Kotib) ────────────────────────────────────────────────────
+export interface AiStatus extends ApiEnvelope {
+  kotib_connected: boolean;
+  has_analyses: boolean;
+  is_admin: boolean;
+}
+export const fetchAiStatus = () => get<AiStatus>("/ai/status");
+
+export interface AiAnalysisRow {
+  id: number;
+  call_id: number | null;
+  start_time: string;
+  operator: { id: number; full_name: string } | null;
+  phone: string;
+  /** Kotib's final score — usually 0–100, can be negative. */
+  final_score: number;
+  summary: string;
+  has_violation: boolean;
+}
+
+export interface AiAnalysisFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  employees?: number[];
+  minScore?: number;
+  maxScore?: number;
+  violations?: boolean;
+  search?: string;
+  page?: number;
+}
+
+export interface AiAnalysesResponse extends ApiEnvelope {
+  count: number;
+  pages: number;
+  page: number;
+  summary: { count: number; avg_score: number | null; violations: number };
+  analyses: AiAnalysisRow[];
+}
+
+export const buildAiQuery = (filters: AiAnalysisFilters): string => {
+  const query = new URLSearchParams();
+  if (filters.dateFrom) query.set("date_from", filters.dateFrom);
+  if (filters.dateTo) query.set("date_to", filters.dateTo);
+  if (filters.employees?.length) query.set("employees", filters.employees.join(","));
+  if (filters.minScore !== undefined) query.set("min_score", String(filters.minScore));
+  if (filters.maxScore !== undefined) query.set("max_score", String(filters.maxScore));
+  if (filters.violations) query.set("violations", "1");
+  if (filters.search) query.set("search", filters.search);
+  if (filters.page && filters.page > 1) query.set("page", String(filters.page));
+  const text = query.toString();
+  return text ? `?${text}` : "";
+};
+
+export const fetchAiAnalyses = (filters: AiAnalysisFilters) =>
+  get<AiAnalysesResponse>(`/ai/analyses${buildAiQuery(filters)}`);
+
+export interface AiPromptScore {
+  key: string;
+  name: string;
+  score: number | null;
+  /** Sanitised server-side (allowlist) — the only HTML we render. */
+  comment_html: string;
+  is_violation: boolean;
+}
+
+export interface AiAnalysisDetail extends AiAnalysisRow {
+  end_time: string | null;
+  conversation_text: string;
+  prompt_scores: AiPromptScore[];
+  client_data: {
+    phone_number: string;
+    summary: string;
+    answers: { key: string; name: string; value: unknown }[];
+  } | null;
+  call: {
+    id: number;
+    duration: number;
+    direction: "inbound" | "outbound" | "internal";
+    has_audio: boolean;
+  } | null;
+  signature_verified: boolean;
+  received_at: string;
+}
+
+export const fetchAiAnalysis = (id: number) =>
+  get<{ success: boolean; analysis: AiAnalysisDetail }>(`/ai/analyses/${id}`);
