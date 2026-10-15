@@ -71,7 +71,10 @@
     "outbound": "Chiquvchi",
     "crmSent": "CRM'ga yuborildi",
     "crmFailed": "CRM'ga yuborilmadi",
-    "aiScore": "AI tahlil bahosi"
+    "aiScore": "AI tahlil bahosi",
+    "detailTitle": "Qo'ng'iroq",
+    "close": "Yopish",
+    "notFound": "Qo'ng'iroq topilmadi"
   },
   "player": {
     "play": "Tinglash",
@@ -324,7 +327,8 @@
     "yes": "Ha",
     "no": "Yo'q",
     "unsigned": "Imzo tekshirilmagan",
-    "receivedAt": "Qabul qilingan"
+    "receivedAt": "Qabul qilingan",
+    "openCall": "Qo'ng'iroqni ochish"
   },
   "notifications": {
     "title": "Bildirishnomalar",

@@ -4,7 +4,12 @@
  * expandable comments, transcript as chat bubbles, client portrait. */
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ExternalLink,
+  ShieldAlert,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -231,6 +236,13 @@ export default function AiAnalysisDetailPage() {
               <span className="tnum">
                 {formatDuration(analysis.call.duration)}
               </span>
+              <Link
+                href={`/cabinet/calls?call=${analysis.call.id}`}
+                data-testid="ai-open-call"
+                className="ml-2 inline-flex items-center gap-1 font-medium text-accent hover:underline"
+              >
+                <ExternalLink className="size-3.5" /> {t("openCall")}
+              </Link>
             </p>
           )}
           {analysis.summary && (

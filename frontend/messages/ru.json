@@ -71,7 +71,10 @@
     "outbound": "Исходящий",
     "crmSent": "Отправлено в CRM",
     "crmFailed": "Не отправлено в CRM",
-    "aiScore": "Оценка AI-анализа"
+    "aiScore": "Оценка AI-анализа",
+    "detailTitle": "Звонок",
+    "close": "Закрыть",
+    "notFound": "Звонок не найден"
   },
   "player": {
     "play": "Слушать",
@@ -324,7 +327,8 @@
     "yes": "Да",
     "no": "Нет",
     "unsigned": "Подпись не проверена",
-    "receivedAt": "Получено"
+    "receivedAt": "Получено",
+    "openCall": "Открыть звонок"
   },
   "notifications": {
     "title": "Уведомления",

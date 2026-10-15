@@ -71,7 +71,10 @@
     "outbound": "Outbound",
     "crmSent": "Sent to CRM",
     "crmFailed": "Not sent to CRM",
-    "aiScore": "AI analysis score"
+    "aiScore": "AI analysis score",
+    "detailTitle": "Call",
+    "close": "Close",
+    "notFound": "Call not found"
   },
   "player": {
     "play": "Play",
@@ -324,7 +327,8 @@
     "yes": "Yes",
     "no": "No",
     "unsigned": "Signature not verified",
-    "receivedAt": "Received"
+    "receivedAt": "Received",
+    "openCall": "Open the call"
   },
   "notifications": {
     "title": "Notifications",

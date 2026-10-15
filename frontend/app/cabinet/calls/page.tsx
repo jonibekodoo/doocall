@@ -4,13 +4,14 @@
  * Call records are immutable — no delete anywhere. */
 
 import { useQuery } from "@tanstack/react-query";
-import { Download, UserPlus } from "lucide-react";
+import { Download, UserPlus, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { CallAiBadge } from "@/app/cabinet/ai/ai-shared";
+import { AudioPlayer } from "@/components/AudioPlayer";
 import { DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import { CallMapButton } from "@/components/CallMapButton";
@@ -23,6 +24,7 @@ import { FilterBar, FilterSelect } from "@/components/ui/FilterBar";
 import { Pagination } from "@/components/ui/Pagination";
 import { useToastStore } from "@/components/ui/Toast";
 import {
+  fetchCallDetail,
   fetchCalls,
   fetchExport,
   fetchPerEmployee,
@@ -44,12 +46,154 @@ function daysAgoIso(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Deep link: /cabinet/calls?call=<id> opens that call in a side drawer. The
+ * call is always fetched by id, so it works whatever the current page or
+ * filters are (and yields our own presigned audio URL). */
+function CallDrawer({
+  callId,
+  onClose,
+}: {
+  callId: number;
+  onClose: () => void;
+}) {
+  const t = useTranslations("calls");
+  const { data, isPending, isError } = useQuery({
+    queryKey: ["call-detail", callId],
+    queryFn: () => fetchCallDetail(callId),
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const call = data?.call;
+  const audio = call?.audios.find((item) => item.kind === "primary");
+  const rows: Array<[string, React.ReactNode]> = call
+    ? [
+        [
+          t("date"),
+          new Date(call.start_time).toLocaleString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        ],
+        [
+          t("direction"),
+          <span key="d" className="inline-flex items-center gap-1.5">
+            <DirectionIcon direction={call.direction} />
+            {call.direction === "inbound" ? t("inbound") : t("outbound")}
+          </span>,
+        ],
+        [
+          t("client"),
+          <span key="c">
+            {call.counterparty_name && (
+              <span className="block">{call.counterparty_name}</span>
+            )}
+            <span className="tnum">
+              {formatPhone(call.counterparty_number)}
+            </span>
+          </span>,
+        ],
+        [t("operator"), call.operator_name ?? "—"],
+        [t("status"), call.status === "answered" ? t("answered") : t("missed")],
+        [
+          t("duration"),
+          <span key="u" className="tnum">
+            {formatDuration(call.duration)}
+          </span>,
+        ],
+      ]
+    : [];
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex justify-end"
+      data-testid="call-drawer"
+    >
+      <button
+        type="button"
+        aria-label={t("close")}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/30"
+      />
+      <aside
+        role="dialog"
+        aria-label={t("detailTitle")}
+        className="relative flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-5 shadow-xl"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">{t("detailTitle")}</h2>
+          <button
+            type="button"
+            data-testid="call-drawer-close"
+            aria-label={t("close")}
+            onClick={onClose}
+            className="grid size-8 place-items-center rounded-md hover:bg-surface-2"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        {isPending && (
+          <div className="h-40 animate-pulse rounded-lg bg-surface-3" />
+        )}
+        {(isError || (!isPending && !call)) && (
+          <p className="text-sm text-fg-muted">{t("notFound")}</p>
+        )}
+        {call && (
+          <>
+            <dl className="space-y-2 text-sm">
+              {rows.map(([label, value]) => (
+                <div key={label} className="flex gap-3">
+                  <dt className="w-28 shrink-0 text-fg-muted">{label}</dt>
+                  <dd className="min-w-0 flex-1">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {audio && (
+              <div data-testid="call-drawer-audio">
+                <AudioPlayer src={audio.url} />
+              </div>
+            )}
+            {call.ai && (
+              <div className="flex items-center gap-2 text-sm">
+                <CallAiBadge
+                  analysisId={call.ai.analysis_id}
+                  score={call.ai.final_score}
+                  title={t("aiScore")}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </aside>
+    </div>
+  );
+}
+
 function CallsInner() {
   const tNav = useTranslations("nav");
   const t = useTranslations("calls");
   const tc = useTranslations("common");
   const tContacts = useTranslations("contacts");
   const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const deepLinkId = Number(params.get("call"));
+  const openCallId =
+    Number.isInteger(deepLinkId) && deepLinkId > 0 ? deepLinkId : null;
+  const closeCall = useCallback(() => {
+    const next = new URLSearchParams(params.toString());
+    next.delete("call");
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false,
+    });
+  }, [params, pathname, router]);
 
   // Staged (draft) filters — applied on Применить (§6.2, default 30d).
   const [draftRange, setDraftRange] = useState<DateRange>({
@@ -375,6 +519,10 @@ function CallsInner() {
         pageSize={data?.page_size ?? 20}
         onPage={setPage}
       />
+
+      {openCallId !== null && (
+        <CallDrawer callId={openCallId} onClose={closeCall} />
+      )}
     </div>
   );
 }

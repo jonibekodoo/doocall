@@ -237,6 +237,11 @@ describe("AI analysis detail", () => {
     expect(await screen.findByTestId("ai-detail")).toBeInTheDocument();
     expect(screen.getAllByTestId("ai-score")[0]).toHaveTextContent("87");
     expect(screen.getByTestId("ai-unsigned")).toBeInTheDocument();
+    // Deep link to the same call on the Calls page.
+    expect(screen.getByTestId("ai-open-call")).toHaveAttribute(
+      "href",
+      "/cabinet/calls?call=70",
+    );
     // Our own player for the stored call (never Kotib's audio URL).
     expect(
       within(screen.getByTestId("ai-audio")).getByTestId("row-audio"),
