@@ -108,6 +108,11 @@ urlpatterns = [
         name="ai-analysis-detail",
     ),
     path(
+        "settings/integrations/amocrm/users",
+        integration_views.AmoCrmUsersView.as_view(),
+        name="amocrm-users",
+    ),
+    path(
         "settings/integrations/bitrix24/users",
         integration_views.Bitrix24UsersView.as_view(),
         name="bitrix24-users",

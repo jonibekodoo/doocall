@@ -41,7 +41,8 @@ URL_FIELDS = {"bitrix24": "webhook_url", "amocrm": "base_url", "odoo": "url"}
 
 # Non-secret defaults shown in an empty form.
 CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
-    "amocrm": ("base_url", "access_token", "responsible_user_id", "region"),
+    # user_map: {"<OperatorProfile id>": "<amoCRM user id>"}; responsible_user_id = fallback.
+    "amocrm": ("base_url", "access_token", "responsible_user_id", "region", "user_map"),
     # user_map: {"<OperatorProfile id>": "<Bitrix24 user id>"}; user_id = fallback.
     # + moizvonki-style card options (providers.B24_DEFAULTS).
     "bitrix24": (
@@ -666,6 +667,21 @@ def _b24_text(user: dict[str, Any], field: str) -> str:
     return providers.safe_text(value)
 
 
+def _operators() -> list[dict[str, Any]]:
+    """This company's operators for a CRM user-mapping screen."""
+    return [
+        {
+            "id": op.pk,
+            "full_name": op.full_name,
+            "user_name": op.user_name,
+            "phones": [sim.number for sim in op.sim_cards.all() if sim.number],
+        }
+        for op in OperatorProfile.objects.prefetch_related("sim_cards").order_by(
+            "full_name", "user_name"
+        )
+    ]
+
+
 class Bitrix24UsersView(AdminCabinetView):
     @extend_schema(summary="Bitrix24 users + DooCall operators + mapping suggestions")
     def get(self, request: Request) -> Response:
@@ -674,17 +690,7 @@ class Bitrix24UsersView(AdminCabinetView):
         ).first()
         if integration is None or not str(integration.config.get("webhook_url") or "").strip():
             raise ApiError(ErrorCode.MISSING_FIELD, "Bitrix24 is not configured", 400)
-        operators = [
-            {
-                "id": op.pk,
-                "full_name": op.full_name,
-                "user_name": op.user_name,
-                "phones": [sim.number for sim in op.sim_cards.all() if sim.number],
-            }
-            for op in OperatorProfile.objects.prefetch_related("sim_cards").order_by(
-                "full_name", "user_name"
-            )
-        ]
+        operators = _operators()
         try:
             raw_users = providers.bitrix24_users(integration.config)
         except providers.ProviderError as exc:
@@ -721,5 +727,101 @@ class Bitrix24UsersView(AdminCabinetView):
                 "users": users,
                 "operators": operators,
                 "suggestions": b24_suggestions(operators, raw_users, self.company.phone_code),
+            }
+        )
+
+
+AMO_USERS_ERROR = (
+    "amoCRM foydalanuvchilar ro'yxatini olib bo'lmadi — token muddati tugagan yoki "
+    "huquq yetarli emas; ID'larni qo'lda kiriting"
+)
+
+
+def _amo_text(user: dict[str, Any], field: str) -> str:
+    value = user.get(field)
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        return ""
+    return providers.safe_text(value)
+
+
+def _amo_role(user: dict[str, Any]) -> str | None:
+    for role in providers.as_list(providers.as_dict(user.get("_embedded")).get("roles")):
+        if isinstance(role, dict) and (name := _amo_text(role, "name")):
+            return name
+    return None
+
+
+def amo_suggestions(
+    operators: list[dict[str, Any]], users: list[dict[str, Any]], emails: dict[int, str]
+) -> dict[str, str]:
+    """Operator user e-mail == amoCRM e-mail first, then an exact
+    case-insensitive full-name match (either word order). Unambiguous only."""
+    by_email: dict[str, set[str]] = {}
+    by_name: dict[str, set[str]] = {}
+    for user in users:
+        if email := user["email"].strip().lower():
+            by_email.setdefault(email, set()).add(user["id"])
+        words = user["name"].split()
+        for key in {_name_key(*words), _name_key(*reversed(words))}:
+            if key:
+                by_name.setdefault(key, set()).add(user["id"])
+
+    email_candidates = {
+        str(op["id"]): by_email[email]
+        for op in operators
+        if (email := (emails.get(op["id"]) or "").strip().lower()) and email in by_email
+    }
+    suggestions = _unique_suggestions(email_candidates)
+    used = set(suggestions.values())
+    name_candidates = {
+        str(op["id"]): by_name.get(_name_key(op["full_name"]), set()) - used
+        for op in operators
+        if str(op["id"]) not in email_candidates and _name_key(op["full_name"])
+    }
+    suggestions.update(_unique_suggestions({k: v for k, v in name_candidates.items() if v}))
+    return suggestions
+
+
+class AmoCrmUsersView(AdminCabinetView):
+    @extend_schema(summary="amoCRM users + DooCall operators + mapping suggestions")
+    def get(self, request: Request) -> Response:
+        integration = CrmIntegration.objects.filter(provider=CrmIntegration.Provider.AMOCRM).first()
+        config = integration.config if integration else {}
+        if not str(config.get("base_url") or "").strip() or not config.get("access_token"):
+            raise ApiError(ErrorCode.MISSING_FIELD, "amoCRM is not configured", 400)
+        operators = _operators()
+        try:
+            raw_users = providers.amocrm_users(config)
+        except providers.ProviderError as exc:
+            text = str(exc)
+            logger.warning("amocrm users failed for company %s: %s", self.company.pk, text)
+            auth = any(code in text for code in ("HTTP 401", "HTTP 403"))
+            error = AMO_USERS_ERROR if auth else f"{AMO_USERS_ERROR} ({text[:200]})"
+            return Response({"success": False, "error": error, "operators": operators})
+        # Only rows that look like amoCRM users, only parsed scalar fields.
+        users = [
+            {
+                "id": str(user["id"]),
+                "name": _amo_text(user, "name"),
+                "email": _amo_text(user, "email"),
+                "phone": None,  # amoCRM's users API has no phone
+                "position": _amo_role(user),
+            }
+            for user in raw_users
+            if isinstance(user.get("id"), int)
+            and not isinstance(user.get("id"), bool)
+            and user["id"] > 0
+        ]
+        emails = dict(
+            OperatorProfile.objects.filter(pk__in=[op["id"] for op in operators]).values_list(
+                "pk", "user__email"
+            )
+        )
+        return Response(
+            {
+                "success": True,
+                "users": users,
+                "operators": operators,
+                "suggestions": amo_suggestions(operators, users, emails),
             }
         )
