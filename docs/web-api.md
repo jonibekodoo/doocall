@@ -72,6 +72,32 @@ POST (after DB commit): JSON body `{event: "call.received", call_id,
 server_id, …}` with header **`X-Doocall-Signature`** =
 HMAC-SHA256(webhook_secret, raw body). 3 retries with backoff.
 
+## amoCRM: per-operator managers
+
+Same contract as the Bitrix24 mapping below. `config.user_map` =
+`{"<OperatorProfile id>": "<amoCRM user id>"}` on the `amocrm` integration
+(this company's operators only, positive integers stored as strings, empty
+values dropped, omitted = kept, 400 `{message}` otherwise; GET returns it,
+`{}` when unset). `responsible_user_id` stays the fallback.
+
+- Sending: the call's `responsible_user_id` and that of a contact created
+  for an unknown number = `user_map[operator id]`, else
+  `responsible_user_id`, else the field is omitted. If amoCRM rejects the
+  mapped user (validation error on `responsible_user_id`), the call is sent
+  once more with the fallback (delivery ok, warning logged).
+- `GET /settings/integrations/amocrm/users` **[admin]** — `GET
+  {base}/api/v4/users?limit=250&page=N&with=role` (our base URL only, max 4
+  pages / 500 users, inactive users skipped) → `{success: true, users: [{id,
+  name, email, phone: null, position: <role name> | null}], operators: [{id,
+  full_name, user_name, phones: [...]}], suggestions: {"<operator id>":
+  "<amo id>"}}`. Suggestions: operator's login e-mail == amoCRM e-mail
+  first, then exact case-insensitive full name (either word order);
+  ambiguous ones are left out. On failure: `200 {success: false, error,
+  operators}` — error "amoCRM foydalanuvchilar ro'yxatini olib bo'lmadi —
+  token muddati tugagan yoki huquq yetarli emas; ID'larni qo'lda kiriting"
+  (other failures append a short generic reason). 400 when amoCRM isn't
+  configured. The token and raw bodies are never returned.
+
 ## Bitrix24: per-operator users
 
 Calls are registered in Bitrix24 under a user. `config.user_map` maps each
