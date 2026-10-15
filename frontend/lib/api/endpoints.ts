@@ -501,31 +501,37 @@ export interface CrmIntegrationRow {
   last_delivery_at: string | null;
 }
 
-/** Bitrix24 users + our operators for the operator → USER_ID mapping.
- * success:false (with ``error``) when the webhook lacks the "user" scope —
- * operators still come back so IDs can be typed in by hand. */
-export interface Bitrix24User {
+/** CRM users + our operators for the operator → CRM user mapping (Bitrix24
+ * USER_ID, amoCRM manager). success:false (with ``error``) when the CRM
+ * users can't be read (e.g. missing scope) — operators still come back so
+ * IDs can be typed in by hand. */
+export interface CrmUser {
   id: string | number;
   name: string;
   email: string;
   phone: string;
   position: string;
 }
-export interface Bitrix24Operator {
+export interface CrmOperator {
   id: number;
   full_name: string;
   user_name: string;
   phones: string[] | string;
 }
-export interface Bitrix24UsersResponse {
+export interface CrmUsersResponse {
   success: boolean;
   error?: string;
-  users?: Bitrix24User[];
-  operators: Bitrix24Operator[];
+  users?: CrmUser[];
+  operators: CrmOperator[];
   suggestions?: Record<string, string>;
 }
-export const fetchBitrix24Users = () =>
-  get<Bitrix24UsersResponse>("/settings/integrations/bitrix24/users");
+export const fetchCrmUsers = (provider: "bitrix24" | "amocrm") =>
+  get<CrmUsersResponse>(`/settings/integrations/${provider}/users`);
+
+export type Bitrix24User = CrmUser;
+export type Bitrix24Operator = CrmOperator;
+export type Bitrix24UsersResponse = CrmUsersResponse;
+export const fetchBitrix24Users = () => fetchCrmUsers("bitrix24");
 
 /** Kotib AI results webhook (connected Kotib only). */
 export const saveKotibAnalysisSecret = (secret: string) =>
