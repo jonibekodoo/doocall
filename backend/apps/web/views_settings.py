@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import secrets
+import urllib.error
 import uuid
 from datetime import timedelta
 from typing import Any, cast
@@ -19,11 +20,12 @@ from apps.accounts.models import Device, OperatorGroup, OperatorProfile, SimCard
 from apps.api.errors import ApiError, ErrorCode
 from apps.billing import services as billing
 from apps.billing.models import Payment, Subscription
+from apps.core import netguard
 from apps.core.models import AuditLog
 from apps.core.phone import normalize_phone, phone_code_for_country
 
 from .permissions import AdminCabinetView, CabinetView
-from .tasks import deliver_webhook
+from .tasks import WebhookBlocked, deliver_webhook
 
 ONLINE_WINDOW = timedelta(minutes=5)
 
@@ -409,8 +411,14 @@ class WebhookSettingsView(AdminCabinetView):
     def put(self, request: Request) -> Response:
         company = self.company
         url = (request.data.get("url") or "").strip()
-        if url and not url.startswith(("http://", "https://")):
-            raise ApiError(ErrorCode.MISSING_FIELD, "url must be http(s)", 400)
+        if url:
+            # SSRF guard: public https host only (re-checked on every delivery).
+            try:
+                netguard.check_url(url)
+            except netguard.UnsafeURL as exc:
+                raise ApiError(
+                    ErrorCode.MISSING_FIELD, f"Webhook manzili rad etildi: {exc}", 400
+                ) from None
         company.webhook_url = url
         secret_created = False
         if url and not company.webhook_secret:
@@ -438,10 +446,15 @@ class WebhookTestView(AdminCabinetView):
             "company": company.slug,
             "sent_at": timezone.now().isoformat(),
         }
+        # Errors are generic — the remote body is never echoed back.
         try:
             status_code = deliver_webhook(company, payload)
-        except Exception as exc:  # noqa: BLE001 - surface delivery failure to the UI
-            return Response({"success": False, "error": str(exc)[:500]}, status=502)
+        except WebhookBlocked as exc:
+            return Response({"success": False, "error": str(exc)}, status=400)
+        except urllib.error.HTTPError as exc:
+            return Response({"success": False, "error": f"HTTP {exc.code}"}, status=502)
+        except Exception:  # noqa: BLE001 - connection/TLS/timeout
+            return Response({"success": False, "error": "connection failed"}, status=502)
         return Response({"success": True, "delivery_status": status_code})
 
 

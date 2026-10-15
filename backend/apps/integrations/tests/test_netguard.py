@@ -67,6 +67,15 @@ def test_blocked_urls(url: str, settings: Any) -> None:
         ["fe80::1"],
         ["::ffff:10.0.0.1"],  # IPv4-mapped private
         ["2002:7f00:1::1"],  # 6to4 of 127.0.0.1
+        ["2001:0:4136:e378:8000:63bf:f5ff:fffe"],  # Teredo, client 10.0.0.1
+        ["64:ff9b::7f00:1"],  # NAT64 of 127.0.0.1 (Tester's gap)
+        ["64:ff9b::a00:1"],  # NAT64 of 10.0.0.1 (Tester's gap)
+        ["64:ff9b::a9fe:a9fe"],  # NAT64 of 169.254.169.254
+        ["64:ff9b:1::808:808"],  # local-use NAT64 prefix — refused outright
+        ["::127.0.0.1"],  # IPv4-compatible (Tester's gap)
+        ["::8.8.8.8"],  # IPv4-compatible range refused even for public IPv4
+        ["198.18.0.1"],  # benchmarking
+        ["192.0.0.8"],  # IETF protocol assignments
         ["93.184.216.34", "10.0.0.1"],  # ANY private → blocked
     ],
 )
@@ -76,6 +85,12 @@ def test_name_resolving_to_private_is_blocked(
     monkeypatch.setattr(netguard, "resolve", lambda host, port: addresses)
     with pytest.raises(netguard.UnsafeURL, match="ichki"):
         netguard.check_url("https://crm.example.com/rest/")
+
+
+@pytest.mark.parametrize("address", ["64:ff9b::808:808", "2606:4700::1111", "8.8.8.8"])
+def test_public_nat64_and_ipv6_pass(address: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(netguard, "resolve", lambda host, port: [address])
+    assert netguard.check_url("https://crm.example.com/")[1] == address
 
 
 def test_unresolvable_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:

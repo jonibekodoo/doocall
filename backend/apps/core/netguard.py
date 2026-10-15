@@ -40,10 +40,22 @@ class UnsafeURL(ValueError):
     """The URL may not be called; ``str(exc)`` is a user-facing (uz) reason."""
 
 
+# NAT64 (RFC 6052 well-known prefix): the last 32 bits are the IPv4 target.
+NAT64_WKP = ipaddress.ip_network("64:ff9b::/96")
+# Refused outright: local-use NAT64 (RFC 8215) and the deprecated
+# IPv4-compatible ::a.b.c.d range (also holds :: and ::1).
+BLOCKED_V6 = (ipaddress.ip_network("64:ff9b:1::/48"), ipaddress.ip_network("::/96"))
+
+
 def _ip_allowed(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(ip, ipaddress.IPv6Address):
-        # IPv4 tunnelled in IPv6 (mapped, 6to4, Teredo) is judged by its IPv4.
+        if any(ip in net for net in BLOCKED_V6):
+            return False
+        # IPv4 carried in IPv6 (mapped, 6to4, Teredo, NAT64) is judged by its
+        # IPv4 — Python's is_global says True for e.g. 64:ff9b::7f00:1.
         embedded = ip.ipv4_mapped or ip.sixtofour or (ip.teredo[1] if ip.teredo else None)
+        if embedded is None and ip in NAT64_WKP:
+            embedded = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
         if embedded is not None and not _ip_allowed(embedded):
             return False
     return ip.is_global and not ip.is_multicast

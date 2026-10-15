@@ -8,6 +8,7 @@ import hmac
 import io
 import json
 import logging
+import urllib.error
 import urllib.request
 from typing import Any
 
@@ -17,6 +18,7 @@ from django.utils import timezone
 from apps.api import storage
 from apps.calls.models import CallRecord
 from apps.companies.models import Company
+from apps.core import netguard
 from apps.core.tenancy import tenant_context
 
 from .models import ExportJob
@@ -117,8 +119,20 @@ def webhook_payload(record: CallRecord) -> dict[str, Any]:
     }
 
 
+WEBHOOK_BLOCKED_HINT = "Sozlamalar → Integratsiya bo'limida webhook manzilini tuzating"
+
+
+class WebhookBlocked(Exception):
+    """Delivery refused for good (SSRF policy / redirect) — never retried."""
+
+
 def deliver_webhook(company: Company, payload: dict[str, Any], *, timeout: int = 10) -> int:
-    """POST the signed payload to the company's webhook URL. Returns HTTP status."""
+    """POST the signed payload to the company's webhook URL. Returns HTTP status.
+
+    The URL is customer-typed, so it goes through the SSRF guard
+    (``netguard.open_url``: public https host, pinned IP, no redirects, no
+    env proxies). A policy block or a redirect raises :class:`WebhookBlocked`
+    (permanent); HTTP/connection errors propagate for the task's retries."""
     body = json.dumps(payload).encode()
     request = urllib.request.Request(  # noqa: S310 - URL is company-configured
         company.webhook_url,
@@ -130,8 +144,20 @@ def deliver_webhook(company: Company, payload: dict[str, Any], *, timeout: int =
         },
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-        return int(response.status)
+    try:
+        with netguard.open_url(request, timeout=timeout) as response:
+            return int(response.status)
+    except netguard.UnsafeURL as exc:
+        raise WebhookBlocked(
+            f"Webhook manzili xavfsizlik tekshiruvidan o'tmadi: {exc} — {WEBHOOK_BLOCKED_HINT}"
+        ) from None
+    except urllib.error.HTTPError as exc:
+        if 300 <= exc.code < 400:
+            raise WebhookBlocked(
+                f"Webhook manzili yo'naltirish (HTTP {exc.code}) qaytardi — "
+                f"yo'naltirishlar kuzatilmaydi; {WEBHOOK_BLOCKED_HINT}"
+            ) from None
+        raise
 
 
 @shared_task(
@@ -144,4 +170,9 @@ def deliver_call_webhook(record_id: int) -> int:
     record = CallRecord.all_objects.select_related("company").filter(pk=record_id).first()
     if record is None or not record.company.webhook_url:
         return 0
-    return deliver_webhook(record.company, webhook_payload(record))
+    try:
+        return deliver_webhook(record.company, webhook_payload(record))
+    except WebhookBlocked as exc:
+        # Permanent: retrying can't help. Logged without the URL (may hold a token).
+        logger.warning("webhook for company %s not sent: %s", record.company_id, exc)
+        return 0
