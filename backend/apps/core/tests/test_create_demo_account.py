@@ -316,12 +316,13 @@ class TestBillingSkipsDemo:
 
 
 class TestAdminKpisExcludeDemo:
-    def test_dashboard_leaderboard_and_series(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Pinned to a Tashkent afternoon: AdminDashboardView buckets its 30-day
-        # series by the UTC date while TruncDate groups by the Tashkent date,
-        # so between 00:00 and 05:00 local today's calls fall outside the
-        # series (a view bug, reported separately) and this test went red.
-        freeze_now(monkeypatch, "15:30")
+    # Frozen clock incl. 00:10 Tashkent: the dashboard used to build its day
+    # keys from the UTC date, which dropped today's calls until 05:00 local.
+    @pytest.mark.parametrize("local", ["00:10", "15:30", "23:55"])
+    def test_dashboard_leaderboard_and_series(
+        self, monkeypatch: pytest.MonkeyPatch, local: str
+    ) -> None:
+        freeze_now(monkeypatch, local)
         real = real_company("real-co")
         CallRecord.all_objects.create(
             company=real,
