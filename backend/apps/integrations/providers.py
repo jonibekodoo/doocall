@@ -137,6 +137,12 @@ def _error_summary(raw: bytes) -> str:
         for key in _ERROR_KEYS
         if isinstance(item.get(key), str | int | float) and item.get(key) != ""
     ]
+    # amoCRM: {"validation-errors": [{"errors": [{"path", "code", "detail"}]}]}
+    if isinstance(body, dict) and isinstance(body.get("validation-errors"), list):
+        for group in body["validation-errors"]:
+            for err in (group.get("errors") if isinstance(group, dict) else None) or []:
+                if isinstance(err, dict) and isinstance(err.get("path"), str):
+                    parts.append(f"{err['path']}: {err.get('code') or err.get('detail') or ''}")
     return safe_text("; ".join(dict.fromkeys(parts)))
 
 
@@ -164,8 +170,65 @@ def _amocrm_test(config: dict[str, Any]) -> str:
     return str(body.get("name") or body.get("id") or "ok")
 
 
+def amo_fallback_user(config: dict[str, Any]) -> int | None:
+    """Integration-wide responsible user (``responsible_user_id``) or None."""
+    try:
+        value = int(str(config.get("responsible_user_id") or "").strip())
+    except ValueError:
+        return None  # misconfigured — calls still land, just unassigned
+    return value if value > 0 else None
+
+
+def amo_user_for(config: dict[str, Any], operator_id: int | None) -> int | None:
+    """amoCRM responsible user for a DooCall operator: ``user_map`` entry,
+    else ``responsible_user_id``, else None (field omitted)."""
+    mapped = (config.get("user_map") or {}).get(str(operator_id)) if operator_id else None
+    try:
+        return int(mapped) if mapped else amo_fallback_user(config)
+    except (TypeError, ValueError):
+        return amo_fallback_user(config)
+
+
+def as_dict(value: Any) -> dict[str, Any]:
+    """``value`` if it is a JSON object, else {} (defensive parsing)."""
+    return value if isinstance(value, dict) else {}
+
+
+def as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+AMO_USERS_PAGE = 250
+AMO_USERS_CAP = 500
+AMO_USERS_MAX_PAGES = 4
+
+
+def amocrm_users(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """amoCRM users via GET /api/v4/users (page by page on OUR base URL —
+    the ``_links.next`` href itself is never followed), active ones only."""
+    base = _clean_base(config["base_url"])
+    users: list[dict[str, Any]] = []
+    for page in range(1, AMO_USERS_MAX_PAGES + 1):
+        body = _http_json(
+            f"{base}/api/v4/users?limit={AMO_USERS_PAGE}&page={page}&with=role",
+            headers=_amo_headers(config),
+        )
+        if not isinstance(body, dict):
+            raise ProviderError("amoCRM users: unexpected response")
+        rows = as_list(as_dict(body.get("_embedded")).get("users"))
+        page_users = [row for row in rows if isinstance(row, dict)]
+        for row in page_users:
+            if as_dict(row.get("rights")).get("is_active") is False:
+                continue
+            users.append(row)
+        links = as_dict(body.get("_links"))
+        if not page_users or "next" not in links or len(users) >= AMO_USERS_CAP:
+            break
+    return users[:AMO_USERS_CAP]
+
+
 def _amo_call_payload(
-    config: dict[str, Any], record: CallRecord, record_url: str | None
+    config: dict[str, Any], record: CallRecord, record_url: str | None, user_id: int | None
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "direction": "inbound"
@@ -180,11 +243,8 @@ def _amo_call_payload(
         "call_status": AMO_STATUS.get(record.call_status, 6),
         "created_at": int(record.start_time.timestamp()),
     }
-    if responsible := str(config.get("responsible_user_id") or "").strip():
-        try:
-            payload["responsible_user_id"] = int(responsible)
-        except ValueError:
-            pass  # misconfigured — the call still lands, just unassigned
+    if user_id:
+        payload["responsible_user_id"] = user_id
     return payload
 
 
@@ -194,7 +254,7 @@ def _amo_call_landed(body: Any) -> bool:
     return any(entry.get("entity_id") for entry in calls)
 
 
-def _amocrm_create_contact(config: dict[str, Any], record: CallRecord) -> None:
+def _amocrm_create_contact(config: dict[str, Any], record: CallRecord, user_id: int | None) -> None:
     """amoCRM adds a call ONLY when the phone matches an existing entity —
     for unknown numbers we create the contact first, then retry the call."""
     base = _clean_base(config["base_url"])
@@ -209,11 +269,8 @@ def _amocrm_create_contact(config: dict[str, Any], record: CallRecord) -> None:
             }
         ],
     }
-    if responsible := str(config.get("responsible_user_id") or "").strip():
-        try:
-            contact["responsible_user_id"] = int(responsible)
-        except ValueError:
-            pass
+    if user_id:
+        contact["responsible_user_id"] = user_id
     body = _http_json(f"{base}/api/v4/contacts", [contact], headers=_amo_headers(config))
     created = ((body or {}).get("_embedded") or {}).get("contacts") or []
     if not created:
@@ -223,8 +280,30 @@ def _amocrm_create_contact(config: dict[str, Any], record: CallRecord) -> None:
 
 
 def _amocrm_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
+    # Per-operator manager (user_map) with responsible_user_id as fallback.
+    user_id = amo_user_for(config, record.operator_id)
+    fallback = amo_fallback_user(config)
+    try:
+        _amocrm_send_as(config, record, record_url, user_id)
+    except ProviderError as exc:
+        if user_id == fallback or "responsible_user_id" not in str(exc):
+            raise
+        # Mapped user unknown/inactive in amoCRM → the fallback manager.
+        logger.warning(
+            "amocrm: mapped user %s rejected for call %s (%s); using fallback %s",
+            user_id,
+            record.pk,
+            exc,
+            fallback,
+        )
+        _amocrm_send_as(config, record, record_url, fallback)
+
+
+def _amocrm_send_as(
+    config: dict[str, Any], record: CallRecord, record_url: str | None, user_id: int | None
+) -> None:
     base = _clean_base(config["base_url"])
-    payload = [_amo_call_payload(config, record, record_url)]
+    payload = [_amo_call_payload(config, record, record_url, user_id)]
     url = f"{base}/api/v4/calls"
     # "Entity not found" (status 263) arrives as HTTP 400 — treat it as
     # "phone unknown", not as a hard failure.
@@ -235,11 +314,11 @@ def _amocrm_send(config: dict[str, Any], record: CallRecord, record_url: str | N
         if "Entity not found" not in str(exc):
             raise
     # Phone unknown to this amoCRM account → create the contact, retry once.
-    _amocrm_create_contact(config, record)
+    _amocrm_create_contact(config, record, user_id)
     body = _http_json(url, payload, headers=_amo_headers(config))
     if not _amo_call_landed(body):
         errors = (body or {}).get("errors") or body
-        raise ProviderError(f"amoCRM rejected the call: {json.dumps(errors)[:300]}")
+        raise ProviderError(f"amoCRM rejected the call: {safe_text(json.dumps(errors), 300)}")
 
 
 # ── Bitrix24 (inbound webhook, telephony.externalcall.*) ───────────────────
