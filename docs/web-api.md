@@ -72,6 +72,23 @@ POST (after DB commit): JSON body `{event: "call.received", call_id,
 server_id, …}` with header **`X-Doocall-Signature`** =
 HMAC-SHA256(webhook_secret, raw body). 3 retries with backoff.
 
+## Bitrix24: per-operator users
+
+Calls are registered in Bitrix24 under a user. `config.user_map` maps each
+DooCall operator to a Bitrix24 user; `config.user_id` stays the fallback for
+unmapped operators (default `1`).
+
+| Endpoint | Notes |
+|---|---|
+| `PUT /settings/integrations/bitrix24` | `config.user_map`: `{"<OperatorProfile id>": "<Bitrix24 user id>"}`. Keys must be this company's operator ids, values positive integers (sent as string or number, stored as string); empty values are dropped. 400 `{message}` on an unknown/foreign operator id, a non-numeric or non-positive value, or a non-object. Omitting `user_map` keeps the stored one. |
+| `GET /settings/integrations` | the `bitrix24` row's `config.user_map` is returned as stored (`{}` when unset; not a secret). |
+| `GET /settings/integrations/bitrix24/users` | **[admin]** Live `user.get` (active users, follows `next`, capped at 500) → `{success: true, users: [{id, name, email, phone, position}], operators: [{id, full_name, user_name, phones: [...]}], suggestions: {"<operator id>": "<b24 id>"}}`. Suggestions: normalized phone match (operator SIM numbers vs `PERSONAL_MOBILE` / `WORK_PHONE` / `PERSONAL_PHONE`, company `phone_code`) first, then exact case-insensitive full name (`NAME LAST_NAME` either order); ambiguous matches are left out. If `user.get` fails: `200 {success: false, error, operators}` — for a webhook without the "user" scope the error is "Bitrix24 vebhukida «user» (Foydalanuvchilar) ruxsati yo'q — vebhukka shu ruxsatni qo'shing yoki ID'larni qo'lda kiriting". 400 when Bitrix24 isn't configured. The webhook URL is never returned. |
+
+Sending: `USER_ID` (register and finish) = `user_map[operator id]`, else
+`user_id`, else `1`. If Bitrix24 rejects the mapped user on register, the call
+is registered once more under the fallback user — the delivery counts as
+successful and a warning is logged.
+
 ## AI analyses (Kotib Analytics results)
 
 Kotib pushes one `analysis.completed` message per analysed call to the

@@ -13,6 +13,7 @@ backend deliberately has no ``requests`` dependency).
 from __future__ import annotations
 
 import json
+import logging
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,6 +25,8 @@ from apps.calls.models import CallRecord
 
 if TYPE_CHECKING:
     from apps.companies.models import Company
+
+logger = logging.getLogger(__name__)
 
 TIMEOUT = 15
 
@@ -252,8 +255,44 @@ def _b24_attach_recording(
     )
 
 
-def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
-    user_id = int(config.get("user_id") or 1)
+B24_USERS_CAP = 500  # user.get pages are 50 rows; stop after this many
+
+
+def b24_fallback_user(config: dict[str, Any]) -> int:
+    try:
+        return int(config.get("user_id") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def b24_user_for(config: dict[str, Any], operator_id: int | None) -> int:
+    """Bitrix24 USER_ID for a DooCall operator: ``user_map`` entry, else the
+    integration-wide ``user_id`` (default 1)."""
+    mapped = (config.get("user_map") or {}).get(str(operator_id)) if operator_id else None
+    try:
+        return int(mapped) if mapped else b24_fallback_user(config)
+    except (TypeError, ValueError):
+        return b24_fallback_user(config)
+
+
+def bitrix24_users(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Active Bitrix24 users via ``user.get`` (needs the webhook's "user"
+    scope), following ``next`` pages up to ``B24_USERS_CAP`` rows."""
+    base = _clean_base(config["webhook_url"])
+    users: list[dict[str, Any]] = []
+    start: int | None = 0
+    while start is not None and len(users) < B24_USERS_CAP:
+        body = _http_json(f"{base}/user.get.json", {"FILTER": {"ACTIVE": True}, "start": start})
+        if "error" in body:
+            detail = body.get("error_description") or ""
+            raise ProviderError(f"user.get: {body.get('error')}: {detail}")
+        users.extend(row for row in body.get("result") or [] if isinstance(row, dict))
+        nxt = body.get("next")
+        start = int(nxt) if isinstance(nxt, int | str) and str(nxt).isdigit() else None
+    return users[:B24_USERS_CAP]
+
+
+def _b24_register(config: dict[str, Any], record: CallRecord, user_id: int) -> dict[str, Any]:
     registered = _b24_call(
         config,
         "telephony.externalcall.register",
@@ -272,6 +311,29 @@ def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str |
     )
     if not (registered or {}).get("CALL_ID"):
         raise ProviderError("telephony.externalcall.register returned no CALL_ID")
+    result: dict[str, Any] = registered
+    return result
+
+
+def _bitrix24_send(config: dict[str, Any], record: CallRecord, record_url: str | None) -> None:
+    # Per-operator user (user_map) with the integration-wide user as fallback.
+    user_id = b24_user_for(config, record.operator_id)
+    fallback = b24_fallback_user(config)
+    try:
+        registered = _b24_register(config, record, user_id)
+    except ProviderError as exc:
+        if user_id == fallback:
+            raise
+        # Mapped user unknown/inactive in Bitrix24 → land on the fallback user.
+        logger.warning(
+            "bitrix24: mapped user %s rejected for call %s (%s); using fallback %s",
+            user_id,
+            record.pk,
+            exc,
+            fallback,
+        )
+        user_id = fallback
+        registered = _b24_register(config, record, user_id)
     _b24_call(
         config,
         "telephony.externalcall.finish",
