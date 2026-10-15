@@ -59,7 +59,8 @@ def run_daily_accrual(now: datetime) -> int:
 
     day = (now - timedelta(hours=6)).date()  # 00:30 run bills the finished day
     total = 0
-    for company in Company.objects.filter(status=Company.Status.ACTIVE):
+    active = Company.objects.filter(status=Company.Status.ACTIVE).exclude(services.demo_q())
+    for company in active:  # demo tenants are never charged / suspended / warned
         total += services.accrue_company_day(company, day)
         # Prepaid: take the finished day (and any backlog) from the balance now;
         # suspends the company the day the money runs out.
