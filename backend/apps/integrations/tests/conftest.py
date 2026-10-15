@@ -70,3 +70,15 @@ def call(company: Company, operator: OperatorProfile) -> CallRecord:
         object_key=f"{company.pk}/c-1/primary/rec.ogg",
     )
     return record
+
+
+PUBLIC_IP = "93.184.216.34"
+
+
+@pytest.fixture(autouse=True)
+def _public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CRM URLs pass the SSRF guard's DNS check offline: every name resolves
+    to a public address unless a test patches ``netguard.resolve`` itself."""
+    from apps.core import netguard
+
+    monkeypatch.setattr(netguard, "resolve", lambda host, port: [PUBLIC_IP])

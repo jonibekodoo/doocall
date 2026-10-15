@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -22,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from django.conf import settings
 
 from apps.calls.models import CallRecord
+from apps.core import netguard
 
 if TYPE_CHECKING:
     from apps.companies.models import Company
@@ -72,18 +74,61 @@ def _http_json(
         headers={"Content-Type": "application/json", **(headers or {})},
         method=method or ("POST" if body is not None else "GET"),
     )
+    # Company-configured URL → SSRF guard: https/public-only, IP-pinned, no
+    # redirects (apps.core.netguard). Remote bodies are never echoed raw.
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # noqa: S310
-            raw = response.read()
+        with netguard.open_url(request, timeout=TIMEOUT) as response:
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except netguard.UnsafeURL as exc:
+        raise ProviderError(
+            f"CRM manzili xavfsizlik tekshiruvidan o'tmadi: {exc} — "
+            "integratsiya sozlamalarida manzilni tuzating"
+        ) from None
     except urllib.error.HTTPError as exc:
-        detail = exc.read()[:200].decode(errors="replace")
-        raise ProviderError(f"HTTP {exc.code}: {detail}") from None
-    except urllib.error.URLError as exc:
-        raise ProviderError(f"connection failed: {exc.reason}") from None
+        if 300 <= exc.code < 400:
+            raise ProviderError(f"HTTP {exc.code}: redirect refused") from None
+        summary = _error_summary(exc.read(MAX_ERROR_BYTES))
+        message = f"HTTP {exc.code}: {summary}" if summary else f"HTTP {exc.code}"
+        raise ProviderError(message) from None
+    except (urllib.error.URLError, OSError):
+        raise ProviderError("connection failed") from None
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise ProviderError("response too large")
     try:
         return json.loads(raw) if raw else {}
     except ValueError:
         raise ProviderError("non-JSON response") from None
+
+
+MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+MAX_ERROR_BYTES = 16 * 1024
+# Fields of a JSON error body that may be shown to the cabinet (Bitrix24:
+# error/error_description; amoCRM: title/detail, also inside "errors").
+_ERROR_KEYS = ("error", "error_description", "title", "detail")
+
+
+def safe_text(value: Any, limit: int = 200) -> str:
+    """Plain text for the cabinet: tags removed, whitespace collapsed, cut."""
+    text = re.sub(r"<[^>]*>", " ", str(value or ""))
+    return " ".join(text.split())[:limit]
+
+
+def _error_summary(raw: bytes) -> str:
+    """Known error fields of a JSON error body; non-JSON bodies → ""."""
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return ""
+    items = [body] if isinstance(body, dict) else []
+    if isinstance(body, dict) and isinstance(body.get("errors"), list):
+        items += [e for e in body["errors"] if isinstance(e, dict)]
+    parts = [
+        str(item[key])
+        for item in items
+        for key in _ERROR_KEYS
+        if isinstance(item.get(key), str | int | float) and item.get(key) != ""
+    ]
+    return safe_text("; ".join(dict.fromkeys(parts)))
 
 
 def _clean_base(url: str) -> str:
@@ -204,8 +249,12 @@ B24_AUDIO_EXTS = {"mp3", "wav"}  # attachRecord accepts only these
 def _b24_call(config: dict[str, Any], method: str, params: dict[str, Any]) -> Any:
     base = _clean_base(config["webhook_url"])
     body = _http_json(f"{base}/{method}.json", params)
+    if not isinstance(body, dict):
+        raise ProviderError(f"{method}: unexpected response")
     if "error" in body:
-        raise ProviderError(f"{method}: {body.get('error_description') or body['error']}")
+        raise ProviderError(
+            f"{method}: {safe_text(body.get('error_description') or body['error'])}"
+        )
     return body.get("result")
 
 
@@ -256,6 +305,7 @@ def _b24_attach_recording(
 
 
 B24_USERS_CAP = 500  # user.get pages are 50 rows; stop after this many
+B24_USERS_MAX_PAGES = 10
 
 
 def b24_fallback_user(config: dict[str, Any]) -> int:
@@ -277,18 +327,28 @@ def b24_user_for(config: dict[str, Any], operator_id: int | None) -> int:
 
 def bitrix24_users(config: dict[str, Any]) -> list[dict[str, Any]]:
     """Active Bitrix24 users via ``user.get`` (needs the webhook's "user"
-    scope), following ``next`` pages up to ``B24_USERS_CAP`` rows."""
+    scope). Follows ``next`` only while it moves forward and the page added
+    rows — at most ``B24_USERS_MAX_PAGES`` requests, ``B24_USERS_CAP`` rows —
+    so a misbehaving server can't keep a web worker busy."""
     base = _clean_base(config["webhook_url"])
     users: list[dict[str, Any]] = []
-    start: int | None = 0
-    while start is not None and len(users) < B24_USERS_CAP:
+    start = 0
+    for _ in range(B24_USERS_MAX_PAGES):
         body = _http_json(f"{base}/user.get.json", {"FILTER": {"ACTIVE": True}, "start": start})
+        if not isinstance(body, dict):
+            raise ProviderError("user.get: unexpected response")
         if "error" in body:
-            detail = body.get("error_description") or ""
-            raise ProviderError(f"user.get: {body.get('error')}: {detail}")
-        users.extend(row for row in body.get("result") or [] if isinstance(row, dict))
+            detail = safe_text(body.get("error_description") or "")
+            raise ProviderError(f"user.get: {safe_text(body.get('error'))}: {detail}")
+        rows = body.get("result")
+        page = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+        users.extend(page)
         nxt = body.get("next")
-        start = int(nxt) if isinstance(nxt, int | str) and str(nxt).isdigit() else None
+        if not page or len(users) >= B24_USERS_CAP or isinstance(nxt, bool):
+            break
+        if not isinstance(nxt, int | str) or not str(nxt).isdigit() or int(nxt) <= start:
+            break
+        start = int(nxt)
     return users[:B24_USERS_CAP]
 
 
@@ -360,9 +420,12 @@ def _odoo_rpc(config: dict[str, Any], service: str, method: str, args: list[Any]
             "id": 1,
         },
     )
-    if body.get("error"):
-        message = body["error"].get("data", {}).get("message") or body["error"].get("message")
-        raise ProviderError(f"Odoo: {str(message)[:300]}")
+    if not isinstance(body, dict):
+        raise ProviderError("Odoo: unexpected response")
+    if error := body.get("error"):
+        error = error if isinstance(error, dict) else {"message": error}
+        data = error.get("data") if isinstance(error.get("data"), dict) else {}
+        raise ProviderError(f"Odoo: {safe_text(data.get('message') or error.get('message'))}")
     return body.get("result")
 
 
