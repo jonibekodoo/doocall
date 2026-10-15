@@ -17,7 +17,7 @@ from typing import cast
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from apps.accounts.models import OperatorProfile, User
@@ -39,6 +39,22 @@ logger = logging.getLogger(__name__)
 
 PERIOD_DAYS = 30
 GRACE_DAYS = 2  # unpaid statement blocks the account on day 3
+
+
+# Demo tenants (``manage.py create_demo_account``) carry feature_flags["demo"].
+# They are shown to prospects: never charged, suspended or warned about their
+# balance, and kept out of the platform KPIs. JSON containment (not a key
+# lookup) so companies without the key are never NULL-excluded by mistake.
+DEMO_FLAG = "demo"
+
+
+def demo_q(prefix: str = "") -> Q:
+    """Q matching demo companies; ``prefix`` e.g. "company__" for related rows."""
+    return Q(**{f"{prefix}feature_flags__contains": {DEMO_FLAG: True}})
+
+
+def is_demo(company: Company) -> bool:
+    return (company.feature_flags or {}).get(DEMO_FLAG) is True
 
 
 class InvalidTransition(Exception):
@@ -244,8 +260,8 @@ def days_of_balance_left(company: Company, *, day: date | None = None) -> int | 
     """How many days the prepaid balance covers at the current burn rate.
 
     Returns None when the company is not on a paid daily-billing footing
-    (e.g. trial) or the burn rate is zero (no active operators)."""
-    if company.status != Company.Status.ACTIVE:
+    (e.g. trial, demo tenant) or the burn rate is zero (no active operators)."""
+    if company.status != Company.Status.ACTIVE or is_demo(company):
         return None
     day = day or timezone.now().date()
     burn = seat_count(company) * daily_rate(effective_price(company), day)

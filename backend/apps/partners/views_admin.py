@@ -191,7 +191,8 @@ class AdminDashboardView(StaffView):
     @extend_schema(summary="Platform KPIs")
     def get(self, request: Request) -> Response:
         now = timezone.now()
-        companies = Company.objects.aggregate(
+        # Demo tenants (create_demo_account) are kept out of every platform KPI.
+        companies = Company.objects.exclude(billing.demo_q()).aggregate(
             total=Count("id"),
             active=Count("id", filter=Q(status=Company.Status.ACTIVE)),
             trial=Count("id", filter=Q(status=Company.Status.TRIAL)),
@@ -211,8 +212,9 @@ class AdminDashboardView(StaffView):
         from apps.calls.models import CallRecord
 
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        calls_today = CallRecord.all_objects.filter(start_time__gte=today_start).count()
-        call_totals = CallRecord.all_objects.aggregate(n=Count("id"), s=Sum("duration"))
+        real_calls = CallRecord.all_objects.exclude(billing.demo_q("company__"))
+        calls_today = real_calls.filter(start_time__gte=today_start).count()
+        call_totals = real_calls.aggregate(n=Count("id"), s=Sum("duration"))
         total_calls = int(call_totals["n"] or 0)
         total_call_seconds = int(call_totals["s"] or 0)
 
@@ -225,7 +227,7 @@ class AdminDashboardView(StaffView):
             .values_list("day", "total")
         )
         call_rows = dict(
-            CallRecord.all_objects.filter(start_time__gte=since)
+            real_calls.filter(start_time__gte=since)
             .annotate(day=TruncDate("start_time"))
             .values("day")
             .annotate(n=Count("id"))
@@ -271,7 +273,8 @@ class AdminCallsTodayView(StaffView):
         now = timezone.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         rows = (
-            CallRecord.all_objects.values("company_id", "company__name")
+            CallRecord.all_objects.exclude(billing.demo_q("company__"))
+            .values("company_id", "company__name")
             .annotate(
                 total=Count("id"),
                 today=Count("id", filter=Q(start_time__gte=today_start)),
@@ -355,7 +358,9 @@ class AdminDashboardSeriesView(StaffView):
                 .values_list("b", "v")
             )
         else:  # calls
-            base = CallRecord.all_objects.filter(start_time__date__gte=floor)
+            base = CallRecord.all_objects.exclude(billing.demo_q("company__")).filter(
+                start_time__date__gte=floor
+            )
             rows = (
                 base.annotate(b=trunc("start_time"))
                 .values("b")
