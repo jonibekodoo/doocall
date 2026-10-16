@@ -157,7 +157,22 @@
     "attempts": "Urinishlar",
     "noData": "Ma'lumot yo'q",
     "byDirection": "Yo'nalishlar bo'yicha",
-    "weekdaysShort": "Du,Se,Ch,Pa,Ju,Sh,Ya"
+    "weekdaysShort": "Du,Se,Ch,Pa,Ju,Sh,Ya",
+    "preset_today": "Bugun",
+    "preset_yesterday": "Kecha",
+    "preset_last7": "Oxirgi 7 kun",
+    "preset_last30": "Oxirgi 30 kun",
+    "preset_thisMonth": "Bu oy",
+    "preset_lastMonth": "O'tgan oy",
+    "preset_all": "Barcha vaqt",
+    "dateFrom": "Boshlanish sanasi",
+    "dateTo": "Tugash sanasi",
+    "allOperators": "Barcha operatorlar",
+    "operatorsSelected": "Operatorlar: {count}",
+    "defaultHint": "Standart davr — oxirgi 30 kun",
+    "rangeLabel": "Davr: {range}",
+    "rangeAll": "Davr: barcha vaqt",
+    "allTime": "Barcha vaqt"
   },
   "settings": {
     "usersGroups": "Foydalanuvchilar va guruhlar",
