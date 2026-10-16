@@ -93,14 +93,37 @@ export const contactFromCall = (callId: number, name?: string) =>
   );
 
 // ── Reports ────────────────────────────────────────────────────────────────
+/** Shared report filter (same params as the Calls list): dates are
+ * YYYY-MM-DD in the company time zone; omitted = no bound. */
+export interface ReportFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  employees?: number[];
+}
+
+/** "?date_from=…&date_to=…&employees=1,2" (or "" when unfiltered). */
+export const reportQuery = (
+  filters: ReportFilters = {},
+  extra: Record<string, string> = {},
+): string => {
+  const query = new URLSearchParams(extra);
+  if (filters.dateFrom) query.set("date_from", filters.dateFrom);
+  if (filters.dateTo) query.set("date_to", filters.dateTo);
+  if (filters.employees?.length) query.set("employees", filters.employees.join(","));
+  const text = query.toString();
+  return text ? `?${text}` : "";
+};
+
 export interface GeneralReport {
   all: { total: number; answered: number; missed: number };
   inbound: { total: number; answered: number; missed: number };
   outbound: { total: number; answered: number; missed: number };
   total_duration_sec: number;
 }
-export const fetchGeneralReport = (qs = "") =>
-  get<{ success: boolean; report: GeneralReport }>(`/reports/general${qs}`);
+export const fetchGeneralReport = (filters: ReportFilters = {}) =>
+  get<{ success: boolean; report: GeneralReport }>(
+    `/reports/general${reportQuery(filters)}`,
+  );
 
 export interface WeekdayRow {
   weekday: number;
@@ -110,9 +133,9 @@ export interface WeekdayRow {
   answered: number;
   missed: number;
 }
-export const fetchWeekdayMatrix = (qs = "") =>
+export const fetchWeekdayMatrix = (filters: ReportFilters = {}) =>
   get<{ success: boolean; report: WeekdayRow[] }>(
-    `/reports/weekday-matrix${qs}`,
+    `/reports/weekday-matrix${reportQuery(filters)}`,
   );
 
 export interface PeriodRow {
@@ -121,9 +144,13 @@ export interface PeriodRow {
   answered: number;
   missed: number;
 }
-export const fetchPeriodCounts = (group: string, unique: boolean, qs = "") =>
+export const fetchPeriodCounts = (
+  group: string,
+  unique: boolean,
+  filters: ReportFilters = {},
+) =>
   get<{ success: boolean; report: PeriodRow[] }>(
-    `/reports/period-counts?group=${group}&unique=${unique}${qs ? `&${qs.slice(1)}` : ""}`,
+    `/reports/period-counts${reportQuery(filters, { group, unique: String(unique) })}`,
   );
 
 export interface EmployeeRow {
@@ -137,9 +164,9 @@ export interface EmployeeRow {
   missed: number;
   duration_minutes: number;
 }
-export const fetchPerEmployee = (qs = "") =>
+export const fetchPerEmployee = (filters: ReportFilters = {}) =>
   get<{ success: boolean; report: EmployeeRow[] }>(
-    `/reports/per-employee${qs}`,
+    `/reports/per-employee${reportQuery(filters)}`,
   );
 
 export interface ClientRow {
@@ -151,8 +178,10 @@ export interface ClientRow {
   duration: number;
   last_call: string;
 }
-export const fetchPerClient = (qs = "") =>
-  get<{ success: boolean; report: ClientRow[] }>(`/reports/per-client${qs}`);
+export const fetchPerClient = (filters: ReportFilters = {}) =>
+  get<{ success: boolean; report: ClientRow[] }>(
+    `/reports/per-client${reportQuery(filters)}`,
+  );
 
 export interface UnansweredRow {
   counterparty_number: string;
@@ -162,9 +191,9 @@ export interface UnansweredRow {
   attempts_since_success: number;
   operator_id: number | null;
 }
-export const fetchUnanswered = (qs = "") =>
+export const fetchUnanswered = (filters: ReportFilters = {}) =>
   get<{ success: boolean; report: UnansweredRow[] }>(
-    `/reports/unanswered${qs}`,
+    `/reports/unanswered${reportQuery(filters)}`,
   );
 
 export interface LastContactRow {
@@ -177,9 +206,9 @@ export interface LastContactRow {
   operator_id: number | null;
   duration: number;
 }
-export const fetchLastContact = (qs = "") =>
+export const fetchLastContact = (filters: ReportFilters = {}) =>
   get<{ success: boolean; report: LastContactRow[] }>(
-    `/reports/last-contact${qs}`,
+    `/reports/last-contact${reportQuery(filters)}`,
   );
 
 // ── Settings ───────────────────────────────────────────────────────────────

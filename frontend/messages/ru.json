@@ -157,7 +157,22 @@
     "attempts": "Попыток",
     "noData": "Нет данных",
     "byDirection": "По направлениям",
-    "weekdaysShort": "Пн,Вт,Ср,Чт,Пт,Сб,Вс"
+    "weekdaysShort": "Пн,Вт,Ср,Чт,Пт,Сб,Вс",
+    "preset_today": "Сегодня",
+    "preset_yesterday": "Вчера",
+    "preset_last7": "Последние 7 дней",
+    "preset_last30": "Последние 30 дней",
+    "preset_thisMonth": "Этот месяц",
+    "preset_lastMonth": "Прошлый месяц",
+    "preset_all": "За всё время",
+    "dateFrom": "Дата начала",
+    "dateTo": "Дата окончания",
+    "allOperators": "Все операторы",
+    "operatorsSelected": "Операторов: {count}",
+    "defaultHint": "По умолчанию — последние 30 дней",
+    "rangeLabel": "Период: {range}",
+    "rangeAll": "Период: за всё время",
+    "allTime": "За всё время"
   },
   "settings": {
     "usersGroups": "Пользователи и группы",
