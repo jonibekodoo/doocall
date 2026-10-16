@@ -138,6 +138,9 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = env("TZ", "Asia/Tashkent")
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+# Keep Django's LOGGING handlers/format in workers (Celery would otherwise
+# replace the root handlers); --loglevel still sets the root level.
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
 
 # Beat entries — DatabaseScheduler syncs these into PeriodicTask on startup.
 from celery.schedules import crontab  # noqa: E402
@@ -264,6 +267,14 @@ LOGGING = {
         },
     },
     "root": {"handlers": ["default"], "level": env("LOG_LEVEL", "INFO")},
+    "loggers": {
+        # CRM delivery diagnostics (e.g. the per-call "bitrix24 delivery …
+        # branch=…" line) stay at INFO even when the root is WARNING — prod
+        # celery runs with --loglevel=warning and hijacks the root logger.
+        # No own handler: records propagate to the root "default" handler
+        # (no level of its own), so the root level doesn't filter them.
+        "apps.integrations": {"level": env("INTEGRATIONS_LOG_LEVEL", "INFO")},
+    },
 }
 
 # Sentry — enabled only when SENTRY_DSN is set.
