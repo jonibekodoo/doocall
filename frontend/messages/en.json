@@ -157,7 +157,22 @@
     "attempts": "Attempts",
     "noData": "No data yet",
     "byDirection": "By direction",
-    "weekdaysShort": "Mo,Tu,We,Th,Fr,Sa,Su"
+    "weekdaysShort": "Mo,Tu,We,Th,Fr,Sa,Su",
+    "preset_today": "Today",
+    "preset_yesterday": "Yesterday",
+    "preset_last7": "Last 7 days",
+    "preset_last30": "Last 30 days",
+    "preset_thisMonth": "This month",
+    "preset_lastMonth": "Last month",
+    "preset_all": "All time",
+    "dateFrom": "Start date",
+    "dateTo": "End date",
+    "allOperators": "All operators",
+    "operatorsSelected": "Operators: {count}",
+    "defaultHint": "Default period — last 30 days",
+    "rangeLabel": "Period: {range}",
+    "rangeAll": "Period: all time",
+    "allTime": "All time"
   },
   "settings": {
     "usersGroups": "Users & groups",
