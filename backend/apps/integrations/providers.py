@@ -604,7 +604,16 @@ def _bitrix24_send(
     the search runs right before anything is created)."""
     options = b24_options(config)
     if options["only_answered"] and record.call_status != CallRecord.CallStatus.ANSWERED:
+        _b24_log_branch(record, "skipped_unanswered", config)
         raise CallSkipped("missed call (only_answered)")
+    # Portal mode matters for auto/lead: detect it on EVERY delivery path
+    # (cached 24 h) — also when the number is already in the CRM, so the
+    # first delivery fills the cache instead of waiting for an unknown caller.
+    mode = (
+        b24_refresh_mode(config)
+        if options["create_card"] in ("auto", "lead")
+        else str(config.get("crm_mode") or "")
+    )
     # Per-operator user (user_map) with the integration-wide user as fallback.
     user_id = b24_user_for(config, record.operator_id)
     fallback = b24_fallback_user(config)
@@ -614,6 +623,7 @@ def _bitrix24_send(
     entities = _b24_find_entities(config, record.counterparty_number)
     binding: dict[str, Any]
     if entities:
+        branch = "existing_entity"
         known = entities[0]
         binding = {"CRM_CREATE": 0}
         if known.get("CRM_ENTITY_TYPE") and known.get("CRM_ENTITY_ID"):
@@ -622,10 +632,11 @@ def _bitrix24_send(
                 "CRM_ENTITY_ID": known["CRM_ENTITY_ID"],
             }
     elif not options["save_external_calls"]:
+        _b24_log_branch(record, "skipped_unknown", config)
         raise CallSkipped("number not in Bitrix24 CRM (save_external_calls off)")
     else:
         card = options["create_card"]
-        if card in ("auto", "lead") and b24_refresh_mode(config) == "simple":
+        if card in ("auto", "lead") and mode == "simple":
             # Portals without leads never get one from us.
             if card == "lead":
                 note = B24_LEAD_FALLBACK_NOTE
@@ -633,6 +644,7 @@ def _bitrix24_send(
         elif card == "auto":
             card = "lead"
         binding = _b24_new_card(config, record, card, user_id, source)
+        branch = B24_CARD_BRANCHES[card]
 
     try:
         registered = _b24_register(config, record, user_id, binding)
@@ -661,7 +673,28 @@ def _bitrix24_send(
     )
     if record_url:
         _b24_attach_recording(config, registered, record, record_url)
+    _b24_log_branch(record, branch, config)
     return note
+
+
+# Card actually made for an unknown number (after auto/lead resolution).
+B24_CARD_BRANCHES = {
+    "lead": "created_lead",
+    "contact": "created_contact",
+    "deal": "created_contact_deal",
+    "none": "no_card",
+}
+
+
+def _b24_log_branch(record: CallRecord, branch: str, config: dict[str, Any]) -> None:
+    """One structured line per Bitrix24 delivery (no numbers, no URLs)."""
+    logger.info(
+        "bitrix24 delivery company=%s call=%s branch=%s crm_mode=%s",
+        record.company_id,
+        record.pk,
+        branch,
+        config.get("crm_mode") or "unknown",
+    )
 
 
 def _b24_new_card(

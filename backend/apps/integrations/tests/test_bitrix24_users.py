@@ -162,8 +162,8 @@ class TestSenderUser:
         config = self._config(operator, user_map={str(operator.pk): "21"})
         providers.send_call("bitrix24", config, call, None)
         assert [m for m, _ in fake.calls] == [
-            "telephony.externalcall.searchCrmEntities",
             "crm.settings.mode.get",
+            "telephony.externalcall.searchCrmEntities",
             "telephony.externalcall.register",
             "telephony.externalcall.finish",
         ]
