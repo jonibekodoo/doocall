@@ -74,7 +74,8 @@
     "aiScore": "AI analysis score",
     "detailTitle": "Call",
     "close": "Close",
-    "notFound": "Call not found"
+    "notFound": "Call not found",
+    "clearFilters": "Clear filters"
   },
   "player": {
     "play": "Play",

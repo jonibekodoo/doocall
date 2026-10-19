@@ -3,12 +3,12 @@
 /** §6.2 Звонки — full filter bar, paginated table, audio, export.
  * Call records are immutable — no delete anywhere. */
 
-import { useQuery } from "@tanstack/react-query";
-import { Download, UserPlus, X } from "lucide-react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Download, FilterX, UserPlus, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { CallAiBadge } from "@/app/cabinet/ai/ai-shared";
 import { AudioPlayer } from "@/components/AudioPlayer";
@@ -31,7 +31,7 @@ import {
   startExport,
 } from "@/lib/api/endpoints";
 import type { CallRow } from "@/lib/api/types";
-import type { CallFilters } from "@/lib/filters";
+import { buildCallsQuery, type CallFilters } from "@/lib/filters";
 import { formatDuration, formatPhone } from "@/lib/format";
 
 const CRM_LABEL: Record<string, string> = {
@@ -45,6 +45,81 @@ function daysAgoIso(days: number): string {
   date.setDate(date.getDate() - days);
   return date.toISOString().slice(0, 10);
 }
+
+/** Live filter controls (strings, as the inputs hold them). */
+interface LiveFilters {
+  from: string;
+  to: string;
+  employee: string;
+  direction: string;
+  status: string;
+  minDuration: string;
+  sim: string;
+  search: string;
+}
+
+/** Default view: last 30 days, everything else unfiltered. */
+function defaultFilters(): LiveFilters {
+  return {
+    from: daysAgoIso(30),
+    to: daysAgoIso(0),
+    employee: "",
+    direction: "",
+    status: "",
+    minDuration: "",
+    sim: "",
+    search: "",
+  };
+}
+
+/** URL query key for each filter (same names as the API). */
+const URL_KEYS: Record<keyof LiveFilters, string> = {
+  from: "date_from",
+  to: "date_to",
+  employee: "employees",
+  direction: "direction",
+  status: "status",
+  minDuration: "min_duration",
+  sim: "sim_slot",
+  search: "search",
+};
+
+/** Filters from the URL; a key that is present (even empty) wins over the
+ * default — "date_from=" means "no lower bound". */
+function filtersFromUrl(params: URLSearchParams): LiveFilters {
+  const result = defaultFilters();
+  for (const key of Object.keys(URL_KEYS) as (keyof LiveFilters)[]) {
+    const value = params.get(URL_KEYS[key]);
+    if (value !== null) result[key] = value;
+  }
+  return result;
+}
+
+function sameFilters(a: LiveFilters, b: LiveFilters): boolean {
+  return (Object.keys(URL_KEYS) as (keyof LiveFilters)[]).every(
+    (key) => a[key] === b[key],
+  );
+}
+
+/** Live controls → API filter model (invalid numbers are ignored). */
+function toCallFilters(live: LiveFilters): CallFilters {
+  const minDuration = Number(live.minDuration);
+  return {
+    dateFrom: live.from || undefined,
+    dateTo: live.to || undefined,
+    direction: (live.direction || undefined) as CallFilters["direction"],
+    status: (live.status || undefined) as CallFilters["status"],
+    search: live.search.trim() || undefined,
+    minDuration:
+      live.minDuration && Number.isFinite(minDuration) && minDuration > 0
+        ? minDuration
+        : undefined,
+    simSlot: live.sim === "" ? undefined : Number(live.sim),
+    employees: live.employee ? [Number(live.employee)] : undefined,
+  };
+}
+
+const SEARCH_DEBOUNCE_MS = 400;
 
 /** Deep link: /cabinet/calls?call=<id> opens that call in a side drawer. The
  * call is always fetched by id, so it works whatever the current page or
@@ -195,25 +270,60 @@ function CallsInner() {
     });
   }, [params, pathname, router]);
 
-  // Staged (draft) filters — applied on Применить (§6.2, default 30d).
-  const [draftRange, setDraftRange] = useState<DateRange>({
-    from: daysAgoIso(30),
-    to: daysAgoIso(0),
-  });
-  const [draftDirection, setDraftDirection] = useState("");
-  const [draftStatus, setDraftStatus] = useState(params.get("status") ?? "");
-  const [draftSearch, setDraftSearch] = useState("");
-  const [draftMinDuration, setDraftMinDuration] = useState("");
-  const [draftSim, setDraftSim] = useState("");
-  const [draftEmployee, setDraftEmployee] = useState("");
-
-  const [applied, setApplied] = useState<CallFilters>({
-    dateFrom: daysAgoIso(30),
-    dateTo: daysAgoIso(0),
-    status: (params.get("status") as CallFilters["status"]) ?? undefined,
-  });
+  // Live filters (§6.2, default 30 days): every control applies at once,
+  // the search box after a short pause (or Enter). Mirrored in the URL.
+  const [live, setLive] = useState<LiveFilters>(() => filtersFromUrl(params));
+  const [searchInput, setSearchInput] = useState(live.search);
   const [page, setPage] = useState(1);
   const [ordering, setOrdering] = useState<CallFilters["ordering"]>("-date");
+
+  const writeUrl = useCallback(
+    (next: LiveFilters) => {
+      const query = new URLSearchParams(params.toString());
+      const defaults = defaultFilters();
+      for (const key of Object.keys(URL_KEYS) as (keyof LiveFilters)[]) {
+        if (next[key] === defaults[key]) query.delete(URL_KEYS[key]);
+        else query.set(URL_KEYS[key], next[key]);
+      }
+      const text = query.toString();
+      router.replace(text ? `${pathname}?${text}` : pathname, {
+        scroll: false,
+      });
+    },
+    [params, pathname, router],
+  );
+
+  // Latest filters for the stable `update` below (keeps the debounce timer
+  // from restarting on unrelated re-renders).
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  const update = useCallback(
+    (patch: Partial<LiveFilters>) => {
+      const next = { ...liveRef.current, ...patch };
+      if (sameFilters(liveRef.current, next)) return;
+      liveRef.current = next;
+      setLive(next);
+      setPage(1);
+      writeUrl(next);
+    },
+    [writeUrl],
+  );
+
+  // Debounced search: one request after typing stops, none per keystroke.
+  useEffect(() => {
+    if (searchInput === live.search) return;
+    const timer = setTimeout(
+      () => update({ search: searchInput }),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [searchInput, live.search, update]);
+
+  const atDefaults = sameFilters(live, defaultFilters()) && searchInput === "";
+  const clearFilters = () => {
+    setSearchInput("");
+    update(defaultFilters());
+  };
 
   const { data: employees } = useQuery({
     queryKey: ["per-employee-list"],
@@ -221,25 +331,13 @@ function CallsInner() {
     staleTime: 300_000,
   });
 
-  const filters: CallFilters = { ...applied, page, ordering };
+  const filters: CallFilters = { ...toCallFilters(live), page, ordering };
   const { data, isPending } = useQuery({
     queryKey: ["calls", filters],
     queryFn: () => fetchCalls(filters),
+    // Keep the current rows on screen while the next filter loads.
+    placeholderData: keepPreviousData,
   });
-
-  const apply = () => {
-    setPage(1);
-    setApplied({
-      dateFrom: draftRange.from || undefined,
-      dateTo: draftRange.to || undefined,
-      direction: (draftDirection || undefined) as CallFilters["direction"],
-      status: (draftStatus || undefined) as CallFilters["status"],
-      search: draftSearch || undefined,
-      minDuration: draftMinDuration ? Number(draftMinDuration) : undefined,
-      simSlot: draftSim === "" ? undefined : Number(draftSim),
-      employees: draftEmployee ? [Number(draftEmployee)] : undefined,
-    });
-  };
 
   // Export with task-progress toast (poll until done/failed).
   const [exportId, setExportId] = useState<number | null>(null);
@@ -271,12 +369,15 @@ function CallsInner() {
   }, [exportId, tc]);
 
   const runExport = async (format: "csv" | "xlsx") => {
-    const body = await startExport(format, {
-      ...(applied.dateFrom ? { date_from: applied.dateFrom } : {}),
-      ...(applied.dateTo ? { date_to: applied.dateTo } : {}),
-      ...(applied.status ? { status: applied.status } : {}),
-      ...(applied.direction ? { direction: applied.direction } : {}),
-    });
+    // Exactly the live list filters (incl. a search still being typed).
+    const current = { ...live, search: searchInput };
+    if (searchInput !== live.search) update({ search: searchInput });
+    const body = await startExport(
+      format,
+      Object.fromEntries(
+        new URLSearchParams(buildCallsQuery(toCallFilters(current))),
+      ),
+    );
     setExportId(body.export_id);
     useToastStore.getState().push({ kind: "info", text: `${tc("export")}…` });
   };
@@ -442,67 +543,86 @@ function CallsInner() {
         </div>
       </div>
 
-      <FilterBar search={draftSearch} onSearch={setDraftSearch}>
-        <FilterSelect
-          label={t("operator")}
-          value={draftEmployee}
-          onChange={setDraftEmployee}
-          options={[
-            { value: "", label: t("operator") },
-            ...(employees?.report ?? []).map((emp) => ({
-              value: String(emp.operator_id),
-              label: emp.full_name || emp.user_name,
-            })),
-          ]}
-        />
-        <DateRangePicker value={draftRange} onChange={setDraftRange} />
-        <FilterSelect
-          label={t("direction")}
-          value={draftDirection}
-          onChange={setDraftDirection}
-          options={[
-            { value: "", label: t("direction") },
-            { value: "inbound", label: t("inbound") },
-            { value: "outbound", label: t("outbound") },
-          ]}
-        />
-        <FilterSelect
-          label={t("status")}
-          value={draftStatus}
-          onChange={setDraftStatus}
-          options={[
-            { value: "", label: t("status") },
-            { value: "answered", label: t("answered") },
-            { value: "no_answer", label: t("missed") },
-          ]}
-        />
-        <input
-          type="number"
-          min={0}
-          value={draftMinDuration}
-          onChange={(event) => setDraftMinDuration(event.target.value)}
-          placeholder={`${t("duration")} ≥`}
-          className="w-28 rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
-        />
-        <FilterSelect
-          label="SIM"
-          value={draftSim}
-          onChange={setDraftSim}
-          options={[
-            { value: "", label: "SIM" },
-            { value: "0", label: "SIM 1" },
-            { value: "1", label: "SIM 2" },
-          ]}
-        />
-        <button
-          type="button"
-          data-testid="apply-filters"
-          onClick={apply}
-          className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:opacity-90"
-        >
-          {tc("apply")}
-        </button>
-      </FilterBar>
+      <div
+        onKeyDown={(event) => {
+          // Enter in the search box searches right away (skips the pause).
+          const target = event.target as HTMLInputElement;
+          if (event.key === "Enter" && target.type === "search") {
+            update({ search: searchInput });
+          }
+        }}
+      >
+        <FilterBar search={searchInput} onSearch={setSearchInput}>
+          <FilterSelect
+            label={t("operator")}
+            value={live.employee}
+            onChange={(value) => update({ employee: value })}
+            options={[
+              { value: "", label: t("operator") },
+              ...(employees?.report ?? []).map((emp) => ({
+                value: String(emp.operator_id),
+                label: emp.full_name || emp.user_name,
+              })),
+            ]}
+          />
+          <DateRangePicker
+            value={{ from: live.from, to: live.to }}
+            onChange={(range: DateRange) =>
+              update({ from: range.from, to: range.to })
+            }
+          />
+          <FilterSelect
+            label={t("direction")}
+            value={live.direction}
+            onChange={(value) => update({ direction: value })}
+            options={[
+              { value: "", label: t("direction") },
+              { value: "inbound", label: t("inbound") },
+              { value: "outbound", label: t("outbound") },
+            ]}
+          />
+          <FilterSelect
+            label={t("status")}
+            value={live.status}
+            onChange={(value) => update({ status: value })}
+            options={[
+              { value: "", label: t("status") },
+              { value: "answered", label: t("answered") },
+              { value: "no_answer", label: t("missed") },
+            ]}
+          />
+          <input
+            type="number"
+            min={0}
+            value={live.minDuration}
+            onChange={(event) => update({ minDuration: event.target.value })}
+            placeholder={`${t("duration")} ≥`}
+            aria-label={`${t("duration")} ≥`}
+            data-testid="filter-min-duration"
+            className="w-28 rounded-md border border-border bg-surface px-2.5 py-2 text-sm"
+          />
+          <FilterSelect
+            label="SIM"
+            value={live.sim}
+            onChange={(value) => update({ sim: value })}
+            options={[
+              { value: "", label: "SIM" },
+              { value: "0", label: "SIM 1" },
+              { value: "1", label: "SIM 2" },
+            ]}
+          />
+          {!atDefaults && (
+            <button
+              type="button"
+              data-testid="clear-filters"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg"
+            >
+              <FilterX className="size-4" /> {t("clearFilters")}
+            </button>
+          )}
+        </FilterBar>
+      </div>
 
       <DataTable<CallRow>
         columns={columns}
