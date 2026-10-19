@@ -74,7 +74,8 @@
     "aiScore": "AI tahlil bahosi",
     "detailTitle": "Qo'ng'iroq",
     "close": "Yopish",
-    "notFound": "Qo'ng'iroq topilmadi"
+    "notFound": "Qo'ng'iroq topilmadi",
+    "clearFilters": "Filtrni tozalash"
   },
   "player": {
     "play": "Tinglash",

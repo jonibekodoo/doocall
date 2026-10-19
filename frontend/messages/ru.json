@@ -74,7 +74,8 @@
     "aiScore": "Оценка AI-анализа",
     "detailTitle": "Звонок",
     "close": "Закрыть",
-    "notFound": "Звонок не найден"
+    "notFound": "Звонок не найден",
+    "clearFilters": "Сбросить фильтры"
   },
   "player": {
     "play": "Слушать",
