@@ -165,3 +165,20 @@ export interface Bitrix24PortalMode {
   /** Detection failed → treated as "simple" (no leads) for safety. */
   crm_mode_assumed: boolean;
 }
+
+/** Last custom-webhook delivery outcome (GET /settings/webhook, final result
+ * after retries). */
+export interface WebhookDeliveryStatus {
+  /** null = never sent; "http_<code>" = the server answered with that code. */
+  last_status:
+    | null
+    | "ok"
+    | `http_${number}`
+    | "timeout"
+    | "connection_error"
+    | "blocked"
+    | "error";
+  /** ISO with offset. */
+  last_ok_at: string | null;
+  last_error_at: string | null;
+}

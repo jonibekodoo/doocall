@@ -42,6 +42,7 @@ import {
   testWebhook,
   type NewOperatorResponse,
 } from "@/lib/api/endpoints";
+import type { WebhookDeliveryStatus } from "@/lib/api/types";
 import { formatPhone, formatUzs, providerLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -672,6 +673,76 @@ const SPECIAL_TILES = [
   },
 ] as const;
 
+/** "2026-10-20T13:16:04+05:00" → "20.10 13:16" in the viewer's local time. */
+function shortLocal(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const two = (value: number) => String(value).padStart(2, "0");
+  return `${two(date.getDate())}.${two(date.getMonth() + 1)} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
+/** Last delivery of the custom webhook: never / ok / failed (+ reason). */
+function WebhookStatusLine({ info }: { info: WebhookDeliveryStatus }) {
+  const t = useTranslations("settings");
+  const status = info.last_status;
+  if (!status) {
+    return (
+      <p
+        data-testid="webhook-status"
+        data-state="never"
+        className="mt-2 text-xs text-fg-faint"
+      >
+        {t("webhookNever")}
+      </p>
+    );
+  }
+  const okAt = shortLocal(info.last_ok_at);
+  if (status === "ok") {
+    return (
+      <p
+        data-testid="webhook-status"
+        data-state="ok"
+        className="mt-2 text-xs font-medium text-accent"
+      >
+        {t("webhookOk")}
+        {okAt && ` — ${okAt}`}
+      </p>
+    );
+  }
+  const http = /^http_(\d{3})$/.exec(status);
+  const code = http ? Number(http[1]) : 0;
+  const reason = http
+    ? code >= 400 && code < 500
+      ? t("webhookErr_http4xx", { code })
+      : code >= 500
+        ? t("webhookErr_http5xx", { code })
+        : t("webhookErr_http", { code })
+    : (["timeout", "connection_error", "blocked"] as const).includes(
+          status as "timeout",
+        )
+      ? t(`webhookErr_${status as "timeout" | "connection_error" | "blocked"}`)
+      : t("webhookErr_error");
+  const errorAt = shortLocal(info.last_error_at);
+  return (
+    <div
+      data-testid="webhook-status"
+      data-state="error"
+      className="mt-2 space-y-0.5 text-xs"
+    >
+      <p className="font-medium text-danger">
+        {t("webhookFailed", { reason })}
+        {errorAt && ` — ${errorAt}`}
+      </p>
+      {okAt && (
+        <p className="text-fg-muted" data-testid="webhook-last-ok">
+          {t("webhookLastOk", { at: okAt })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function IntegrationTab() {
   const t = useTranslations("settings");
   const queryClient = useQueryClient();
@@ -679,10 +750,19 @@ function IntegrationTab() {
     queryKey: ["s-apikey"],
     queryFn: fetchApiKey,
   });
-  const { data: webhook } = useQuery({
+  const { data: webhookData } = useQuery({
     queryKey: ["s-webhook"],
     queryFn: fetchWebhook,
   });
+  // The settings endpoint also reports the last delivery outcome.
+  const webhook = webhookData as
+    | (NonNullable<typeof webhookData> & Partial<WebhookDeliveryStatus>)
+    | undefined;
+  const webhookStatus: WebhookDeliveryStatus = {
+    last_status: webhook?.last_status ?? null,
+    last_ok_at: webhook?.last_ok_at ?? null,
+    last_error_at: webhook?.last_error_at ?? null,
+  };
   const tCrm = useTranslations("crm");
   const tc = useTranslations("common");
   const {
@@ -868,6 +948,9 @@ function IntegrationTab() {
               placeholder="https://crm.example.uz/hook"
               className="mt-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
             />
+            {webhook && (webhook.webhook_url || webhookStatus.last_status) && (
+              <WebhookStatusLine info={webhookStatus} />
+            )}
             {secret && (
               <p className="tnum mt-2 break-all rounded-md bg-warning/10 p-2 font-mono text-xs">
                 secret: {secret}

@@ -303,7 +303,18 @@
       "on": "yoqilgan",
       "off": "o'chirilgan",
       "adminOnly": "sozlamalarni faqat kompaniya administratori o'zgartira oladi"
-    }
+    },
+    "webhookNever": "Hali yuborilmagan",
+    "webhookOk": "Oxirgi yuborish: muvaffaqiyatli",
+    "webhookFailed": "Oxirgi yuborish: xato ({reason})",
+    "webhookLastOk": "oxirgi muvaffaqiyatli: {at}",
+    "webhookErr_http4xx": "server HTTP {code} qaytardi — manzil yoki token noto'g'ri bo'lishi mumkin",
+    "webhookErr_http5xx": "server HTTP {code} qaytardi (server xatosi)",
+    "webhookErr_http": "server HTTP {code} qaytardi",
+    "webhookErr_timeout": "server javob bermadi",
+    "webhookErr_connection_error": "serverga ulanib bo'lmadi",
+    "webhookErr_blocked": "manzil xavfsizlik tekshiruvidan o'tmadi",
+    "webhookErr_error": "noma'lum xato"
   },
   "ai": {
     "badge": "Sun'iy intellekt",
