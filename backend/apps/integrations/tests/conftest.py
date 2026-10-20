@@ -82,3 +82,16 @@ def _public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
     from apps.core import netguard
 
     monkeypatch.setattr(netguard, "resolve", lambda host, port: [PUBLIC_IP])
+
+
+@pytest.fixture(autouse=True)
+def _no_object_storage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No MinIO in unit tests: reading a recording fails fast (Bitrix24 then
+    falls back to RECORD_URL / the timeline comment). Recording tests patch
+    ``providers._read_audio`` themselves."""
+    from apps.integrations import providers
+
+    def unavailable(object_key: str) -> bytes:
+        raise providers.AudioReadError("no object storage in tests")
+
+    monkeypatch.setattr(providers, "_read_audio", unavailable)

@@ -8,9 +8,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# curl is used by the compose healthcheck; libpq for psycopg runtime.
+# curl is used by the compose healthcheck; libpq for psycopg runtime;
+# ffmpeg transcodes .ogg/.m4a call recordings to mp3 for Bitrix24's player
+# (apps.core.audio — same image runs backend AND celery; adds roughly
+# 150-250 MB with --no-install-recommends).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libpq5 \
+    && apt-get install -y --no-install-recommends curl libpq5 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install deps first for layer caching. Dev deps included so the same image
