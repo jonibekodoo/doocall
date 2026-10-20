@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import urllib.error
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
@@ -12,6 +13,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.accounts.models import User
 from apps.calls.models import CallRecord
 from apps.companies.models import Company
 from apps.core import netguard
@@ -126,6 +128,7 @@ def test_test_endpoint_reports_block_actionably(client: APIClient, company: Comp
 class _Hook(BaseHTTPRequestHandler):
     hits: list[tuple[str, str | None, str | None]] = []
     reply: tuple[int, dict[str, str], bytes] = (204, {}, b"")
+    queue: list[tuple[int, dict[str, str], bytes]] = []  # one-shot replies first
 
     def do_POST(self) -> None:  # noqa: N802 - http.server API
         length = int(self.headers.get("Content-Length") or 0)
@@ -133,7 +136,7 @@ class _Hook(BaseHTTPRequestHandler):
         _Hook.hits.append(
             (self.path, self.headers.get("Host"), self.headers.get("X-Doocall-Signature"))
         )
-        status, headers, body = _Hook.reply
+        status, headers, body = _Hook.queue.pop(0) if _Hook.queue else _Hook.reply
         self.send_response(status)
         for key, value in headers.items():
             self.send_header(key, value)
@@ -151,7 +154,7 @@ def hook_server(settings: Any, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]
     run for real, only the vetted IP is our loopback server (DEBUG lets
     plain http and the port through)."""
     settings.DEBUG = True
-    _Hook.hits, _Hook.reply = [], (204, {}, b"")
+    _Hook.hits, _Hook.reply, _Hook.queue = [], (204, {}, b""), []
     httpd = HTTPServer(("127.0.0.1", 0), _Hook)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     real_check = netguard.check_url
@@ -189,3 +192,172 @@ def test_test_endpoint_does_not_echo_remote_body(
     assert response.json() == {"success": False, "error": "HTTP 500"}
     _Hook.reply = (204, {}, b"")
     assert client.post(f"{URL}/test").json() == {"success": True, "delivery_status": 204}
+
+
+# ── Delivery outcome: retry policy, last status, log hygiene ──────────────
+def _deliver(record: CallRecord) -> int:
+    """Run through Celery (eager ``apply``) so retries really happen."""
+    return int(web_tasks.deliver_call_webhook.apply(args=[record.pk]).get())
+
+
+def _task_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "apps.web.tasks" and r.levelname == "WARNING"
+    ]
+
+
+@pytest.mark.parametrize("code", [400, 401, 403, 404, 410, 422])
+def test_4xx_is_permanent_not_retried_and_status_saved(
+    company: Company,
+    record: CallRecord,
+    hook_server: str,
+    caplog: pytest.LogCaptureFixture,
+    code: int,
+) -> None:
+    _set_url(company, f"{hook_server}/hook/tok3n")
+    _Hook.reply = (code, {"Content-Type": "text/html"}, b"<h1>SECRET remote body</h1>")
+    assert _deliver(record) == 0
+    assert len(_Hook.hits) == 1  # no retry
+
+    company.refresh_from_db()
+    assert company.webhook_last_status == f"http_{code}"
+    assert company.webhook_last_error_at is not None
+    assert company.webhook_last_ok_at is None
+
+    (line,) = _task_warnings(caplog)  # exactly one WARNING
+    assert f"company {company.pk}" in line and f"call {record.pk}" in line
+    assert f"http_{code}" in line and "giving up" in line
+    for leak in ("hooks.example.com", "tok3n", "/hook", "SECRET", hook_server):
+        assert leak not in caplog.text
+
+
+@pytest.mark.parametrize("code", [500, 502, 503, 408, 429])
+def test_5xx_408_429_are_retried_then_saved(
+    company: Company,
+    record: CallRecord,
+    hook_server: str,
+    caplog: pytest.LogCaptureFixture,
+    code: int,
+) -> None:
+    _set_url(company, f"{hook_server}/hook")
+    _Hook.reply = (code, {}, b"")
+    assert _deliver(record) == 0
+    assert len(_Hook.hits) == 4  # first attempt + max_retries (3)
+
+    company.refresh_from_db()
+    assert company.webhook_last_status == f"http_{code}"
+    warnings = _task_warnings(caplog)
+    assert len(warnings) == 4
+    assert all(f"http_{code}" in w for w in warnings)
+    assert "will retry" in warnings[0] and "giving up" in warnings[-1]
+
+
+def test_only_the_final_outcome_is_saved(
+    company: Company, record: CallRecord, hook_server: str
+) -> None:
+    _set_url(company, f"{hook_server}/hook")
+    _Hook.queue = [(500, {}, b""), (503, {}, b"")]  # then the default 204
+    assert _deliver(record) == 204
+    assert len(_Hook.hits) == 3
+
+    company.refresh_from_db()
+    assert company.webhook_last_status == "ok"
+    assert company.webhook_last_ok_at is not None
+    assert company.webhook_last_error_at is None  # retries are not outcomes
+
+
+def test_success_after_an_earlier_failure_keeps_the_error_time(
+    company: Company, record: CallRecord, hook_server: str
+) -> None:
+    _set_url(company, f"{hook_server}/hook")
+    _Hook.reply = (404, {}, b"")
+    _deliver(record)
+    company.refresh_from_db()
+    failed_at = company.webhook_last_error_at
+
+    _Hook.reply = (200, {}, b"")
+    assert _deliver(record) == 200
+    company.refresh_from_db()
+    assert company.webhook_last_status == "ok"
+    assert company.webhook_last_error_at == failed_at
+    assert company.webhook_last_ok_at > failed_at
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (TimeoutError("timed out"), "timeout"),
+        (urllib.error.URLError(TimeoutError("timed out")), "timeout"),
+        (urllib.error.URLError(ConnectionRefusedError(111, "refused")), "connection_error"),
+        (ConnectionResetError(104, "reset"), "connection_error"),
+    ],
+)
+def test_network_errors_are_retried_and_classified(
+    company: Company,
+    record: CallRecord,
+    monkeypatch: pytest.MonkeyPatch,
+    error: Exception,
+    status: str,
+) -> None:
+    _set_url(company, "https://crm.example.uz/hook")
+    attempts: list[int] = []
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        attempts.append(1)
+        raise error
+
+    monkeypatch.setattr(netguard, "open_url", fail)
+    assert _deliver(record) == 0
+    assert len(attempts) == 4
+    company.refresh_from_db()
+    assert company.webhook_last_status == status
+
+
+def test_blocked_url_saves_blocked_without_retry(
+    company: Company, record: CallRecord, hook_server: str
+) -> None:
+    _set_url(company, f"{hook_server}/hook")
+    _Hook.reply = (302, {"Location": "http://169.254.169.254/"}, b"")
+    assert _deliver(record) == 0
+    assert len(_Hook.hits) == 1
+    company.refresh_from_db()
+    assert company.webhook_last_status == "blocked"
+
+
+def test_settings_get_exposes_last_delivery(
+    client: APIClient, company: Company, record: CallRecord, hook_server: str
+) -> None:
+    _set_url(company, f"{hook_server}/hook")
+    fresh = client.get(URL).json()
+    assert (fresh["last_status"], fresh["last_ok_at"], fresh["last_error_at"]) == (
+        None,
+        None,
+        None,
+    )
+
+    _Hook.reply = (404, {}, b"")
+    _deliver(record)
+    company.refresh_from_db()  # the forced-auth user holds this very instance
+    body = client.get(URL).json()
+    assert body["last_status"] == "http_404"
+    assert body["last_error_at"] == company.webhook_last_error_at.isoformat()
+    assert body["last_ok_at"] is None
+    assert set(body) == {
+        "success",
+        "webhook_url",
+        "secret_set",
+        "last_status",
+        "last_ok_at",
+        "last_error_at",
+    }
+
+
+def test_settings_get_is_company_admin_only(company: Company) -> None:
+    member = User.objects.create_user(
+        username="member@w.uz", company=company, is_company_admin=False
+    )
+    api = APIClient()
+    api.force_authenticate(member)
+    assert api.get(URL).status_code == 403
