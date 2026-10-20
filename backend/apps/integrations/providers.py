@@ -12,6 +12,7 @@ backend deliberately has no ``requests`` dependency).
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -358,29 +359,55 @@ def _b24_attach_recording(
     registered: dict[str, Any],
     record: CallRecord,
     record_url: str,
-) -> None:
-    """Attach the recording to the finished call; Bitrix24 only accepts
-    mp3/wav files, so anything else lands as a CRM timeline comment with
-    the permanent link instead."""
-    audio = record.audios.first()
-    ext = (audio.filename.rsplit(".", 1)[-1].lower() if audio and "." in audio.filename else "")
-    if ext in B24_AUDIO_EXTS:
+) -> str:
+    """Attach the recording so Bitrix24 shows its player. The bytes are sent
+    as FILE_CONTENT (no dependency on Bitrix24 following our 302 to MinIO);
+    phones record .ogg/.m4a, which Bitrix24 can't play, so those are
+    transcoded to mp3 (the real format is probed, not the extension).
+    Fallbacks: mp3/wav files → RECORD_URL; otherwise a CRM timeline comment
+    with the permanent link. Returns mp3 | wav | comment | none."""
+    from apps.core import audio as audio_tools
+
+    audio = record.audios.filter(kind="primary").first() or record.audios.first()
+    name_ext = audio.filename.rsplit(".", 1)[-1].lower() if audio and "." in audio.filename else ""
+    if audio is not None:
         try:
+            content, ext = audio_tools.playable(_read_audio(audio.object_key), name_ext)
             _b24_call(
                 config,
                 "telephony.externalcall.attachrecord",
                 {
                     "CALL_ID": registered["CALL_ID"],
                     "FILENAME": f"doocall-{record.server_id.hex}.{ext}",
+                    "FILE_CONTENT": base64.b64encode(content).decode(),
+                },
+            )
+            return ext
+        except (audio_tools.AudioError, ProviderError, AudioReadError) as exc:
+            # Logged without URLs/numbers (object keys hold the call id).
+            logger.warning(
+                "bitrix24: recording for call %s not attached as file (%s: %s)",
+                record.pk,
+                type(exc).__name__,
+                exc,
+            )
+    if name_ext in B24_AUDIO_EXTS:
+        try:
+            _b24_call(
+                config,
+                "telephony.externalcall.attachrecord",
+                {
+                    "CALL_ID": registered["CALL_ID"],
+                    "FILENAME": f"doocall-{record.server_id.hex}.{name_ext}",
                     "RECORD_URL": record_url,
                 },
             )
-            return
+            return name_ext
         except ProviderError:
             pass  # fall through to the timeline comment
     entity_id = registered.get("CRM_ENTITY_ID")
     if not entity_id:
-        return  # nowhere to leave the link; the call itself is already logged
+        return "none"  # nowhere to leave the link; the call itself is logged
     _b24_call(
         config,
         "crm.timeline.comment.add",
@@ -392,6 +419,31 @@ def _b24_attach_recording(
             }
         },
     )
+    return "comment"
+
+
+class AudioReadError(Exception):
+    """The recording couldn't be read from object storage."""
+
+
+def _read_audio(object_key: str) -> bytes:
+    """Recording bytes from MinIO, refusing anything over the transcode cap."""
+    from apps.api import storage
+    from apps.core import audio as audio_tools
+
+    cap = audio_tools.MAX_INPUT_BYTES
+    try:
+        response = storage.client().get_object(settings.MINIO_BUCKET, object_key)
+        try:
+            data: bytes = response.read(cap + 1)
+        finally:
+            response.close()
+            response.release_conn()
+    except Exception as exc:  # noqa: BLE001 - minio/urllib3 errors vary
+        raise AudioReadError(type(exc).__name__) from None
+    if len(data) > cap:
+        raise AudioReadError(f"recording larger than {cap // (1024 * 1024)} MB")
+    return data
 
 
 B24_USERS_CAP = 500  # user.get pages are 50 rows; stop after this many
@@ -684,8 +736,15 @@ def _bitrix24_send(
             "STATUS_CODE": B24_STATUS.get(record.call_status, 603),
         },
     )
+    attached = "none"
     if record_url:
-        _b24_attach_recording(config, registered, record, record_url)
+        attached = _b24_attach_recording(config, registered, record, record_url)
+    logger.info(
+        "bitrix24 record company=%s call=%s attached=%s",
+        record.company_id,
+        record.pk,
+        attached,
+    )
     _b24_log_branch(record, branch, config)
     return note
 
