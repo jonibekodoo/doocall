@@ -573,22 +573,35 @@ def _b24_create_deal(
 def _b24_register(
     config: dict[str, Any], record: CallRecord, user_id: int, binding: dict[str, Any]
 ) -> dict[str, Any]:
-    registered = _b24_call(
-        config,
-        "telephony.externalcall.register",
-        {
-            "USER_ID": user_id,
-            "PHONE_NUMBER": record.counterparty_number,
-            "TYPE": 2 if record.call_type == CallRecord.CallType.INBOUND else 1,
-            "CALL_START_DATE": record.start_time.isoformat(),
-            "SHOW": 0,
-            # Dedup guard: repeated dispatch of the same DooCall record
-            # within 30 minutes reuses the registered call.
-            "EXTERNAL_CALL_ID": record.server_id.hex,
-            # CRM binding / card creation (see _bitrix24_send).
-            **binding,
-        },
-    )
+    params: dict[str, Any] = {
+        "USER_ID": user_id,
+        "PHONE_NUMBER": record.counterparty_number,
+        "TYPE": 2 if record.call_type == CallRecord.CallType.INBOUND else 1,
+        "CALL_START_DATE": record.start_time.isoformat(),
+        "SHOW": 0,
+        # Dedup guard: repeated dispatch of the same DooCall record
+        # within 30 minutes reuses the registered call.
+        "EXTERNAL_CALL_ID": record.server_id.hex,
+        # CRM binding / card creation (see _bitrix24_send).
+        **binding,
+    }
+    # The operator's SIM number as the external line, so the timeline reads
+    # "С номера +998…" instead of "REST_APP:" (optional per apidocs).
+    if line := (record.operator_number or "").strip():
+        params["LINE_NUMBER"] = line
+    try:
+        registered = _b24_call(config, "telephony.externalcall.register", params)
+    except ProviderError as exc:
+        if "LINE_NUMBER" not in params:
+            raise
+        # A portal that refuses unknown lines: register without it once.
+        logger.warning(
+            "bitrix24: register with LINE_NUMBER failed for call %s (%s); retrying without it",
+            record.pk,
+            exc,
+        )
+        without_line = {k: v for k, v in params.items() if k != "LINE_NUMBER"}
+        registered = _b24_call(config, "telephony.externalcall.register", without_line)
     if not (registered or {}).get("CALL_ID"):
         raise ProviderError("telephony.externalcall.register returned no CALL_ID")
     result: dict[str, Any] = registered
