@@ -13,6 +13,7 @@ import urllib.request
 from typing import Any
 
 from celery import shared_task
+from celery.utils.time import get_exponential_backoff_interval
 from django.utils import timezone
 
 from apps.api import storage
@@ -160,19 +161,76 @@ def deliver_webhook(company: Company, payload: dict[str, Any], *, timeout: int =
         raise
 
 
-@shared_task(
-    name="apps.web.tasks.deliver_call_webhook",
-    autoretry_for=(Exception,),
-    retry_backoff=30,
-    max_retries=3,
-)
-def deliver_call_webhook(record_id: int) -> int:
+WEBHOOK_RETRY_BACKOFF = 30  # seconds, doubled per attempt (with full jitter)
+WEBHOOK_RETRY_MAX_DELAY = 600
+RETRYABLE_HTTP_4XX = {408, 429}  # request timeout / rate limit: worth another try
+
+
+def _record_webhook_outcome(company_id: int, status: str) -> None:
+    """Persist the FINAL outcome of a delivery (not every retry attempt)."""
+    now = timezone.now()
+    stamp = {"webhook_last_ok_at": now} if status == "ok" else {"webhook_last_error_at": now}
+    Company.objects.filter(pk=company_id).update(webhook_last_status=status, **stamp)
+
+
+def _failure_status(exc: Exception) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"http_{exc.code}"
+    reason = getattr(exc, "reason", None)  # URLError wraps the socket error
+    if isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError):
+        return "timeout"
+    if isinstance(exc, OSError):  # URLError, refused, reset, DNS, TLS
+        return "connection_error"
+    return "error"
+
+
+@shared_task(bind=True, name="apps.web.tasks.deliver_call_webhook", max_retries=3)
+def deliver_call_webhook(self: Any, record_id: int) -> int:
+    """Deliver one call to the company webhook. Returns the HTTP status, 0 when
+    not delivered. 4xx (except 408/429), redirects and SSRF blocks are
+    permanent; 5xx/408/429 and timeouts/connection errors are retried with
+    exponential backoff. Logs carry company/record ids and the HTTP status
+    only — never the URL (may hold a token) or the remote response body."""
     record = CallRecord.all_objects.select_related("company").filter(pk=record_id).first()
     if record is None or not record.company.webhook_url:
         return 0
+    company_id = record.company_id
     try:
-        return deliver_webhook(record.company, webhook_payload(record))
+        status_code = deliver_webhook(record.company, webhook_payload(record))
     except WebhookBlocked as exc:
-        # Permanent: retrying can't help. Logged without the URL (may hold a token).
-        logger.warning("webhook for company %s not sent: %s", record.company_id, exc)
+        logger.warning("webhook for company %s not sent: %s", company_id, exc)
+        _record_webhook_outcome(company_id, "blocked")
         return 0
+    except Exception as exc:  # noqa: BLE001 - classified below
+        status = _failure_status(exc)
+        if isinstance(exc, urllib.error.HTTPError):
+            exc.close()  # drop the remote body unread
+        permanent = (
+            isinstance(exc, urllib.error.HTTPError)
+            and 400 <= exc.code < 500
+            and exc.code not in RETRYABLE_HTTP_4XX
+        )
+        attempt, retries_left = self.request.retries + 1, self.max_retries - self.request.retries
+        final = permanent or retries_left <= 0
+        logger.warning(
+            "webhook for company %s, call %s failed: %s (attempt %d, %s)",
+            company_id,
+            record_id,
+            status,
+            attempt,
+            "giving up" if final else "will retry",
+        )
+        if final:
+            _record_webhook_outcome(company_id, status)
+            return 0
+        raise self.retry(
+            exc=exc,
+            countdown=get_exponential_backoff_interval(
+                factor=WEBHOOK_RETRY_BACKOFF,
+                retries=self.request.retries,
+                maximum=WEBHOOK_RETRY_MAX_DELAY,
+                full_jitter=True,
+            ),
+        ) from None
+    _record_webhook_outcome(company_id, "ok")
+    return status_code

@@ -404,6 +404,16 @@ class WebhookSettingsView(AdminCabinetView):
                 "success": True,
                 "webhook_url": company.webhook_url or None,
                 "secret_set": bool(company.webhook_secret),
+                # Last call delivery (final outcome, after retries).
+                "last_status": company.webhook_last_status or None,
+                "last_ok_at": (
+                    company.webhook_last_ok_at.isoformat() if company.webhook_last_ok_at else None
+                ),
+                "last_error_at": (
+                    company.webhook_last_error_at.isoformat()
+                    if company.webhook_last_error_at
+                    else None
+                ),
             }
         )
 

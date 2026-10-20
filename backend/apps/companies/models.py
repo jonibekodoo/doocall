@@ -60,6 +60,11 @@ class Company(models.Model):
     # Outbound webhook: signed POST on every new call.
     webhook_url = models.URLField(blank=True, default="")
     webhook_secret = models.CharField(max_length=64, blank=True, default="")
+    # Final outcome of the last call delivery (after retries): "ok", "http_404",
+    # "timeout", "connection_error", "blocked", "error"; "" = nothing sent yet.
+    webhook_last_status = models.CharField(max_length=20, blank=True, default="")
+    webhook_last_ok_at = models.DateTimeField(null=True, blank=True)
+    webhook_last_error_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
