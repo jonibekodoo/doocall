@@ -303,7 +303,18 @@
       "on": "включён",
       "off": "выключен",
       "adminOnly": "настройки может менять только администратор компании"
-    }
+    },
+    "webhookNever": "Ещё не отправлялся",
+    "webhookOk": "Последняя отправка: успешно",
+    "webhookFailed": "Последняя отправка: ошибка ({reason})",
+    "webhookLastOk": "последняя успешная: {at}",
+    "webhookErr_http4xx": "сервер вернул HTTP {code} — возможно, неверный адрес или токен",
+    "webhookErr_http5xx": "сервер вернул HTTP {code} (ошибка сервера)",
+    "webhookErr_http": "сервер вернул HTTP {code}",
+    "webhookErr_timeout": "сервер не ответил",
+    "webhookErr_connection_error": "не удалось подключиться к серверу",
+    "webhookErr_blocked": "адрес не прошёл проверку безопасности",
+    "webhookErr_error": "неизвестная ошибка"
   },
   "ai": {
     "badge": "Искусственный интеллект",

@@ -303,7 +303,18 @@
       "on": "on",
       "off": "off",
       "adminOnly": "only a company administrator can change these settings"
-    }
+    },
+    "webhookNever": "Not sent yet",
+    "webhookOk": "Last delivery: successful",
+    "webhookFailed": "Last delivery: failed ({reason})",
+    "webhookLastOk": "last successful: {at}",
+    "webhookErr_http4xx": "the server returned HTTP {code} — the address or token may be wrong",
+    "webhookErr_http5xx": "the server returned HTTP {code} (server error)",
+    "webhookErr_http": "the server returned HTTP {code}",
+    "webhookErr_timeout": "the server didn't respond",
+    "webhookErr_connection_error": "couldn't connect to the server",
+    "webhookErr_blocked": "the address failed the security check",
+    "webhookErr_error": "unknown error"
   },
   "ai": {
     "badge": "Artificial intelligence",
