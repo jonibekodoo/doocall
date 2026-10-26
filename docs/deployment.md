@@ -222,11 +222,20 @@ through it. `api.doocall.uz` has no block of its own — it lands in the
 
 **Service.** `ws` runs the backend image with
 `uvicorn doocall.asgi:application` on port 8001 (`--ws-ping-interval 20
---ws-ping-timeout 20 --proxy-headers --timeout-graceful-shutdown 20
---workers $WS_WORKERS`). Same `.env` as backend; the Redis channel layer
-(same Redis) fans dial commands out across workers and containers. It never
-runs migrations. Healthcheck: `GET /healthz/` on :8001 (the http branch of
-the ASGI app is plain Django). nginx does **not** depend on it — the
+--ws-ping-timeout 20 --ws-max-size 16384 --proxy-headers
+--timeout-graceful-shutdown 20 --workers $WS_WORKERS`). Same `.env` as
+backend; the Redis channel layer (`CHANNELS_REDIS_URL`, default `REDIS_URL`
+— the same Redis) fans dial commands out across workers and containers. It
+never runs migrations. Healthcheck: `GET /healthz/` on :8001 — the ASGI
+app's `http` branch is plain Django (`get_asgi_application()`); only
+`websocket` goes to the Channels router.
+
+Two keep-alives, independent of each other: uvicorn sends protocol-level
+ping frames every 20 s (a socket that misses the pong for 20 s is dropped),
+and the server sends an app-level `{"type":"ping"}` every 25 s that also
+refreshes the device's online marker (TTL 70 s). Both are far inside nginx's
+3600 s read/send timeout. `--ws-max-size 16384` caps incoming frames at the
+protocol level; the consumer itself closes on frames over 8 KB. nginx does **not** depend on it — the
 upstream resolves at runtime, so a `ws` problem never keeps the site down.
 
 **nginx.** Every server block that serves `/api/` (landing, `app.`, the
@@ -290,6 +299,8 @@ curl -s -o /dev/null -w '%{http_code}\n' --http1.1 --max-time 3 \
 |---|---|---|
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` | 4 / 2 | backend concurrency |
 | `WS_WORKERS` | 2 | uvicorn worker processes of the `ws` service (Remote Dial sockets) |
+| `CHANNELS_REDIS_URL` | `REDIS_URL` | Redis for the Channels layer (Remote Dial); set only to split it off |
+| `CHANNELS_PREFIX` | `doocall:ws` | key prefix of the channel layer in that Redis |
 | `WS_HOST_PORT` (dev only) | 8002 | host port of the dev `ws` service (a phone on the LAN can connect directly) |
 | `CELERY_CONCURRENCY` | 4 | worker processes |
 | `AUDIO_PRESIGN_EXPIRY_SECONDS` | 3600 | presigned URL TTL (hard-capped at 1h) |

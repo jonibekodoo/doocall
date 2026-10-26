@@ -106,7 +106,7 @@ services:
   # the app reconnects (with backoff) to the surviving container.
   ws:
     <<: *backend-base
-    command: ["sh", "-c", "exec uvicorn doocall.asgi:application --host 0.0.0.0 --port 8001 --ws-ping-interval 20 --ws-ping-timeout 20 --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --workers ${WS_WORKERS:-2}"]
+    command: ["sh", "-c", "exec uvicorn doocall.asgi:application --host 0.0.0.0 --port 8001 --ws-ping-interval 20 --ws-ping-timeout 20 --ws-max-size 16384 --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --workers ${WS_WORKERS:-2}"]
     depends_on:
       db:
         condition: service_healthy

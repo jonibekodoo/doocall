@@ -93,7 +93,7 @@ services:
   ws:
     build: ./backend
     <<: *backend-env
-    command: uvicorn doocall.asgi:application --host 0.0.0.0 --port 8001 --reload --ws-ping-interval 20 --ws-ping-timeout 20 --proxy-headers --forwarded-allow-ips=*
+    command: uvicorn doocall.asgi:application --host 0.0.0.0 --port 8001 --reload --ws-ping-interval 20 --ws-ping-timeout 20 --ws-max-size 16384 --proxy-headers --forwarded-allow-ips=*
     volumes:
       - ./backend:/app
     ports:
