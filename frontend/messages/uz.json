@@ -1435,6 +1435,10 @@
     "reject_feature_disabled": "Operator masofaviy qo'ng'iroqni o'chirgan",
     "reject_other": "Telefon buyruqni rad etdi",
     "pollStopped": "Holat bir daqiqa ichida yakunlanmadi — natija Qo'ng'iroqlar bo'limida ko'rinadi.",
-    "note": "«Suhbat davom etmoqda» va «Tugadi» holatlari faqat DooCall telefonda standart qo'ng'iroq ilovasi bo'lsa ko'rinadi. Qo'ng'iroq natijasi yozuv yuklangandan keyin Qo'ng'iroqlar bo'limida paydo bo'ladi."
+    "note": "«Suhbat davom etmoqda» va «Tugadi» holatlari faqat DooCall telefonda standart qo'ng'iroq ilovasi bo'lsa ko'rinadi. Qo'ng'iroq natijasi yozuv yuklangandan keyin Qo'ng'iroqlar bo'limida paydo bo'ladi.",
+    "reject_user_declined": "Operator qo'ng'iroqni rad etdi",
+    "reject_timeout": "Operator 30 soniya ichida tasdiqlamadi",
+    "confirmOnPhone": "Operator telefonda tasdiqlashi kerak",
+    "numberHint": "Faqat raqamlar va + belgisi (7–15 ta raqam)"
   }
 }

@@ -1435,6 +1435,10 @@
     "reject_feature_disabled": "The operator has turned off remote calls",
     "reject_other": "The phone rejected the command",
     "pollStopped": "The status didn't finish within a minute — the result will appear in Calls.",
-    "note": "“Call in progress” and “Ended” only show when DooCall is the default phone app on the device. The call result appears in Calls once the recording is uploaded."
+    "note": "“Call in progress” and “Ended” only show when DooCall is the default phone app on the device. The call result appears in Calls once the recording is uploaded.",
+    "reject_user_declined": "The operator declined the call",
+    "reject_timeout": "The operator didn't confirm within 30 seconds",
+    "confirmOnPhone": "The operator has to confirm on the phone",
+    "numberHint": "Digits and + only (7–15 digits)"
   }
 }
