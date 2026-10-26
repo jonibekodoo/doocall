@@ -602,7 +602,7 @@ const EN: Guide = {
         <>
           <p>
             An employee clicks a number in a Bitrix24 card — DooCall sends a
-            command to the app on the mapped operator's phone, the operator
+            command to the app on the mapped operator’s phone, the operator
             confirms and the phone dials. The call result is recorded in
             Bitrix24 as usual.
           </p>
@@ -640,11 +640,11 @@ const EN: Guide = {
               </>,
               <>
                 Only now turn <b>“Click-to-call”</b> on and press “Connect”
-                again. It can't be enabled without a saved application_token.
+                again. It can’t be enabled without a saved application_token.
               </>,
               <>
                 Check that operators are mapped to Bitrix24 users — DooCall
-                picks the operator's phone by the employee who clicked.
+                picks the operator’s phone by the employee who clicked.
               </>,
               <>
                 <b>Bitrix24:</b> Telephony → Settings → default number for

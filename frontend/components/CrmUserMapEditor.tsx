@@ -74,7 +74,10 @@ export function CrmUserMapEditor({
     queryFn: () => fetchCrmUsers(provider),
   });
 
-  const users = data?.success ? (data.users ?? []) : null;
+  const users = useMemo(
+    () => (data?.success ? (data.users ?? []) : null),
+    [data],
+  );
   const userIds = useMemo(
     () => (users ? new Set(users.map((user) => String(user.id))) : undefined),
     [users],
