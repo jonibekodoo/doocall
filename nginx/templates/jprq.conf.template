@@ -5,6 +5,7 @@
 server {
     listen 80;
     server_name ${JPRQ_LANDING_HOST};
+    access_log /var/log/nginx/access.log masked;
 
     client_max_body_size 25m;
 
@@ -51,6 +52,7 @@ server {
 server {
     listen 80;
     server_name ${JPRQ_APP_HOST};
+    access_log /var/log/nginx/access.log masked;
 
     client_max_body_size 25m;
 
