@@ -236,6 +236,8 @@ describe("Bitrix24 operator mapping", () => {
         create_card: "auto",
         lead_source: "CALL",
         only_answered: false,
+        // Click-to-call toggle (off; no application_token typed → not sent).
+        click_to_call_enabled: false,
       },
     });
   });

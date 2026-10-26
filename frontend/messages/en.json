@@ -314,7 +314,10 @@
     "webhookErr_timeout": "the server didn't respond",
     "webhookErr_connection_error": "couldn't connect to the server",
     "webhookErr_blocked": "the address failed the security check",
-    "webhookErr_error": "unknown error"
+    "webhookErr_error": "unknown error",
+    "apiDial": "Allow Remote Dial via the API",
+    "apiDialWarning": "When on, any system holding the API key (calls.dial) can start a call from an operator's phone — the operator confirms every call on the phone. Keep the API key secret and turn this off when you don't need it.",
+    "apiDialDocs": "Remote Dial API documentation"
   },
   "ai": {
     "badge": "Artificial intelligence",
@@ -444,7 +447,22 @@
       "knownNumberNote": "If the number is already in the CRM, the call is attached to the existing card — no duplicate is created.",
       "leadSource": "Lead source",
       "leadSourceHint": "Bitrix24 source code: only A–Z, 0–9 and _ (up to 50 characters). Empty — CALL.",
-      "onlyAnswered": "Send answered calls only"
+      "onlyAnswered": "Send answered calls only",
+      "c2cTitle": "Click-to-call",
+      "c2cIntro": "Clicking a number in Bitrix24 starts the call from the operator's phone via DooCall (the operator confirms on the phone).",
+      "c2cEnable": "Enable click-to-call from Bitrix24",
+      "c2cUrl": "Bitrix24 outgoing webhook URL (ONEXTERNALCALLSTART)",
+      "c2cCopy": "Copy",
+      "c2cCopied": "Copied",
+      "c2cCopyFailed": "Couldn't copy — select the address manually",
+      "c2cToken": "Bitrix24 application_token",
+      "c2cTokenStored": "Saved — enter a new one to replace it",
+      "c2cTokenHint": "The “Application token” (application_token) from the Bitrix24 outgoing webhook page. Saved with the Connect button.",
+      "c2cTokenSet": "application_token saved",
+      "c2cTokenMissing": "application_token not set",
+      "c2cLineRegistered": "The DooCall line is registered in Bitrix24 telephony",
+      "c2cLineMissing": "The DooCall line isn't registered in Bitrix24 yet",
+      "c2cDocs": "Setup guide"
     },
     "odoo": {
       "info": "1) Download the DooCall app for Odoo 19 using the button below, extract it into your addons folder and install it (Apps → DooCall). 2) Create an API key in Odoo (Preferences → Account Security → API Keys) for an administrator user (only it writes records; data is read-only for everyone else) and fill the fields below. With the app every call shows inside the contact/lead with an audio player; without it, only a chatter note is posted.",
