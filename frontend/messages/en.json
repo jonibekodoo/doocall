@@ -462,7 +462,10 @@
       "c2cTokenMissing": "application_token not set",
       "c2cLineRegistered": "The DooCall line is registered in Bitrix24 telephony",
       "c2cLineMissing": "The DooCall line isn't registered in Bitrix24 yet",
-      "c2cDocs": "Setup guide"
+      "c2cDocs": "Setup guide",
+      "c2cUrlMissing": "The handler URL hasn't been created yet — save the integration with “Connect” and the URL will appear here.",
+      "c2cWebhookStep": "In Bitrix24 create an outgoing webhook with this URL for the ONEXTERNALCALLSTART event and paste the application_token it gives below.",
+      "c2cNeedToken": "Enter the application_token from Bitrix24 first"
     },
     "odoo": {
       "info": "1) Download the DooCall app for Odoo 19 using the button below, extract it into your addons folder and install it (Apps → DooCall). 2) Create an API key in Odoo (Preferences → Account Security → API Keys) for an administrator user (only it writes records; data is read-only for everyone else) and fill the fields below. With the app every call shows inside the contact/lead with an audio player; without it, only a chatter note is posted.",

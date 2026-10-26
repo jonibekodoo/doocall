@@ -28,6 +28,10 @@ type Call = { method: string; url: string; body: unknown };
 function stubApi({
   account = {} as Record<string, unknown>,
   bitrix = null as Record<string, unknown> | null,
+  put = { status: 200, body: { success: true } } as {
+    status: number;
+    body: unknown;
+  },
 } = {}) {
   const calls: Call[] = [];
   // Server-side account settings (PUT persists, like the real endpoint).
@@ -58,7 +62,7 @@ function stubApi({
         return new Response(JSON.stringify({ success: true, settings }));
       }
       if (method === "PUT")
-        return new Response(JSON.stringify({ success: true }));
+        return new Response(JSON.stringify(put.body), { status: put.status });
       if (path.endsWith("/settings/integrations")) {
         return new Response(
           JSON.stringify({
@@ -191,11 +195,21 @@ describe("Bitrix24 click-to-call section", () => {
     await user.click(within(section).getByTestId("b24-c2c-copy"));
     expect(await navigator.clipboard.readText()).toBe(B24.click_to_call_url);
 
-    await user.click(within(section).getByTestId("b24-c2c-enabled"));
+    // Enabling needs a token: disabled + hint until one is typed.
+    const toggle = within(section).getByTestId("b24-c2c-enabled");
+    expect(toggle).toBeDisabled();
+    expect(within(section).getByTestId("b24-c2c-need-token")).toHaveTextContent(
+      "Avval Bitrix24 bergan application_token ni kiriting",
+    );
     await user.type(
       within(section).getByTestId("b24-c2c-token"),
       "  app-tok-1 ",
     );
+    expect(toggle).toBeEnabled();
+    expect(
+      within(section).queryByTestId("b24-c2c-need-token"),
+    ).not.toBeInTheDocument();
+    await user.click(toggle);
     await user.click(screen.getByTestId("crm-connect"));
     await waitFor(() =>
       expect(calls.some((call) => call.method === "PUT")).toBe(true),
@@ -232,6 +246,59 @@ describe("Bitrix24 click-to-call section", () => {
     };
     expect(body.config.click_to_call_enabled).toBe(true);
     expect(body.config).not.toHaveProperty("b24_app_token");
+  });
+
+  it("shows a hint when the handler URL doesn't exist yet", async () => {
+    stubApi({ bitrix: { ...B24, click_to_call_url: "" } });
+    renderUi(<Bitrix24IntegrationPage />);
+    const section = await screen.findByTestId("b24-click-to-call");
+    expect(
+      within(section).getByTestId("b24-c2c-url-missing"),
+    ).toHaveTextContent("integratsiyani «Ulash» tugmasi bilan saqlang");
+    expect(
+      within(section).queryByTestId("b24-c2c-copy"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the backend's 400 text verbatim", async () => {
+    const message = "Avval Bitrix24 bergan application_token ni kiriting";
+    stubApi({
+      bitrix: { ...B24, b24_app_token_set: true },
+      put: {
+        status: 400,
+        body: { success: false, error_code: "MISSING_FIELD", message },
+      },
+    });
+    renderUi(<Bitrix24IntegrationPage />);
+    const section = await screen.findByTestId("b24-click-to-call");
+    const user = userEvent.setup();
+    await user.click(within(section).getByTestId("b24-c2c-enabled"));
+    await user.click(screen.getByTestId("crm-connect"));
+    expect(await screen.findByTestId("crm-save-error")).toHaveTextContent(
+      message,
+    );
+  });
+
+  it("an already-enabled setup without a token can still be switched off", async () => {
+    const calls = stubApi({
+      bitrix: { ...B24, click_to_call_enabled: true, b24_app_token_set: false },
+    });
+    renderUi(<Bitrix24IntegrationPage />);
+    const section = await screen.findByTestId("b24-click-to-call");
+    const toggle = within(section).getByTestId("b24-c2c-enabled");
+    expect(toggle).toBeEnabled();
+    const user = userEvent.setup();
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeDisabled(); // can't turn it back on without a token
+    await user.click(screen.getByTestId("crm-connect"));
+    await waitFor(() =>
+      expect(calls.some((call) => call.method === "PUT")).toBe(true),
+    );
+    const body = calls.find((call) => call.method === "PUT")!.body as {
+      config: Record<string, unknown>;
+    };
+    expect(body.config.click_to_call_enabled).toBe(false);
   });
 
   it("is hidden until Bitrix24 is configured", async () => {
@@ -295,4 +362,37 @@ describe("Docs", () => {
       expect(document.body).toHaveTextContent("application_token");
     },
   );
+
+  describe("Bitrix24 guide step order", () => {
+    it.each([
+      [
+        "ru",
+        "скопируйте адрес обработчика",
+        "ONEXTERNALCALLSTART",
+        "Токен приложения",
+        "Только теперь включите",
+      ],
+      [
+        "uz",
+        "manzilini nusxalang",
+        "ONEXTERNALCALLSTART",
+        "Ilova tokeni",
+        "Faqat shundan keyin",
+      ],
+      [
+        "en",
+        "copy the handler URL",
+        "ONEXTERNALCALLSTART",
+        "Application token",
+        "Only now turn",
+      ],
+    ])("%s: copy URL → webhook → token → enable", async (locale, ...steps) => {
+      intl.locale = locale;
+      renderUi(await Bitrix24GuidePage());
+      const text = document.body.textContent ?? "";
+      const positions = steps.map((step) => text.indexOf(step));
+      for (const position of positions) expect(position).toBeGreaterThan(-1);
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    });
+  });
 });

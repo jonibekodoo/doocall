@@ -233,7 +233,9 @@ function StatusLine({ ok, label }: { ok: boolean; label: string }) {
 }
 
 /** "Bir bosishda qo'ng'iroq": Bitrix24 ONEXTERNALCALLSTART → Remote Dial on
- * the operator's phone. Saved with the page's Connect button. */
+ * the operator's phone. Laid out in setup order — copy the handler URL,
+ * paste Bitrix24's application_token, then enable (the backend refuses to
+ * enable without a token). Saved with the page's Connect button. */
 function ClickToCallSection({
   info,
   enabled,
@@ -250,6 +252,9 @@ function ClickToCallSection({
   const t = useTranslations("crm.bitrix24");
   const toast = (kind: "success" | "error", text: string) =>
     useToastStore.getState().push({ kind, text });
+  const hasToken = info.b24_app_token_set || token.trim() !== "";
+  // Switching off is always allowed; switching on needs a token first.
+  const canEnable = enabled || hasToken;
   return (
     <section
       data-testid="b24-click-to-call"
@@ -257,22 +262,12 @@ function ClickToCallSection({
     >
       <h2 className="text-base font-semibold">{t("c2cTitle")}</h2>
       <p className="text-xs leading-relaxed text-fg-muted">{t("c2cIntro")}</p>
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(event) => onEnabled(event.target.checked)}
-          data-testid="b24-c2c-enabled"
-          className="mt-0.5 size-4 accent-[var(--accent)]"
-        />
-        {t("c2cEnable")}
-      </label>
 
-      {info.click_to_call_url && (
-        <div className="text-sm">
-          <span className="mb-1 block text-xs text-fg-muted">
-            {t("c2cUrl")}
-          </span>
+      <div className="text-sm">
+        <span className="mb-1 block text-xs text-fg-muted">
+          1. {t("c2cUrl")}
+        </span>
+        {info.click_to_call_url ? (
           <div className="flex max-w-xl gap-2">
             <input
               readOnly
@@ -297,12 +292,22 @@ function ClickToCallSection({
               <Copy className="size-3.5" /> {t("c2cCopy")}
             </button>
           </div>
-        </div>
-      )}
+        ) : (
+          <p
+            data-testid="b24-c2c-url-missing"
+            className="max-w-xl rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+          >
+            {t("c2cUrlMissing")}
+          </p>
+        )}
+        <span className="mt-1 block text-xs text-fg-faint">
+          2. {t("c2cWebhookStep")}
+        </span>
+      </div>
 
       <label className="block max-w-xl text-sm">
         <span className="mb-1 block text-xs text-fg-muted">
-          {t("c2cToken")}
+          3. {t("c2cToken")}
         </span>
         <input
           value={token}
@@ -316,6 +321,33 @@ function ClickToCallSection({
           {t("c2cTokenHint")}
         </span>
       </label>
+
+      <div>
+        <label
+          className={cn(
+            "flex items-start gap-2 text-sm",
+            !canEnable && "text-fg-muted",
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={!canEnable}
+            onChange={(event) => onEnabled(event.target.checked)}
+            data-testid="b24-c2c-enabled"
+            className="mt-0.5 size-4 accent-[var(--accent)]"
+          />
+          4. {t("c2cEnable")}
+        </label>
+        {!hasToken && (
+          <p
+            data-testid="b24-c2c-need-token"
+            className="mt-1 text-xs text-warning"
+          >
+            {t("c2cNeedToken")}
+          </p>
+        )}
+      </div>
 
       <div className="space-y-1" data-testid="b24-c2c-status">
         <StatusLine

@@ -183,9 +183,8 @@ const RU: Guide = {
             items={[
               <>
                 <b>DooCall:</b> Настройки → Интеграция → Bitrix24 → блок{" "}
-                <b>«Звонок в один клик»</b>: включите опцию и нажмите{" "}
-                <b>«Подключить»</b>. Появится адрес обработчика — скопируйте
-                его.
+                <b>«Звонок в один клик»</b>: скопируйте адрес обработчика. Если
+                адреса ещё нет — один раз нажмите <b>«Подключить»</b>.
               </>,
               <>
                 <b>Bitrix24:</b> Разработчикам → Другое →{" "}
@@ -196,7 +195,12 @@ const RU: Guide = {
               <>
                 На странице исходящего вебхука скопируйте{" "}
                 <b>«Токен приложения» (application_token)</b>, вставьте его в
-                DooCall в поле application_token и снова нажмите «Подключить».
+                DooCall в поле application_token и нажмите «Подключить».
+              </>,
+              <>
+                Только теперь включите <b>«Звонок в один клик»</b> и снова
+                нажмите «Подключить». Без сохранённого application_token опцию
+                включить нельзя.
               </>,
               <>
                 Проверьте сопоставление операторов с пользователями Bitrix24 —
@@ -399,9 +403,9 @@ const UZ: Guide = {
             items={[
               <>
                 <b>DooCall:</b> Sozlamalar → Integratsiya → Bitrix24 →{" "}
-                <b>«Bir bosishda qo’ng’iroq»</b> bloki: belgini yoqing va{" "}
-                <b>«Ulash»</b> tugmasini bosing. Ishlov beruvchi manzili paydo
-                bo’ladi — uni nusxalang.
+                <b>«Bir bosishda qo’ng’iroq»</b> bloki: ishlov beruvchi
+                manzilini nusxalang. Manzil hali bo’lmasa — bir marta{" "}
+                <b>«Ulash»</b> tugmasini bosing.
               </>,
               <>
                 <b>Bitrix24:</b> Dasturchilar uchun → Boshqa →{" "}
@@ -412,8 +416,13 @@ const UZ: Guide = {
               <>
                 Chiquvchi vebhuk sahifasidan{" "}
                 <b>«Ilova tokeni» (application_token)</b>ni nusxalang, uni
-                DooCall’dagi application_token maydoniga qo’ying va yana
-                «Ulash»ni bosing.
+                DooCall’dagi application_token maydoniga qo’ying va «Ulash»ni
+                bosing.
+              </>,
+              <>
+                Faqat shundan keyin <b>«Bir bosishda qo’ng’iroq»</b>ni yoqing va
+                yana «Ulash»ni bosing. Saqlangan application_token’siz uni yoqib
+                bo’lmaydi.
               </>,
               <>
                 Operatorlar Bitrix24 foydalanuvchilariga moslanganini tekshiring
@@ -616,8 +625,8 @@ const EN: Guide = {
             items={[
               <>
                 <b>DooCall:</b> Settings → Integration → Bitrix24 →{" "}
-                <b>“Click-to-call”</b> block: turn it on and press{" "}
-                <b>“Connect”</b>. The handler URL appears — copy it.
+                <b>“Click-to-call”</b> block: copy the handler URL. If there is
+                no URL yet, press <b>“Connect”</b> once.
               </>,
               <>
                 <b>Bitrix24:</b> Developer resources → Other →{" "}
@@ -627,8 +636,11 @@ const EN: Guide = {
               <>
                 On the outgoing webhook page copy the{" "}
                 <b>“Application token” (application_token)</b>, paste it into
-                the application_token field in DooCall and press “Connect”
-                again.
+                the application_token field in DooCall and press “Connect”.
+              </>,
+              <>
+                Only now turn <b>“Click-to-call”</b> on and press “Connect”
+                again. It can't be enabled without a saved application_token.
               </>,
               <>
                 Check that operators are mapped to Bitrix24 users — DooCall
