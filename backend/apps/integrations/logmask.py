@@ -105,27 +105,35 @@ DROP_HEADERS = frozenset(
     h.lower()
     for h in ("X-Kotib-Signature", "X-Signature", "X-Webhook-Signature", "X-Hub-Signature-256")
 )
-_SIG_PARAM = re.compile(r"(^|[&;])(sig=)[^&;#]*")
+# Any ``sig=<value>`` (with or without the rec path: a frame variable may
+# hold just the query string). Key-based for structured query data below.
+_SIG_PARAM = re.compile(r"(^|[?&;\s\"',(\[{])(sig=)[^&;#\s\"',)\]}]+")
+SIG_KEY = "sig"
+
+
+def _mask_sig(text: str) -> str:
+    return _SIG_PARAM.sub(r"\1\2***", mask(text))
 
 
 def _deep_mask(value: Any) -> Any:
+    """Mask strings recursively; any value keyed exactly ``sig`` — dict key
+    (query dicts, frame variables such as RecordRedirectView's local
+    ``sig``) or a ``["sig", value]`` pair — becomes ``***``."""
     if isinstance(value, str):
-        return mask(value)
+        return _mask_sig(value)
     if isinstance(value, dict):
-        return {k: _deep_mask(v) for k, v in value.items()}
+        return {k: "***" if k == SIG_KEY else _deep_mask(v) for k, v in value.items()}
     if isinstance(value, list | tuple):
+        if len(value) == 2 and value[0] == SIG_KEY:
+            return [SIG_KEY, "***"]
         return [_deep_mask(v) for v in value]
     return value
 
 
 def _scrub_request(request: dict[str, Any]) -> None:
+    # query_string (str / dict / list of pairs) is masked key-based by
+    # _deep_mask for every URL, not only rec links.
     url = str(request.get("url") or "")
-    if "/api/public/rec/" in url:
-        query = request.get("query_string")
-        if isinstance(query, str):
-            request["query_string"] = _SIG_PARAM.sub(r"\1\2***", query)
-        elif isinstance(query, dict) and "sig" in query:
-            query["sig"] = "***"
     if PUBLIC_PREFIX in url:
         request.pop("data", None)  # webhook bodies (transcripts, events)
     headers = request.get("headers")

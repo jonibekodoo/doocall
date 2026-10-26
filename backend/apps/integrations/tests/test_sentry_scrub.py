@@ -84,6 +84,49 @@ def test_rec_query_string_sig_masked() -> None:
     assert dict_query["request"]["query_string"] == {"sig": "***"}
 
 
+def test_query_string_list_of_pairs_sig_masked() -> None:
+    """Tester gap 1: query_string as [[name, value], …] — on a rec link and
+    on any other URL (key-based, not URL-based)."""
+    for url in ("https://acme.doocall.uz/api/public/rec/srv_1", "https://acme.doocall.uz/x"):
+        event = sentry_before_send(_event(url, query=[["x", "1"], ["sig", SIG]], data={}))
+        _clean(event)
+        assert event["request"]["query_string"] == [["x", "1"], ["sig", "***"]]
+    string_form = sentry_before_send(_event("https://acme.doocall.uz/x", query=f"sig={SIG}"))
+    assert string_form["request"]["query_string"] == "sig=***"
+
+
+def test_bare_sig_and_sig_variables_masked() -> None:
+    """Tester gap 2: a frame variable holding only the query string (no rec
+    path), and RecordRedirectView's own local ``sig``."""
+    event = _event("https://acme.doocall.uz/api/public/rec/srv_1")
+    event["exception"]["values"][0]["stacktrace"]["frames"] = [
+        {
+            "function": "get",
+            "vars": {
+                "query": f"sig={SIG}",
+                "full": f"?a=1&sig={SIG}",
+                "quoted": f"'sig={SIG}'",
+                "sig": f"'{SIG}'",
+                "params": [("sig", SIG)],
+                "design": "keep=1",
+            },
+        }
+    ]
+    event = sentry_before_send(event)
+    _clean(event)
+    frame_vars = event["exception"]["values"][0]["stacktrace"]["frames"][0]["vars"]
+    assert frame_vars == {
+        "query": "sig=***",
+        "full": "?a=1&sig=***",
+        "quoted": "'sig=***'",
+        "sig": "***",
+        "params": [["sig", "***"]],
+        "design": "keep=1",
+    }
+    crumb = sentry_before_breadcrumb({"message": f"GET ?sig={SIG}", "data": {"sig": SIG}})
+    assert crumb == {"message": "GET ?sig=***", "data": {"sig": "***"}}
+
+
 def test_header_list_form_and_non_public_body_kept() -> None:
     event = sentry_before_send(
         _event(
