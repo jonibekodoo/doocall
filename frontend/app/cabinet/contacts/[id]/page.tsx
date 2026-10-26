@@ -10,6 +10,7 @@ import { useParams } from "next/navigation";
 
 import { DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
+import { RemoteDialButton } from "@/components/RemoteDialButton";
 import { Pagination, usePagination } from "@/components/ui/Pagination";
 import { fetchContactDetail } from "@/lib/api/endpoints";
 import { formatDuration, formatPhone } from "@/lib/format";
@@ -48,8 +49,13 @@ export default function ContactCardPage() {
         {contact.note && (
           <p className="mt-1 text-sm text-fg-muted">{contact.note}</p>
         )}
-        <p className="tnum mt-2 text-sm">
-          {contact.phones.map((phone) => formatPhone(phone)).join(" · ")}
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          {contact.phones.map((phone) => (
+            <span key={phone} className="inline-flex items-center gap-1">
+              <span className="tnum">{formatPhone(phone)}</span>
+              <RemoteDialButton number={phone} />
+            </span>
+          ))}
         </p>
       </div>
 
