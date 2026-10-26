@@ -6,6 +6,8 @@ const patchJson = <T>(path: string, data: unknown) =>
   api<T>(path, { method: "PATCH", body: JSON.stringify(data) });
 import type {
   ApiEnvelope,
+  DialCommandState,
+  DialDevice,
   BillingStatusResponse,
   CallDetailResponse,
   CallRow,
@@ -746,3 +748,27 @@ export interface AiAnalysisDetail extends AiAnalysisRow {
 
 export const fetchAiAnalysis = (id: number) =>
   get<{ success: boolean; analysis: AiAnalysisDetail }>(`/ai/analyses/${id}`);
+
+// ── Remote Dial (cabinet → operator's phone) ───────────────────────────────
+/** Admins get every company device, operators only their own. Accepts a bare
+ * list or a {devices: [...]} envelope. */
+export const fetchDialDevices = async (): Promise<DialDevice[]> => {
+  const body = await get<DialDevice[] | { devices?: DialDevice[] }>(
+    "/dial/devices",
+  );
+  return Array.isArray(body) ? body : (body?.devices ?? []);
+};
+
+/** 200 {command_id, status:"sent"}; 409 device_offline (body carries the
+ * command_id + status "offline"); 429 rate limited; 400 invalid number. */
+export const startDial = (body: {
+  device_id: string;
+  number: string;
+  idempotency_key: string;
+}) =>
+  post<{ success: boolean; command_id: string; status: "sent" }>("/dial", body);
+
+export const fetchDialCommand = (commandId: string) =>
+  get<DialCommandState & { success?: boolean }>(
+    `/dial/${encodeURIComponent(commandId)}`,
+  );
