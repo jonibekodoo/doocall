@@ -462,7 +462,10 @@
       "c2cTokenMissing": "application_token kiritilmagan",
       "c2cLineRegistered": "DooCall liniyasi Bitrix24 telefoniyasida ro'yxatdan o'tgan",
       "c2cLineMissing": "DooCall liniyasi Bitrix24'da hali ro'yxatdan o'tmagan",
-      "c2cDocs": "Sozlash bo'yicha qo'llanma"
+      "c2cDocs": "Sozlash bo'yicha qo'llanma",
+      "c2cUrlMissing": "Ishlov beruvchi manzili hali yaratilmagan — integratsiyani «Ulash» tugmasi bilan saqlang, so'ng manzil shu yerda paydo bo'ladi.",
+      "c2cWebhookStep": "Bitrix24'da shu manzil bilan ONEXTERNALCALLSTART hodisasi uchun chiquvchi vebhuk yarating va u bergan application_token'ni quyiga qo'ying.",
+      "c2cNeedToken": "Avval Bitrix24 bergan application_token ni kiriting"
     },
     "odoo": {
       "info": "1) Quyidagi tugma orqali DooCall Odoo 19 ilovasini yuklab olib, addons papkasiga chiqarib o'rnating (Apps → DooCall). 2) Odoo'da administrator huquqli foydalanuvchi uchun API kalit yarating (yozuvlar faqat shu foydalanuvchi orqali yoziladi, qolganlar uchun read-only) (Preferences → Account Security → API Keys) va quyidagi maydonlarni to'ldiring. Ilova o'rnatilgach har bir qo'ng'iroq kontakt/lid ichida audio player bilan ko'rinadi; ilovasiz — faqat chatter yozuvi.",
