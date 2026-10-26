@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.integrations import views as integration_views
+from apps.dial import urls as dial_urls
 from apps.integrations import views_ai
 
 from . import (
@@ -99,6 +100,8 @@ urlpatterns = [
         integration_views.KotibAnalysisRotateView.as_view(),
         name="kotib-analysis-rotate",
     ),
+    # ── Remote Dial (cabinet → operator phone) ────────────────────────────
+    *dial_urls.urlpatterns,
     # ── AI analyses (Kotib results) ───────────────────────────────────────
     path("ai/status", views_ai.AiStatusView.as_view(), name="ai-status"),
     path("ai/analyses", views_ai.AiAnalysesView.as_view(), name="ai-analyses"),

@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "apps.web",
     "apps.partners",
     "apps.integrations",
+    "apps.dial",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -123,6 +124,20 @@ DATABASES = {
 
 # ── Cache / Redis ──────────────────────────────────────────────────────────
 REDIS_URL = env("REDIS_URL", "redis://redis:6379/0")
+# ── Channels (Remote Dial WebSocket; ASGI entrypoint doocall.asgi:application) ─
+ASGI_APPLICATION = "doocall.asgi.application"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [env("CHANNELS_REDIS_URL", REDIS_URL)],
+            "prefix": env("CHANNELS_PREFIX", "doocall:ws"),
+            "capacity": 100,
+            "expiry": 30,
+        },
+    }
+}
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
