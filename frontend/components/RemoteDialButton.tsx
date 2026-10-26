@@ -27,7 +27,10 @@ const FINAL: DialStatus[] = [
   "offline",
 ];
 const POLL_MS = 1000;
-const POLL_LIMIT_MS = 60_000;
+// The phone acks only after the operator confirms (up to 30 s) → wait longer.
+const POLL_LIMIT_MS = 75_000;
+/** Still "sent" after this long → the operator is being asked to confirm. */
+const AWAIT_CONFIRM_MS = 3_000;
 const REJECT_REASONS = [
   "permission_denied",
   "invalid_number",
@@ -35,6 +38,10 @@ const REJECT_REASONS = [
   "sim_disabled",
   "duplicate",
   "feature_disabled",
+  "user_declined",
+  "timeout",
+  "expired",
+  "rate_limited",
 ] as const;
 
 /** Shared, cached device list (one request for every button on the page). */
@@ -45,6 +52,16 @@ export function useDialDevices() {
     staleTime: 60_000,
     retry: false,
   });
+}
+
+/** Typed number → what we send: formatting (spaces, -, ., brackets) is
+ * dropped; the rest must be an optional "+" and 7–15 digits. */
+export function normalizeDialNumber(raw: string): {
+  value: string;
+  valid: boolean;
+} {
+  const value = raw.trim().replace(/[\s\-.()]/g, "");
+  return { value, valid: /^\+?\d{7,15}$/.test(value) };
 }
 
 function newIdempotencyKey(): string {
@@ -153,14 +170,23 @@ function DialModal({
     return () => clearTimeout(timer);
   }, [commandId, final]);
 
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+  useEffect(() => {
+    if (!commandId || state?.status !== "sent") return;
+    const timer = setTimeout(() => setAwaitingConfirm(true), AWAIT_CONFIRM_MS);
+    return () => clearTimeout(timer);
+  }, [commandId, state?.status]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const dialNumber = normalizeDialNumber(target);
+
   const dial = async () => {
-    if (!deviceId || pending) return;
+    if (!deviceId || pending || !dialNumber.valid) return;
     setPending(true);
     setError(null);
     setTimedOut(false);
@@ -168,7 +194,7 @@ function DialModal({
     try {
       const body = await startDial({
         device_id: deviceId,
-        number: target.replace(/[^\d+]/g, ""),
+        number: dialNumber.value,
         idempotency_key: newIdempotencyKey(),
       });
       setInitial({ status: body.status ?? "sent" });
@@ -181,6 +207,10 @@ function DialModal({
         setCommandId(body.command_id ?? null);
       } else if (caught instanceof ApiError && caught.status === 429) {
         setError(t("rateLimited"));
+      } else if (caught instanceof ApiError && caught.status === 400) {
+        // Backend validation text verbatim (invalid number, blocked route…).
+        const message = (caught.body as { message?: string } | null)?.message;
+        setError(message || t("failedToStart"));
       } else {
         setError(caught instanceof Error ? caught.message : t("failedToStart"));
       }
@@ -193,6 +223,7 @@ function DialModal({
     setCommandId(null);
     setInitial(null);
     setTimedOut(false);
+    setAwaitingConfirm(false);
   };
 
   return (
@@ -230,8 +261,20 @@ function DialModal({
                 onChange={(event) => setTarget(event.target.value)}
                 inputMode="tel"
                 data-testid="dial-number"
-                className="tnum w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                aria-invalid={!dialNumber.valid}
+                className={cn(
+                  "tnum w-full rounded-md border bg-surface px-3 py-2 text-sm",
+                  dialNumber.valid ? "border-border" : "border-danger",
+                )}
               />
+              {!dialNumber.valid && (
+                <span
+                  data-testid="dial-number-hint"
+                  className="mt-1 block text-xs text-danger"
+                >
+                  {t("numberHint")}
+                </span>
+              )}
             </label>
             <div className="text-sm">
               <span className="mb-1 block text-xs text-fg-muted">
@@ -296,7 +339,7 @@ function DialModal({
             <button
               type="button"
               data-testid="dial-start"
-              disabled={!deviceId || pending || !target.trim()}
+              disabled={!deviceId || pending || !dialNumber.valid}
               onClick={dial}
               className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-fg disabled:opacity-50"
             >
@@ -327,8 +370,18 @@ function DialModal({
               {!final && !timedOut && (
                 <Loader2 className="size-4 animate-spin" />
               )}
-              {statusText(state)}
+              {state.status === "sent" && awaitingConfirm
+                ? t("st_awaitingConfirm")
+                : statusText(state)}
             </p>
+            {state.status === "received" && (
+              <p
+                data-testid="dial-confirm-note"
+                className="text-xs font-medium text-fg-muted"
+              >
+                {t("confirmOnPhone")}
+              </p>
+            )}
             {timedOut && !final && (
               <p data-testid="dial-timeout" className="text-xs text-fg-muted">
                 {t("pollStopped")}

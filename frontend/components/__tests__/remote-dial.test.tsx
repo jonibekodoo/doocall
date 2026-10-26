@@ -7,7 +7,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RemoteDialButton } from "@/components/RemoteDialButton";
+import {
+  normalizeDialNumber,
+  RemoteDialButton,
+} from "@/components/RemoteDialButton";
 import uz from "@/messages/uz.json";
 
 const ONLINE = {
@@ -218,7 +221,14 @@ describe("RemoteDialButton", () => {
     ["another_call_active", "Telefonda boshqa qo'ng'iroq bor"],
     ["sim_disabled", "Ilovada SIM o'chirilgan"],
     ["duplicate", "Bu buyruq allaqachon bajarilgan"],
-    ["feature_disabled", "Operator masofaviy qo'ng'iroqni o'chirgan"],
+    [
+      "feature_disabled",
+      "Operator telefonda «Masofaviy qo'ng'iroq»ni yoqmagan (DooCall ilovasi → Sozlamalar)",
+    ],
+    ["expired", "Buyruq eskirdi — qayta urinib ko'ring"],
+    ["rate_limited", "Telefonda qo'ng'iroqlar juda tez-tez — biroz kuting"],
+    ["user_declined", "Operator qo'ng'iroqni rad etdi"],
+    ["timeout", "Operator 30 soniya ichida tasdiqlamadi"],
     ["something_new", "Telefon buyruqni rad etdi"],
   ])("rejected: %s", async (reason, text) => {
     vi.useFakeTimers();
@@ -229,6 +239,47 @@ describe("RemoteDialButton", () => {
     await flush(1000);
     expect(statusLine()).toHaveAttribute("data-status", "rejected");
     expect(statusLine()).toHaveTextContent(text);
+  });
+
+  it("still 'sent' after 3 s → waiting for the operator to confirm", async () => {
+    vi.useFakeTimers();
+    stubApi({
+      // Polls at 0, 1, 2, 3 s → still "sent"; at 4 s → received.
+      states: [
+        { status: "sent" },
+        { status: "sent" },
+        { status: "sent" },
+        { status: "sent" },
+        { status: "received" },
+      ],
+    });
+    renderButton();
+    await openModal();
+    await startCall();
+    await flush(2000);
+    expect(statusLine()).toHaveTextContent("Telefonga yuborildi…");
+    await flush(1000);
+    expect(statusLine()).toHaveTextContent("Operator tasdiqlashini kutmoqda…");
+    await flush(1500); // next poll (~4 s) answers "received"
+    expect(statusLine()).toHaveTextContent("Telefon qabul qildi");
+  });
+
+  it("keeps polling up to ~75 s (operator confirmation), then stops", async () => {
+    vi.useFakeTimers();
+    const { polls } = stubApi({ states: [{ status: "sent" }] });
+    renderButton();
+    await openModal();
+    await startCall();
+    await flush(61_000);
+    const at61 = polls.length;
+    expect(screen.queryByTestId("dial-timeout")).not.toBeInTheDocument();
+    await flush(13_000); // 74 s
+    expect(polls.length).toBeGreaterThan(at61);
+    await flush(2_000); // 76 s
+    expect(screen.getByTestId("dial-timeout")).toBeInTheDocument();
+    const stopped = polls.length;
+    await flush(10_000);
+    expect(polls.length).toBe(stopped);
   });
 
   it("expired → 'Telefon javob bermadi'", async () => {
@@ -280,23 +331,88 @@ describe("RemoteDialButton", () => {
     expect(screen.getByTestId("dial-start")).toBeEnabled();
   });
 
-  it("400 → the backend's message", async () => {
+  it.each([
+    ["invalid number"],
+    ["Bu yo'nalishga masofaviy qo'ng'iroq ruxsat etilmagan"],
+  ])("400 → the backend's message verbatim: %s", async (message) => {
     vi.useFakeTimers();
     stubApi({
       post: {
         status: 400,
-        body: {
-          success: false,
-          error_code: "MISSING_FIELD",
-          message: "invalid number",
-        },
+        body: { success: false, error_code: "MISSING_FIELD", message },
       },
     });
-    renderButton("12");
+    renderButton("+79001234567");
     await openModal();
     await startCall();
-    expect(screen.getByTestId("dial-error")).toHaveTextContent(
-      "invalid number",
+    expect(screen.getByTestId("dial-error")).toHaveTextContent(message);
+    expect(screen.getByTestId("dial-start")).toBeEnabled();
+  });
+
+  it("'Telefon qabul qildi' tells that the operator must confirm", async () => {
+    vi.useFakeTimers();
+    stubApi({ states: [{ status: "received" }, { status: "dialing" }] });
+    renderButton();
+    await openModal();
+    await startCall();
+    expect(screen.queryByTestId("dial-confirm-note")).not.toBeInTheDocument();
+    await flush(1000);
+    expect(statusLine()).toHaveTextContent("Telefon qabul qildi");
+    expect(screen.getByTestId("dial-confirm-note")).toHaveTextContent(
+      "Operator telefonda tasdiqlashi kerak",
     );
+    await flush(1000);
+    expect(screen.queryByTestId("dial-confirm-note")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["12", "too short"],
+    ["+9989012345678901", "more than 15 digits"],
+    ["+99890abc1234", "letters"],
+    ["*99#1234567", "USSD-like characters"],
+  ])("pre-check blocks %s (%s) with a hint", async (number) => {
+    vi.useFakeTimers();
+    const { posts } = stubApi();
+    renderButton(number);
+    await openModal();
+    expect(screen.getByTestId("dial-number")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByTestId("dial-number-hint")).toHaveTextContent(
+      "Faqat raqamlar va + belgisi (7–15 ta raqam)",
+    );
+    expect(screen.getByTestId("dial-start")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("dial-start"));
+    await flush();
+    expect(posts).toHaveLength(0);
+  });
+
+  it("formatted input is accepted and sent as digits", async () => {
+    vi.useFakeTimers();
+    const { posts } = stubApi();
+    renderButton();
+    await openModal();
+    fireEvent.change(screen.getByTestId("dial-number"), {
+      target: { value: " +998 (90) 123-45.67 " },
+    });
+    expect(screen.queryByTestId("dial-number-hint")).not.toBeInTheDocument();
+    await startCall();
+    expect(posts[0].number).toBe("+998901234567");
+  });
+});
+
+describe("normalizeDialNumber", () => {
+  it.each([
+    ["+998 90 123-45-67", "+998901234567", true],
+    ["901234567", "901234567", true],
+    ["1234567", "1234567", true],
+    ["123456", "123456", false],
+    ["+1234567890123456", "+1234567890123456", false],
+    ["++998901234567", "++998901234567", false],
+    ["99890123+4567", "99890123+4567", false],
+    ["+99890abc", "+99890abc", false],
+  ])("%j → %j (valid: %s)", (raw, value, valid) => {
+    expect(normalizeDialNumber(raw)).toEqual({ value, valid });
   });
 });
