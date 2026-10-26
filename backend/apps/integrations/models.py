@@ -58,6 +58,9 @@ class CrmDelivery(TenantModel):
     status = models.CharField(max_length=10, choices=Status.choices)
     error = models.CharField(max_length=500, blank=True, default="")
     is_retry = models.BooleanField(default=False)
+    # CRM-side id of the delivered call (Bitrix24: telephony CALL_ID) — lets a
+    # recording that arrives later be attached to the same call.
+    external_id = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta(TenantModel.Meta):

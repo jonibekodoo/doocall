@@ -55,6 +55,27 @@ the company Contact catalogue by normalized counterparty number, else `null`
 (§5.4): `success, status:"received", call_id, server_id ("srv_…"),
 received_at (ISO-8601 UTC "…Z"), resolved_name, audio{stored,url,size_bytes}`.
 
+**Late audio (re-upload of the same `call_id`).** When the phone finds the
+recording after the call was already uploaded *without* audio, it re-sends
+the same full payload with `audio_file` and/or `audio_file_realtime`:
+
+| Existing call (same company) | Payload has audio | Result |
+|---|---|---|
+| has **no** audio, same operator (or no operator) | yes | **200** `{"success": true, "server_id": "srv_…", "audio_attached": true}` — audio validated exactly like a new upload (400 bad Base64, 413 too large), stored; no other call field changes |
+| has no audio | no | 409 duplicate (unchanged) |
+| already has audio | any | 409 duplicate (unchanged) |
+| belongs to another operator of the company | yes | 409 duplicate |
+| doesn't exist for this company (incl. another tenant's call_id) | any | normal new upload |
+
+Concurrent retries are serialized on the call row: exactly one gets
+`audio_attached`, the rest the 409. The 409 body is the same §5.4 duplicate
+envelope as before. `CallAudio.content_type` comes from the file name
+(`.ogg` audio/ogg, `.m4a` audio/mp4, `.mp3` audio/mpeg, `.wav` audio/wav,
+…; unknown → application/octet-stream). After a late attach, Bitrix24 gets
+the recording on the call registered earlier (stored telephony CALL_ID);
+Kotib sees `record_url` via `calls.get`; amoCRM/Odoo/custom webhook are
+not re-sent.
+
 ### POST `/api/call/v1/calls/list` (§6)
 `{user_name, api_key, call_ids[]}` → `{"success": true, "calls":[
 {"call_id","exists",("server_id" only when exists)]}`. Scoped to the

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import mimetypes
 from datetime import datetime
 from functools import partial
 from typing import Any
@@ -183,6 +184,110 @@ class AuthView(BaseApiView):
         )
 
 
+AUDIO_FIELDS = (
+    (CallAudio.Kind.PRIMARY, "audio_filename", "audio_file"),
+    (CallAudio.Kind.REALTIME, "audio_filename_realtime", "audio_file_realtime"),
+)
+
+
+def _duplicate(call_id: str) -> ApiError:
+    """§5.4 duplicate envelope — 409."""
+    return ApiError(
+        ErrorCode.DUPLICATE_CALL_ID,
+        "call_id already exists",
+        http.HTTP_409_CONFLICT,
+        extra={"status": "already_exists", "call_id": call_id},
+    )
+
+
+def _has_audio_payload(data: dict[str, Any]) -> bool:
+    return any(
+        data.get(payload_field) and (data.get(filename_field) or "") not in ("", "none")
+        for _, filename_field, payload_field in AUDIO_FIELDS
+    )
+
+
+def _audio_items(data: dict[str, Any]) -> list[tuple[str, str, bytes]]:
+    """Decoded + size-checked audio payloads (400 bad Base64, 413 too big)."""
+    items: list[tuple[str, str, bytes]] = []
+    for kind, filename_field, payload_field in AUDIO_FIELDS:
+        filename = data.get(filename_field) or ""
+        payload_b64 = data.get(payload_field)
+        if not payload_b64 or filename in ("", "none"):
+            continue
+        try:
+            payload = base64.b64decode(payload_b64, validate=True)
+        except (binascii.Error, ValueError):
+            raise ApiError(
+                ErrorCode.MISSING_FIELD,
+                f"{payload_field} is not valid Base64",
+                http.HTTP_400_BAD_REQUEST,
+            ) from None
+        max_bytes = settings.AUDIO_MAX_MB * 1024 * 1024
+        if len(payload) > max_bytes:
+            raise ApiError(
+                ErrorCode.AUDIO_TOO_LARGE,
+                f"Audio exceeds the {settings.AUDIO_MAX_MB}MB limit",
+                http.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                extra={"status": "error", "call_id": data["call_id"]},
+            )
+        items.append((str(kind), filename, payload))
+    return items
+
+
+# Explicit audio types: mimetypes depends on the OS mime.types file, which
+# slim images may lack (.ogg/.m4a would come back unknown).
+AUDIO_CONTENT_TYPES = {
+    "ogg": "audio/ogg",
+    "oga": "audio/ogg",
+    "opus": "audio/ogg",
+    "m4a": "audio/mp4",
+    "mp4": "audio/mp4",
+    "mp3": "audio/mpeg",
+    "wav": "audio/wav",
+    "amr": "audio/amr",
+    "3gp": "audio/3gpp",
+    "aac": "audio/aac",
+    "flac": "audio/flac",
+    "webm": "audio/webm",
+}
+
+
+def audio_content_type(filename: str) -> str:
+    """MIME type from the real file name (fixes .m4a stored as audio/ogg)."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return (
+        AUDIO_CONTENT_TYPES.get(ext)
+        or mimetypes.guess_type(filename)[0]
+        or "application/octet-stream"
+    )
+
+
+def _store_audio(record: CallRecord, items: list[tuple[str, str, bytes]]) -> dict[str, Any]:
+    """MinIO + CallAudio rows; content_type from the real file name."""
+    audio_body: dict[str, Any] = {"stored": False, "url": None, "size_bytes": 0}
+    for kind, filename, payload in items:
+        object_key = f"{record.company_id}/{record.call_id}/{kind}/{filename}"
+        url = storage.store_audio(object_key, payload, filename)
+        CallAudio.objects.create(
+            call=record,
+            kind=kind,
+            filename=filename,
+            object_key=object_key,
+            content_type=audio_content_type(filename),
+            size_bytes=len(payload),
+        )
+        if kind == CallAudio.Kind.PRIMARY:
+            audio_body = {"stored": True, "url": url, "size_bytes": len(payload)}
+    return audio_body
+
+
+def _enqueue_late_audio(record_id: int) -> None:
+    from apps.integrations.tasks import attach_late_audio
+
+    attach_late_audio.delay(record_id)
+
+
 class UploadView(BaseApiView):
     """§5 — full CDR + Base64 audio → MinIO."""
 
@@ -203,41 +308,14 @@ class UploadView(BaseApiView):
         call_id = data["call_id"]
         existing = CallRecord.all_objects.filter(company=company, call_id=call_id).first()
         if existing is not None:
-            # §5.4 duplicate envelope — 409.
-            raise ApiError(
-                ErrorCode.DUPLICATE_CALL_ID,
-                "call_id already exists",
-                http.HTTP_409_CONFLICT,
-                extra={"status": "already_exists", "call_id": call_id},
-            )
+            # Late audio (re-upload of a call that was stored WITHOUT audio)
+            # is attached; anything else is the §5.4 duplicate (409).
+            if _has_audio_payload(data) and not existing.audios.exists():
+                return self._attach_late_audio(existing, operator, data)
+            raise _duplicate(call_id)
 
         # ── Audio payloads first: size violations must not create rows ─────
-        audio_items = []
-        for kind, filename_field, payload_field in (
-            (CallAudio.Kind.PRIMARY, "audio_filename", "audio_file"),
-            (CallAudio.Kind.REALTIME, "audio_filename_realtime", "audio_file_realtime"),
-        ):
-            filename = data.get(filename_field) or ""
-            payload_b64 = data.get(payload_field)
-            if not payload_b64 or filename in ("", "none"):
-                continue
-            try:
-                payload = base64.b64decode(payload_b64, validate=True)
-            except (binascii.Error, ValueError):
-                raise ApiError(
-                    ErrorCode.MISSING_FIELD,
-                    f"{payload_field} is not valid Base64",
-                    http.HTTP_400_BAD_REQUEST,
-                ) from None
-            max_bytes = settings.AUDIO_MAX_MB * 1024 * 1024
-            if len(payload) > max_bytes:
-                raise ApiError(
-                    ErrorCode.AUDIO_TOO_LARGE,
-                    f"Audio exceeds the {settings.AUDIO_MAX_MB}MB limit",
-                    http.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    extra={"status": "error", "call_id": call_id},
-                )
-            audio_items.append((kind, filename, payload))
+        audio_items = _audio_items(data)
 
         # ── Normalize numbers (contract §1 — Phase 2 shared utility) ───────
         code = company.phone_code
@@ -291,19 +369,7 @@ class UploadView(BaseApiView):
                 address=data.get("address") or "",
             )
 
-            audio_body: dict[str, Any] = {"stored": False, "url": None, "size_bytes": 0}
-            for kind, filename, payload in audio_items:
-                object_key = f"{company.pk}/{call_id}/{kind}/{filename}"
-                url = storage.store_audio(object_key, payload, filename)
-                CallAudio.objects.create(
-                    call=record,
-                    kind=kind,
-                    filename=filename,
-                    object_key=object_key,
-                    size_bytes=len(payload),
-                )
-                if kind == CallAudio.Kind.PRIMARY:
-                    audio_body = {"stored": True, "url": url, "size_bytes": len(payload)}
+            audio_body = _store_audio(record, audio_items)
 
             # Signed outbound webhook (Phase 5): fires after commit only.
             if company.webhook_url:
@@ -330,6 +396,35 @@ class UploadView(BaseApiView):
                 "audio": audio_body,
             }
         )
+
+
+    def _attach_late_audio(
+        self, existing: CallRecord, operator: OperatorProfile, data: dict[str, Any]
+    ) -> Response:
+        """The phone found the recording after the call was uploaded without
+        it: store it on the existing call (no other call field changes).
+
+        Same company (lookup is company-scoped) and, when the call has an
+        operator, the same operator. Concurrent retries are serialized on
+        the call row: only the first attaches, the others get the 409."""
+        call_id = existing.call_id
+        if existing.operator_id is not None and existing.operator_id != operator.pk:
+            raise _duplicate(call_id)
+        audio_items = _audio_items(data)  # same 400/413 validation as a new upload
+        with transaction.atomic():
+            record = CallRecord.all_objects.select_for_update().get(pk=existing.pk)
+            if record.audios.exists():
+                raise _duplicate(call_id)
+            _store_audio(record, audio_items)
+            from apps.integrations.models import CrmIntegration
+
+            if CrmIntegration.all_objects.filter(
+                company_id=record.company_id,
+                provider=CrmIntegration.Provider.BITRIX24,
+                is_enabled=True,
+            ).exists():
+                transaction.on_commit(partial(_enqueue_late_audio, record.pk))
+        return Response({"success": True, "server_id": _server_id(record), "audio_attached": True})
 
 
 class CallsListView(BaseApiView):
