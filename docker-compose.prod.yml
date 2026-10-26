@@ -78,7 +78,9 @@ services:
     <<: *backend-base
     # NOTE: keep this on one logical line — a folded scalar with deeper-
     # indented continuation lines preserves newlines and breaks the argv.
-    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && exec gunicorn doocall.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-4} --threads ${GUNICORN_THREADS:-2} --timeout 60 --access-logfile - --error-logfile -"]
+    # No gunicorn access log: it bypasses Django's LOGGING (so the token
+    # masking) and nginx already logs every request with secrets masked.
+    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput && exec gunicorn doocall.wsgi:application --bind 0.0.0.0:8000 --workers ${GUNICORN_WORKERS:-4} --threads ${GUNICORN_THREADS:-2} --timeout 60 --error-logfile -"]
     volumes:
       - staticfiles:/app/staticfiles
     depends_on:
@@ -104,9 +106,11 @@ services:
   # commands out across workers/containers. Never runs migrations (backend /
   # scripts/deploy.sh own those). On stop uvicorn closes sockets with 1012 and
   # the app reconnects (with backoff) to the surviving container.
+  # --no-access-log: nginx logs the upgrade (masked); uvicorn would only add
+  # a line per healthcheck and per socket. App/error logs are unaffected.
   ws:
     <<: *backend-base
-    command: ["sh", "-c", "exec uvicorn doocall.asgi:application --host 0.0.0.0 --port 8001 --ws-ping-interval 20 --ws-ping-timeout 20 --ws-max-size 16384 --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --workers ${WS_WORKERS:-2}"]
+    command: ["sh", "-c", "exec uvicorn doocall.asgi:application --host 0.0.0.0 --port 8001 --ws-ping-interval 20 --ws-ping-timeout 20 --ws-max-size 16384 --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --no-access-log --workers ${WS_WORKERS:-2}"]
     depends_on:
       db:
         condition: service_healthy
