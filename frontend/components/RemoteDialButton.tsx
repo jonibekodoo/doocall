@@ -27,7 +27,10 @@ const FINAL: DialStatus[] = [
   "offline",
 ];
 const POLL_MS = 1000;
-const POLL_LIMIT_MS = 60_000;
+// The phone acks only after the operator confirms (up to 30 s) → wait longer.
+const POLL_LIMIT_MS = 75_000;
+/** Still "sent" after this long → the operator is being asked to confirm. */
+const AWAIT_CONFIRM_MS = 3_000;
 const REJECT_REASONS = [
   "permission_denied",
   "invalid_number",
@@ -37,6 +40,8 @@ const REJECT_REASONS = [
   "feature_disabled",
   "user_declined",
   "timeout",
+  "expired",
+  "rate_limited",
 ] as const;
 
 /** Shared, cached device list (one request for every button on the page). */
@@ -165,6 +170,13 @@ function DialModal({
     return () => clearTimeout(timer);
   }, [commandId, final]);
 
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+  useEffect(() => {
+    if (!commandId || state?.status !== "sent") return;
+    const timer = setTimeout(() => setAwaitingConfirm(true), AWAIT_CONFIRM_MS);
+    return () => clearTimeout(timer);
+  }, [commandId, state?.status]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -211,6 +223,7 @@ function DialModal({
     setCommandId(null);
     setInitial(null);
     setTimedOut(false);
+    setAwaitingConfirm(false);
   };
 
   return (
@@ -357,7 +370,9 @@ function DialModal({
               {!final && !timedOut && (
                 <Loader2 className="size-4 animate-spin" />
               )}
-              {statusText(state)}
+              {state.status === "sent" && awaitingConfirm
+                ? t("st_awaitingConfirm")
+                : statusText(state)}
             </p>
             {state.status === "received" && (
               <p

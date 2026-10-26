@@ -221,7 +221,12 @@ describe("RemoteDialButton", () => {
     ["another_call_active", "Telefonda boshqa qo'ng'iroq bor"],
     ["sim_disabled", "Ilovada SIM o'chirilgan"],
     ["duplicate", "Bu buyruq allaqachon bajarilgan"],
-    ["feature_disabled", "Operator masofaviy qo'ng'iroqni o'chirgan"],
+    [
+      "feature_disabled",
+      "Operator telefonda «Masofaviy qo'ng'iroq»ni yoqmagan (DooCall ilovasi → Sozlamalar)",
+    ],
+    ["expired", "Buyruq eskirdi — qayta urinib ko'ring"],
+    ["rate_limited", "Telefonda qo'ng'iroqlar juda tez-tez — biroz kuting"],
     ["user_declined", "Operator qo'ng'iroqni rad etdi"],
     ["timeout", "Operator 30 soniya ichida tasdiqlamadi"],
     ["something_new", "Telefon buyruqni rad etdi"],
@@ -234,6 +239,47 @@ describe("RemoteDialButton", () => {
     await flush(1000);
     expect(statusLine()).toHaveAttribute("data-status", "rejected");
     expect(statusLine()).toHaveTextContent(text);
+  });
+
+  it("still 'sent' after 3 s → waiting for the operator to confirm", async () => {
+    vi.useFakeTimers();
+    stubApi({
+      // Polls at 0, 1, 2, 3 s → still "sent"; at 4 s → received.
+      states: [
+        { status: "sent" },
+        { status: "sent" },
+        { status: "sent" },
+        { status: "sent" },
+        { status: "received" },
+      ],
+    });
+    renderButton();
+    await openModal();
+    await startCall();
+    await flush(2000);
+    expect(statusLine()).toHaveTextContent("Telefonga yuborildi…");
+    await flush(1000);
+    expect(statusLine()).toHaveTextContent("Operator tasdiqlashini kutmoqda…");
+    await flush(1500); // next poll (~4 s) answers "received"
+    expect(statusLine()).toHaveTextContent("Telefon qabul qildi");
+  });
+
+  it("keeps polling up to ~75 s (operator confirmation), then stops", async () => {
+    vi.useFakeTimers();
+    const { polls } = stubApi({ states: [{ status: "sent" }] });
+    renderButton();
+    await openModal();
+    await startCall();
+    await flush(61_000);
+    const at61 = polls.length;
+    expect(screen.queryByTestId("dial-timeout")).not.toBeInTheDocument();
+    await flush(13_000); // 74 s
+    expect(polls.length).toBeGreaterThan(at61);
+    await flush(2_000); // 76 s
+    expect(screen.getByTestId("dial-timeout")).toBeInTheDocument();
+    const stopped = polls.length;
+    await flush(10_000);
+    expect(polls.length).toBe(stopped);
   });
 
   it("expired → 'Telefon javob bermadi'", async () => {

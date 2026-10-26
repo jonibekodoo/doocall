@@ -1432,13 +1432,16 @@
     "reject_another_call_active": "Another call is active on the phone",
     "reject_sim_disabled": "The SIM is disabled in the app",
     "reject_duplicate": "This command was already executed",
-    "reject_feature_disabled": "The operator has turned off remote calls",
+    "reject_feature_disabled": "The operator hasn't turned on “Remote call” on the phone (DooCall app → Settings)",
     "reject_other": "The phone rejected the command",
-    "pollStopped": "The status didn't finish within a minute — the result will appear in Calls.",
+    "pollStopped": "The status didn't finish in time — the result will appear in Calls.",
     "note": "“Call in progress” and “Ended” only show when DooCall is the default phone app on the device. The call result appears in Calls once the recording is uploaded.",
     "reject_user_declined": "The operator declined the call",
     "reject_timeout": "The operator didn't confirm within 30 seconds",
     "confirmOnPhone": "The operator has to confirm on the phone",
-    "numberHint": "Digits and + only (7–15 digits)"
+    "numberHint": "Digits and + only (7–15 digits)",
+    "reject_expired": "The command expired — please try again",
+    "reject_rate_limited": "Calls on the phone are too frequent — please wait a moment",
+    "st_awaitingConfirm": "Waiting for the operator to confirm…"
   }
 }
