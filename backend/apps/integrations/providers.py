@@ -48,7 +48,7 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 # Values masked in GET responses and preserved on save when left masked.
 SECRET_FIELDS: dict[str, tuple[str, ...]] = {
     "amocrm": ("access_token",),
-    "bitrix24": ("webhook_url",),
+    "bitrix24": ("webhook_url", "b24_app_token"),
     "odoo": ("api_key",),
     # webhook_url embeds Kotib's secret token; doocall_api_key is the
     # Kotib-only public-API key. None of these leave the server.
@@ -238,9 +238,7 @@ def _amo_call_payload(
     config: dict[str, Any], record: CallRecord, record_url: str | None, user_id: int | None
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "direction": "inbound"
-        if record.call_type == CallRecord.CallType.INBOUND
-        else "outbound",
+        "direction": "inbound" if record.call_type == CallRecord.CallType.INBOUND else "outbound",
         "uniq": record.server_id.hex,
         "duration": record.duration,
         "source": "DooCall",
@@ -266,9 +264,7 @@ def _amocrm_create_contact(config: dict[str, Any], record: CallRecord, user_id: 
     for unknown numbers we create the contact first, then retry the call."""
     base = _clean_base(config["base_url"])
     contact: dict[str, Any] = {
-        "name": record.resolved_name
-        or record.counterparty_name
-        or record.counterparty_number,
+        "name": record.resolved_name or record.counterparty_name or record.counterparty_number,
         "custom_fields_values": [
             {
                 "field_code": "PHONE",
@@ -509,6 +505,8 @@ B24_DEFAULTS: dict[str, Any] = {
     "create_card": "auto",
     "lead_source": "CALL",  # CRM_SOURCE / SOURCE_ID (crm.status SOURCE id)
     "only_answered": False,  # True → missed calls are not sent
+    # Bitrix24 click-to-call (ONEXTERNALCALLSTART → the operator's phone dials).
+    "click_to_call_enabled": False,
 }
 
 
@@ -673,6 +671,11 @@ def _bitrix24_send(
     user. Unknown numbers get a card per ``create_card``; numbers already in
     the CRM are bound to their entity and never duplicated (also on retry —
     the search runs right before anything is created)."""
+    claimed = _b24_click_to_call_claim(record)
+    if claimed is not None:
+        # Bitrix24 registered this call itself (click-to-call): finish THAT call.
+        _b24_finish_click_to_call(config, record, record_url, claimed)
+        return None
     options = b24_options(config)
     if options["only_answered"] and record.call_status != CallRecord.CallStatus.ANSWERED:
         _b24_log_branch(record, "skipped_unanswered", config)
@@ -756,6 +759,96 @@ def _bitrix24_send(
     )
     _b24_log_branch(record, branch, config)
     return note
+
+
+CLICK_TO_CALL_WINDOW = timedelta(minutes=10)
+
+
+def _b24_click_to_call_claim(record: CallRecord) -> Any:
+    """Atomically take the click-to-call DialCommand this outbound call came
+    from (same company/operator/number, Bitrix CALL_ID known, not used yet,
+    created ≤ 10 min before the call started)."""
+    if record.call_type != CallRecord.CallType.OUTBOUND or not record.operator_id:
+        return None
+    from apps.dial.models import DialCommand
+
+    candidates = DialCommand.all_objects.filter(
+        company_id=record.company_id,
+        operator_id=record.operator_id,
+        number=record.counterparty_number,
+        b24_used_at__isnull=True,
+        created_at__gte=record.start_time - CLICK_TO_CALL_WINDOW,
+        created_at__lte=record.start_time + timedelta(minutes=2),
+    ).exclude(b24_call_id="")
+    for command in candidates.order_by("-created_at"):
+        if DialCommand.all_objects.filter(pk=command.pk, b24_used_at__isnull=True).update(
+            b24_used_at=timezone.now()
+        ):
+            return command
+    return None
+
+
+def _b24_finish_click_to_call(
+    config: dict[str, Any], record: CallRecord, record_url: str | None, command: Any
+) -> None:
+    from apps.dial.models import DialCommand
+
+    user_id = (
+        int(command.b24_user_id)
+        if str(command.b24_user_id).isdigit()
+        else b24_user_for(config, record.operator_id)
+    )
+    registered = {
+        "CALL_ID": command.b24_call_id,
+        "CRM_ENTITY_TYPE": command.b24_entity_type,
+        "CRM_ENTITY_ID": command.b24_entity_id,
+    }
+    try:
+        _b24_call(
+            config,
+            "telephony.externalcall.finish",
+            {
+                "CALL_ID": command.b24_call_id,
+                "USER_ID": user_id,
+                "DURATION": record.duration,
+                "STATUS_CODE": B24_STATUS.get(record.call_status, 603),
+            },
+        )
+    except ProviderError:
+        # Give the claim back so a retry can finish the same Bitrix24 call.
+        DialCommand.all_objects.filter(pk=command.pk).update(b24_used_at=None)
+        raise
+    config[DELIVERY_EXTERNAL_ID] = str(command.b24_call_id)[:64]
+    attached = "none"
+    if record_url:
+        attached = _b24_attach_recording(config, registered, record, record_url)
+    logger.info(
+        "bitrix24 record company=%s call=%s attached=%s",
+        record.company_id,
+        record.pk,
+        attached,
+    )
+    _b24_log_branch(record, "click_to_call", config)
+
+
+def b24_register_external_line(config: dict[str, Any]) -> bool:
+    """Best effort: our external line in Bitrix24 telephony (needed for
+    click-to-call routing). Bitrix24 documents telephony.externalLine.add as
+    application-context only, so a plain inbound webhook may be refused —
+    the result is stored, never raised."""
+    try:
+        result = _b24_call(
+            config,
+            "telephony.externalLine.add",
+            {"NUMBER": "DooCall", "NAME": "DooCall", "CRM_AUTO_CREATE": "N"},
+        )
+    except ProviderError as exc:
+        config["external_line_error"] = str(exc)[:200]
+        return False
+    line_id = result.get("ID") if isinstance(result, dict) else result
+    config["external_line_id"] = str(line_id or "")[:32]
+    config.pop("external_line_error", None)
+    return bool(line_id)
 
 
 # Card actually made for an unknown number (after auto/lead resolution).
