@@ -293,6 +293,85 @@ curl -s -o /dev/null -w '%{http_code}\n' --http1.1 --max-time 3 \
 # 502 → ws container down:  docker compose … ps ws ; … logs --tail 50 ws
 ```
 
+## 12. Access logs: secrets masked
+
+Some URLs carry secrets:
+
+| URL | Secret | Logged as |
+|---|---|---|
+| `/api/public/kotib/analysis/<token>` | per-company Kotib token | `…/analysis/AbCd***` |
+| `/api/public/bitrix24/click-to-call/<token>` | per-company Bitrix24 token | `…/click-to-call/0123***` |
+| `/api/public/rec/<sid>?sig=<sig>` | recording-link signature | `…/rec/<sid>?sig=***` |
+| `files.` presigned URLs `?…&X-Amz-Signature=<sig>` | MinIO signature (≤ 1 h) | `X-Amz-Signature=***` |
+
+The first 4 token characters stay so a log line can still be matched to a
+company; everything else in the URL (other query parameters, the rest of the
+path) is logged as is.
+
+**Container nginx (all template sets).** Two chained `map`s turn
+`$request_uri` into `$log_uri`, and `log_format masked` (the `combined`
+fields + `$http_x_forwarded_for`, with `$log_uri` instead of `$request`) is
+used by **every** server block: `access_log /var/log/nginx/access.log
+masked;`. It has to be per server — an extra `access_log` at http level
+would add a second, unmasked log next to the image's default one. Goes live
+with `scripts/deploy.sh nginx` (re-render + `nginx -t` + graceful reload).
+
+**App servers.** gunicorn runs without `--access-logfile` (its access log
+bypasses Django `LOGGING`, so the token filter never saw it; nginx already
+logs every request). The `ws` service runs uvicorn with `--no-access-log`
+(devices only open `/api/call/v1/ws`, which carries no secret — nginx logs the
+upgrade; uvicorn would add a line per healthcheck). Error logs and Django's
+own (filtered) logs are unchanged. Dev compose keeps both access logs.
+
+**Host nginx (server mode, outside this repo — sudo).** The host logs the
+same URLs with the default format. Add at `http {}` level, e.g.
+`/etc/nginx/conf.d/doocall-logmask.conf`:
+
+```nginx
+map $request_uri $log_uri_path {
+    "~^(?<lm_path>/api/public/(?:kotib/analysis|bitrix24/click-to-call)/)(?<lm_keep>[^/?]{0,4})[^/?]*(?<lm_rest>.*)$"  "${lm_path}${lm_keep}***${lm_rest}";
+    default  $request_uri;
+}
+map $log_uri_path $log_uri {
+    "~^(?<lm_head>[^?]*\?(?:[^#]*&)?(?:sig|X-Amz-Signature)=)[^&]*(?<lm_tail>.*)$"  "${lm_head}***${lm_tail}";
+    default  $log_uri_path;
+}
+log_format masked '$remote_addr - $remote_user [$time_local] "$request_method $log_uri $server_protocol" '
+                  '$status $body_bytes_sent "$http_referer" "$http_user_agent" "$http_x_forwarded_for"';
+```
+
+and in **each** doocall server block of the host vhost (`doocall.uz`,
+`*.doocall.uz`, `app.`, `admin.`, `files.`, plus the `:80` redirect
+blocks):
+
+```nginx
+access_log /var/log/nginx/access.log masked;
+```
+
+(a server-level `access_log` replaces the http-level default for that
+server). Then `sudo nginx -t && sudo systemctl reload nginx`, and check:
+`curl -s -o /dev/null https://app.doocall.uz/api/public/rec/x?sig=probe;
+sudo tail -1 /var/log/nginx/access.log` → `…?sig=***`.
+
+**Old logs that already contain tokens.**
+
+* Host nginx: `sudo logrotate -f /etc/logrotate.d/nginx`, then find and
+  delete the rotated files that hold tokens:
+  `sudo zgrep -lE 'kotib/analysis/|click-to-call/|rec/[^ ]*sig=' /var/log/nginx/access.log*`.
+* Containers (json-file driver): a container's log lives as long as the
+  container. `scripts/deploy.sh` replaces backend/ws/frontend containers
+  (their old logs go with them); nginx is only reloaded, so its history stays
+  until the container is recreated (`docker compose … up -d --force-recreate
+  nginx` — a few seconds of downtime) or its file is truncated:
+  `sudo truncate -s 0 "$(docker inspect --format '{{.LogPath}}' <nginx-container>)"`.
+* Shipped logs (Sentry, a log collector, backups of `/var/log`) need the
+  same clean-up.
+* If anyone else could read those logs, rotate the exposed secrets too:
+  regenerate the Kotib / Bitrix24 tokens of the affected companies (and
+  update them on the Kotib / Bitrix24 side). Recording-link signatures are
+  HMACs of the server key: changing that key invalidates every recording
+  link already stored in the CRMs — only do it if those links must die.
+
 ## Env knobs (Phase 9)
 
 | Var | Default | Meaning |

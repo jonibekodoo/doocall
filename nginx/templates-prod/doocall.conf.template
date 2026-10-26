@@ -20,10 +20,29 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# ── Access log with secrets masked ─────────────────────────────────────────
+# Some URLs carry secrets: per-company tokens in the path (Kotib analysis,
+# Bitrix24 click-to-call) and signatures in the query (CRM recording links
+# ?sig=…, MinIO presigned X-Amz-Signature=…). Log the first 4 token chars
+# (enough to tell companies apart) and *** for signatures; everything else
+# is logged as is. Every server block uses `access_log … masked` — a second
+# http-level access_log would ADD a log next to the image's unmasked one.
+map $request_uri $log_uri_path {
+    "~^(?<lm_path>/api/public/(?:kotib/analysis|bitrix24/click-to-call)/)(?<lm_keep>[^/?]{0,4})[^/?]*(?<lm_rest>.*)$"  "${lm_path}${lm_keep}***${lm_rest}";
+    default  $request_uri;
+}
+map $log_uri_path $log_uri {
+    "~^(?<lm_head>[^?]*\?(?:[^#]*&)?(?:sig|X-Amz-Signature)=)[^&]*(?<lm_tail>.*)$"  "${lm_head}***${lm_tail}";
+    default  $log_uri_path;
+}
+log_format masked '$remote_addr - $remote_user [$time_local] "$request_method $log_uri $server_protocol" '
+                  '$status $body_bytes_sent "$http_referer" "$http_user_agent" "$http_x_forwarded_for"';
+
 # ── HTTP → HTTPS (ACME webroot left open for http-01 renewals) ─────────────
 server {
     listen 80 default_server;
     server_name _;
+    access_log /var/log/nginx/access.log masked;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -38,6 +57,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name ${DOMAIN_ROOT} www.${DOMAIN_ROOT};
+    access_log /var/log/nginx/access.log masked;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN_ROOT}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_ROOT}/privkey.pem;
@@ -86,6 +106,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name ${DOMAIN_APP};
+    access_log /var/log/nginx/access.log masked;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN_ROOT}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_ROOT}/privkey.pem;
@@ -136,6 +157,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name ${DOMAIN_ADMIN};
+    access_log /var/log/nginx/access.log masked;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN_ROOT}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_ROOT}/privkey.pem;
@@ -169,6 +191,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name files.${DOMAIN_ROOT};
+    access_log /var/log/nginx/access.log masked;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN_ROOT}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_ROOT}/privkey.pem;
@@ -191,6 +214,7 @@ server {
     listen 443 ssl;
     http2 on;
     server_name *.${DOMAIN_ROOT};
+    access_log /var/log/nginx/access.log masked;
 
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN_ROOT}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_ROOT}/privkey.pem;
