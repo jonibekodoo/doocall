@@ -314,7 +314,10 @@
     "webhookErr_timeout": "server javob bermadi",
     "webhookErr_connection_error": "serverga ulanib bo'lmadi",
     "webhookErr_blocked": "manzil xavfsizlik tekshiruvidan o'tmadi",
-    "webhookErr_error": "noma'lum xato"
+    "webhookErr_error": "noma'lum xato",
+    "apiDial": "API orqali masofaviy qo'ng'iroqqa ruxsat",
+    "apiDialWarning": "Yoqilsa, API kalitga ega har qanday tizim (calls.dial) operatorlar telefonidan qo'ng'iroq boshlashi mumkin — har bir qo'ng'iroqni operator telefonda tasdiqlaydi. API kalitni sir saqlang va kerak bo'lmasa o'chirib qo'ying.",
+    "apiDialDocs": "Masofaviy qo'ng'iroq API hujjati"
   },
   "ai": {
     "badge": "Sun'iy intellekt",
@@ -444,7 +447,25 @@
       "knownNumberNote": "Raqam CRM'da allaqachon bo'lsa, qo'ng'iroq mavjud kartochkaga biriktiriladi — takroriy kartochka yaratilmaydi.",
       "leadSource": "Lid manbai",
       "leadSourceHint": "Bitrix24 manba kodi: faqat A–Z, 0–9 va _ (50 belgigacha). Bo'sh qoldirilsa — CALL.",
-      "onlyAnswered": "Faqat javob berilgan qo'ng'iroqlarni yuborish"
+      "onlyAnswered": "Faqat javob berilgan qo'ng'iroqlarni yuborish",
+      "c2cTitle": "Bir bosishda qo'ng'iroq",
+      "c2cIntro": "Bitrix24'da raqam ustiga bosilganda qo'ng'iroq operatorning telefonidan DooCall orqali boshlanadi (operator telefonda tasdiqlaydi).",
+      "c2cEnable": "Bitrix24'dan bir bosishda qo'ng'iroqni yoqish",
+      "c2cUrl": "Bitrix24 chiquvchi vebhuk manzili (ONEXTERNALCALLSTART)",
+      "c2cCopy": "Nusxa olish",
+      "c2cCopied": "Nusxa olindi",
+      "c2cCopyFailed": "Nusxa olib bo'lmadi — manzilni qo'lda belgilang",
+      "c2cToken": "Bitrix24 application_token",
+      "c2cTokenStored": "Saqlangan — almashtirish uchun yangisini kiriting",
+      "c2cTokenHint": "Bitrix24 chiquvchi vebhuk sahifasidagi «Ilova tokeni» (application_token). «Ulash» tugmasi bilan saqlanadi.",
+      "c2cTokenSet": "application_token saqlangan",
+      "c2cTokenMissing": "application_token kiritilmagan",
+      "c2cLineRegistered": "DooCall liniyasi Bitrix24 telefoniyasida ro'yxatdan o'tgan",
+      "c2cLineMissing": "DooCall liniyasi Bitrix24'da hali ro'yxatdan o'tmagan",
+      "c2cDocs": "Sozlash bo'yicha qo'llanma",
+      "c2cUrlMissing": "Ishlov beruvchi manzili hali yaratilmagan — integratsiyani «Ulash» tugmasi bilan saqlang, so'ng manzil shu yerda paydo bo'ladi.",
+      "c2cWebhookStep": "Bitrix24'da shu manzil bilan ONEXTERNALCALLSTART hodisasi uchun chiquvchi vebhuk yarating va u bergan application_token'ni quyiga qo'ying.",
+      "c2cNeedToken": "Avval Bitrix24 bergan application_token ni kiriting"
     },
     "odoo": {
       "info": "1) Quyidagi tugma orqali DooCall Odoo 19 ilovasini yuklab olib, addons papkasiga chiqarib o'rnating (Apps → DooCall). 2) Odoo'da administrator huquqli foydalanuvchi uchun API kalit yarating (yozuvlar faqat shu foydalanuvchi orqali yoziladi, qolganlar uchun read-only) (Preferences → Account Security → API Keys) va quyidagi maydonlarni to'ldiring. Ilova o'rnatilgach har bir qo'ng'iroq kontakt/lid ichida audio player bilan ko'rinadi; ilovasiz — faqat chatter yozuvi.",

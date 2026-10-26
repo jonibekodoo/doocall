@@ -52,6 +52,30 @@ interface Strings {
   limits: string[];
   footer: string;
   responseComment: string;
+  dial: DialDocs;
+}
+
+interface DialDocs {
+  intro: string;
+  prereqTitle: string;
+  prereqs: string[];
+  requestTitle: string;
+  dialRows: ParamRow[];
+  statusTitle: string;
+  statusRows: ParamRow[];
+  statusIntro: string;
+  statusNote: string;
+  thValue: string;
+  thMeaning: string;
+  statuses: [string, string][];
+  reasonsTitle: string;
+  reasons: [string, string][];
+  errorsTitle: string;
+  errors: ErrorRow[];
+  limitsTitle: string;
+  limits: string[];
+  securityTitle: string;
+  security: string[];
 }
 
 const RU: Strings = {
@@ -68,6 +92,7 @@ const RU: Strings = {
     "account-info": "account.info — аккаунт",
     records: "Записи разговоров",
     webhooks: "Webhooks (события)",
+    "remote-dial": "Удалённый звонок (Remote Dial)",
     limits: "Ограничения",
   },
   thParam: "Параметр",
@@ -179,6 +204,118 @@ const RU: Strings = {
     "limit в calls.list — не более 200.",
     "Запросы принимаются только на домене вашего аккаунта (<аккаунт>.doocall.uz).",
   ],
+  dial: {
+    intro:
+      "Remote Dial позволяет внешней системе (CRM, сайт, собственное приложение) начать звонок с телефона оператора: DooCall отправляет команду в приложение DooCall на телефоне, оператор подтверждает её, и телефон набирает номер. Итог звонка (запись, длительность) попадает в DooCall как обычный звонок.",
+    prereqTitle: "Что нужно заранее",
+    requestTitle: "calls.dial — начать звонок",
+    statusTitle: "calls.dial.status — статус команды",
+    statusIntro:
+      "Опрашивайте статус раз в 1–2 секунды, пока он не станет финальным (rejected, disconnected, failed, expired, offline).",
+    statusNote:
+      "Статусы active и disconnected приходят, только если DooCall — приложение для звонков по умолчанию на телефоне. Запись и итог звонка появляются в calls.list после загрузки с телефона.",
+    reasonsTitle: "Причины отказа (reject_reason)",
+    errorsTitle: "Ошибки calls.dial",
+    limitsTitle: "Ограничения",
+    securityTitle: "Безопасность",
+    thValue: "Значение",
+    thMeaning: "Значение",
+    prereqs: [
+      "Приложение DooCall версии 1.16.3 или новее на телефоне оператора.",
+      "В приложении включена «Удалённый звонок» и выданы разрешения на звонки; телефон онлайн (приложение подключено к интернету).",
+      "Оператор подтверждает каждый звонок на телефоне (до 30 секунд) — без подтверждения звонок не начнётся.",
+      "В кабинете включено «Разрешить удалённый звонок через API» (Настройки → Интеграция, только администратор компании). Иначе ответ 403 feature_disabled.",
+    ],
+    dialRows: [
+      {
+        name: "operator",
+        type: "string",
+        required: true,
+        desc: "user_name оператора (как в users.list).",
+      },
+      {
+        name: "number",
+        type: "string",
+        required: true,
+        desc: "Номер клиента: только цифры (7–15), в начале может быть +; пробелы, дефисы и скобки игнорируются.",
+      },
+      {
+        name: "device_id",
+        type: "string",
+        required: false,
+        desc: "Конкретный телефон оператора; если не указан — используется его онлайн-телефон.",
+      },
+    ],
+    statusRows: [
+      {
+        name: "command_id",
+        type: "string",
+        required: true,
+        desc: "Идентификатор из ответа calls.dial.",
+      },
+    ],
+    statuses: [
+      ["sent", "Команда отправлена на телефон"],
+      ["received", "Телефон принял команду, оператор подтверждает"],
+      ["rejected", "Телефон отклонил команду (см. reject_reason)"],
+      ["dialing", "Идёт набор номера"],
+      ["active", "Идёт разговор"],
+      ["disconnected", "Звонок завершён (duration_sec, cause)"],
+      ["failed", "Звонок не состоялся"],
+      ["expired", "Телефон не ответил вовремя"],
+      ["offline", "Телефон не в сети"],
+    ],
+    reasons: [
+      ["permission_denied", "Нет разрешения на звонки на телефоне"],
+      ["invalid_number", "Неверный номер"],
+      ["another_call_active", "На телефоне идёт другой звонок"],
+      ["sim_disabled", "SIM отключена в приложении"],
+      ["duplicate", "Команда уже выполнена"],
+      ["feature_disabled", "«Удалённый звонок» выключен в приложении"],
+      ["user_declined", "Оператор отклонил звонок"],
+      ["timeout", "Оператор не подтвердил за 30 секунд"],
+      ["expired", "Команда устарела (старше 60 секунд)"],
+      ["rate_limited", "Слишком частые звонки на телефоне"],
+    ],
+    errors: [
+      {
+        http: "400",
+        code: "invalid_number",
+        reason: "Номер не прошёл проверку",
+      },
+      {
+        http: "400",
+        code: "destination_not_allowed",
+        reason: "Направление не разрешено",
+      },
+      {
+        http: "403",
+        code: "feature_disabled",
+        reason: "Удалённый звонок через API выключен в кабинете",
+      },
+      {
+        http: "409",
+        code: "device_offline",
+        reason: "Телефон оператора не в сети",
+      },
+      {
+        http: "429",
+        code: "rate_limited",
+        reason: "Превышен лимит удалённых звонков",
+      },
+    ],
+    limits: [
+      "Разрешённые коды стран: код страны вашей компании и по умолчанию +998, +992, +996, +7, +993; другие направления (в т.ч. платные) отклоняются.",
+      "Один телефон: не чаще 1 звонка в 10 секунд и не более 20 в час.",
+      "Один пользователь API: не чаще 1 запроса в 2 секунды и не более 120 в час.",
+      "Команда, не подтверждённая телефоном за 60 секунд, становится expired. Повтор того же запроса в течение 60 секунд отклоняется (409 duplicate_request).",
+    ],
+    security: [
+      "API-ключ позволяет звонить с телефонов ваших операторов — храните его только на сервере, не в браузере или мобильном приложении.",
+      "Каждый звонок подтверждает оператор на телефоне; без подтверждения звонок не выполняется.",
+      "Если ключ мог утечь — смените его (Настройки → Интеграция → Сменить ключ) и выключите удалённый звонок через API, пока он не нужен.",
+    ],
+  },
   footer: "© DooCall. Вопросы по интеграции: поддержка в вашем кабинете.",
   responseComment: "// Ответ",
 };
@@ -197,6 +334,7 @@ const UZ: Strings = {
     "account-info": "account.info — akkaunt",
     records: "Suhbat yozuvlari",
     webhooks: "Webhooks (hodisalar)",
+    "remote-dial": "Masofaviy qo'ng'iroq (Remote Dial)",
     limits: "Cheklovlar",
   },
   thParam: "Parametr",
@@ -308,6 +446,118 @@ const UZ: Strings = {
     "calls.list dagi limit — ko'pi bilan 200.",
     "So'rovlar faqat akkauntingiz domenida qabul qilinadi (<akkaunt>.doocall.uz).",
   ],
+  dial: {
+    intro:
+      "Remote Dial tashqi tizimga (CRM, sayt, o'z ilovangiz) operator telefonidan qo'ng'iroq boshlash imkonini beradi: DooCall telefondagi DooCall ilovasiga buyruq yuboradi, operator uni tasdiqlaydi va telefon raqamni teradi. Qo'ng'iroq natijasi (yozuv, davomiylik) DooCall'ga odatiy qo'ng'iroq sifatida tushadi.",
+    prereqTitle: "Oldindan nima kerak",
+    requestTitle: "calls.dial — qo'ng'iroqni boshlash",
+    statusTitle: "calls.dial.status — buyruq holati",
+    statusIntro:
+      "Holatni yakuniy bo'lguncha (rejected, disconnected, failed, expired, offline) har 1–2 soniyada so'rang.",
+    statusNote:
+      "active va disconnected holatlari faqat DooCall telefonda standart qo'ng'iroq ilovasi bo'lsa keladi. Yozuv va qo'ng'iroq natijasi telefondan yuklangach calls.list'da paydo bo'ladi.",
+    reasonsTitle: "Rad etish sabablari (reject_reason)",
+    errorsTitle: "calls.dial xatolari",
+    limitsTitle: "Cheklovlar",
+    securityTitle: "Xavfsizlik",
+    thValue: "Qiymat",
+    thMeaning: "Ma'nosi",
+    prereqs: [
+      "Operator telefonida DooCall ilovasi 1.16.3 yoki yangiroq versiyada.",
+      "Ilovada «Masofaviy qo'ng'iroq» yoqilgan va qo'ng'iroq ruxsatlari berilgan; telefon onlayn (ilova internetga ulangan).",
+      "Operator har bir qo'ng'iroqni telefonda tasdiqlaydi (30 soniyagacha) — tasdiqsiz qo'ng'iroq boshlanmaydi.",
+      "Kabinetda «API orqali masofaviy qo'ng'iroqqa ruxsat» yoqilgan (Sozlamalar → Integratsiya, faqat kompaniya administratori). Aks holda javob 403 feature_disabled.",
+    ],
+    dialRows: [
+      {
+        name: "operator",
+        type: "string",
+        required: true,
+        desc: "Operatorning user_name'i (users.list'dagidek).",
+      },
+      {
+        name: "number",
+        type: "string",
+        required: true,
+        desc: "Mijoz raqami: faqat raqamlar (7–15 ta), boshida + bo'lishi mumkin; bo'sh joy, chiziqcha va qavslar e'tiborga olinmaydi.",
+      },
+      {
+        name: "device_id",
+        type: "string",
+        required: false,
+        desc: "Operatorning aniq telefoni; ko'rsatilmasa — uning onlayn telefoni ishlatiladi.",
+      },
+    ],
+    statusRows: [
+      {
+        name: "command_id",
+        type: "string",
+        required: true,
+        desc: "calls.dial javobidagi identifikator.",
+      },
+    ],
+    statuses: [
+      ["sent", "Buyruq telefonga yuborildi"],
+      ["received", "Telefon qabul qildi, operator tasdiqlamoqda"],
+      ["rejected", "Telefon buyruqni rad etdi (reject_reason'ga qarang)"],
+      ["dialing", "Raqam terilmoqda"],
+      ["active", "Suhbat davom etmoqda"],
+      ["disconnected", "Qo'ng'iroq tugadi (duration_sec, cause)"],
+      ["failed", "Qo'ng'iroq amalga oshmadi"],
+      ["expired", "Telefon o'z vaqtida javob bermadi"],
+      ["offline", "Telefon onlayn emas"],
+    ],
+    reasons: [
+      ["permission_denied", "Telefonda qo'ng'iroq ruxsati yo'q"],
+      ["invalid_number", "Raqam noto'g'ri"],
+      ["another_call_active", "Telefonda boshqa qo'ng'iroq bor"],
+      ["sim_disabled", "Ilovada SIM o'chirilgan"],
+      ["duplicate", "Buyruq allaqachon bajarilgan"],
+      ["feature_disabled", "Ilovada «Masofaviy qo'ng'iroq» o'chirilgan"],
+      ["user_declined", "Operator qo'ng'iroqni rad etdi"],
+      ["timeout", "Operator 30 soniya ichida tasdiqlamadi"],
+      ["expired", "Buyruq eskirgan (60 soniyadan eski)"],
+      ["rate_limited", "Telefonda qo'ng'iroqlar juda tez-tez"],
+    ],
+    errors: [
+      {
+        http: "400",
+        code: "invalid_number",
+        reason: "Raqam tekshiruvdan o'tmadi",
+      },
+      {
+        http: "400",
+        code: "destination_not_allowed",
+        reason: "Bu yo'nalishga ruxsat yo'q",
+      },
+      {
+        http: "403",
+        code: "feature_disabled",
+        reason: "Kabinetda API orqali masofaviy qo'ng'iroq o'chirilgan",
+      },
+      {
+        http: "409",
+        code: "device_offline",
+        reason: "Operator telefoni onlayn emas",
+      },
+      {
+        http: "429",
+        code: "rate_limited",
+        reason: "Masofaviy qo'ng'iroqlar limiti oshdi",
+      },
+    ],
+    limits: [
+      "Ruxsat etilgan mamlakat kodlari: kompaniyangiz kodi va standart bo'yicha +998, +992, +996, +7, +993; boshqa yo'nalishlar (jumladan pullik raqamlar) rad etiladi.",
+      "Bitta telefon: 10 soniyada 1 tadan va soatiga 20 tadan ko'p emas.",
+      "Bitta API foydalanuvchisi: 2 soniyada 1 tadan va soatiga 120 tadan ko'p emas.",
+      "Telefon 60 soniya ichida tasdiqlamagan buyruq expired bo'ladi. Xuddi shu so'rovni 60 soniya ichida takrorlash rad etiladi (409 duplicate_request).",
+    ],
+    security: [
+      "API kalit operatorlaringiz telefonidan qo'ng'iroq qilish imkonini beradi — uni faqat serverda saqlang, brauzer yoki mobil ilovada emas.",
+      "Har bir qo'ng'iroqni operator telefonda tasdiqlaydi; tasdiqsiz qo'ng'iroq bajarilmaydi.",
+      "Kalit oshkor bo'lgan bo'lishi mumkin bo'lsa — uni almashtiring (Sozlamalar → Integratsiya → Kalitni almashtirish) va kerak bo'lmaguncha API orqali masofaviy qo'ng'iroqni o'chiring.",
+    ],
+  },
   footer:
     "© DooCall. Integratsiya bo'yicha savollar: kabinetingizdagi qo'llab-quvvatlash.",
   responseComment: "// Javob",
@@ -327,6 +577,7 @@ const EN: Strings = {
     "account-info": "account.info — account",
     records: "Call recordings",
     webhooks: "Webhooks (events)",
+    "remote-dial": "Remote Dial",
     limits: "Limits",
   },
   thParam: "Parameter",
@@ -434,6 +685,118 @@ const EN: Strings = {
     "limit in calls.list — at most 200.",
     "Requests are accepted only on your account domain (<account>.doocall.uz).",
   ],
+  dial: {
+    intro:
+      "Remote Dial lets an external system (CRM, website, your own app) start a call from an operator's phone: DooCall sends a command to the DooCall app on the phone, the operator confirms it and the phone dials. The call result (recording, duration) arrives in DooCall like any other call.",
+    prereqTitle: "Prerequisites",
+    requestTitle: "calls.dial — start a call",
+    statusTitle: "calls.dial.status — command status",
+    statusIntro:
+      "Poll every 1–2 seconds until the status is final (rejected, disconnected, failed, expired, offline).",
+    statusNote:
+      "active and disconnected only arrive when DooCall is the default phone app on the device. The recording and call result appear in calls.list once uploaded from the phone.",
+    reasonsTitle: "Reject reasons (reject_reason)",
+    errorsTitle: "calls.dial errors",
+    limitsTitle: "Limits",
+    securityTitle: "Security",
+    thValue: "Value",
+    thMeaning: "Meaning",
+    prereqs: [
+      "DooCall app 1.16.3 or newer on the operator's phone.",
+      "“Remote call” is enabled in the app and call permissions are granted; the phone is online (the app is connected).",
+      "The operator confirms every call on the phone (up to 30 seconds) — without confirmation the call doesn't start.",
+      "“Allow Remote Dial via the API” is on in the cabinet (Settings → Integration, company admins only). Otherwise the answer is 403 feature_disabled.",
+    ],
+    dialRows: [
+      {
+        name: "operator",
+        type: "string",
+        required: true,
+        desc: "The operator's user_name (as in users.list).",
+      },
+      {
+        name: "number",
+        type: "string",
+        required: true,
+        desc: "Client number: digits only (7–15), optionally starting with +; spaces, dashes and brackets are ignored.",
+      },
+      {
+        name: "device_id",
+        type: "string",
+        required: false,
+        desc: "A specific phone of the operator; when omitted their online phone is used.",
+      },
+    ],
+    statusRows: [
+      {
+        name: "command_id",
+        type: "string",
+        required: true,
+        desc: "The identifier from the calls.dial response.",
+      },
+    ],
+    statuses: [
+      ["sent", "Command sent to the phone"],
+      ["received", "The phone accepted it; the operator is confirming"],
+      ["rejected", "The phone rejected the command (see reject_reason)"],
+      ["dialing", "Dialing"],
+      ["active", "Call in progress"],
+      ["disconnected", "Call ended (duration_sec, cause)"],
+      ["failed", "The call failed"],
+      ["expired", "The phone didn't respond in time"],
+      ["offline", "The phone is offline"],
+    ],
+    reasons: [
+      ["permission_denied", "No call permission on the phone"],
+      ["invalid_number", "Invalid number"],
+      ["another_call_active", "Another call is active on the phone"],
+      ["sim_disabled", "The SIM is disabled in the app"],
+      ["duplicate", "The command was already executed"],
+      ["feature_disabled", "“Remote call” is off in the app"],
+      ["user_declined", "The operator declined the call"],
+      ["timeout", "The operator didn't confirm within 30 seconds"],
+      ["expired", "The command is stale (older than 60 seconds)"],
+      ["rate_limited", "Calls on the phone are too frequent"],
+    ],
+    errors: [
+      {
+        http: "400",
+        code: "invalid_number",
+        reason: "The number failed validation",
+      },
+      {
+        http: "400",
+        code: "destination_not_allowed",
+        reason: "Destination not allowed",
+      },
+      {
+        http: "403",
+        code: "feature_disabled",
+        reason: "Remote Dial via the API is off in the cabinet",
+      },
+      {
+        http: "409",
+        code: "device_offline",
+        reason: "The operator's phone is offline",
+      },
+      {
+        http: "429",
+        code: "rate_limited",
+        reason: "Remote Dial rate limit exceeded",
+      },
+    ],
+    limits: [
+      "Allowed country codes: your company's own code plus, by default, +998, +992, +996, +7, +993; other destinations (including premium numbers) are rejected.",
+      "Per phone: at most 1 call per 10 seconds and 20 per hour.",
+      "Per API user: at most 1 request per 2 seconds and 120 per hour.",
+      "A command the phone hasn't acknowledged within 60 seconds becomes expired. Repeating the same request within 60 seconds is rejected (409 duplicate_request).",
+    ],
+    security: [
+      "The API key can place calls from your operators' phones — keep it on your server only, never in a browser or mobile app.",
+      "The operator confirms every call on the phone; nothing is dialled without confirmation.",
+      "If the key may have leaked — rotate it (Settings → Integration → Rotate key) and turn Remote Dial via the API off until you need it.",
+    ],
+  },
   footer: "© DooCall. Integration questions: support in your cabinet.",
   responseComment: "// Response",
 };
@@ -490,6 +853,44 @@ function ParamTable({ l, rows }: { l: Strings; rows: ParamRow[] }) {
       </table>
     </div>
   );
+}
+
+function PairTable({
+  head,
+  rows,
+  testId,
+}: {
+  head: [string, string];
+  rows: [string, string][];
+  testId: string;
+}) {
+  return (
+    <div className="my-3 overflow-x-auto rounded-lg border border-border">
+      <table
+        className="w-full min-w-[420px] text-left text-sm"
+        data-testid={testId}
+      >
+        <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
+          <tr>
+            <th className="px-3 py-2">{head[0]}</th>
+            <th className="px-3 py-2">{head[1]}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([value, meaning]) => (
+            <tr key={value} className="border-t border-border">
+              <td className="px-3 py-2 font-mono text-xs">{value}</td>
+              <td className="px-3 py-2">{meaning}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SubTitle({ children }: { children: React.ReactNode }) {
+  return <h3 className="mb-2 mt-5 text-sm font-semibold">{children}</h3>;
 }
 
 export default async function ApiDocsPage() {
@@ -653,6 +1054,108 @@ X-Doocall-Signature: hmac_sha256(secret, raw_body)   // hex
   "received_at": "2026-09-01T12:43:02+00:00"
 }`}</Code>
           <p className="text-sm leading-relaxed">{l.webhooksBody2}</p>
+        </Section>
+
+        <Section id="remote-dial" title={l.toc["remote-dial"]}>
+          <p className="text-sm leading-relaxed">{l.dial.intro}</p>
+
+          <SubTitle>{l.dial.prereqTitle}</SubTitle>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {l.dial.prereqs.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+
+          <SubTitle>{l.dial.requestTitle}</SubTitle>
+          <ParamTable l={l} rows={l.dial.dialRows} />
+          <Code>{`POST https://mycompany.doocall.uz/api/v1
+Content-Type: application/json
+
+{
+  "user_name": "admin@mycompany.uz",
+  "api_key": "1f3c9a4b8d2e4f6a9c1b3d5e7f9a0b2c",
+  "action": "calls.dial",
+  "operator": "operator1",
+  "number": "+998901234567"
+}
+
+${l.responseComment}
+{ "success": true, "command_id": "7f9d2c41-…", "status": "sent" }`}</Code>
+
+          <SubTitle>{l.dial.statusTitle}</SubTitle>
+          <ParamTable l={l} rows={l.dial.statusRows} />
+          <p className="text-sm leading-relaxed">{l.dial.statusIntro}</p>
+          <Code>{`{
+  "user_name": "admin@mycompany.uz",
+  "api_key": "1f3c9a4b8d2e4f6a9c1b3d5e7f9a0b2c",
+  "action": "calls.dial.status",
+  "command_id": "7f9d2c41-…"
+}
+
+${l.responseComment}
+{
+  "success": true,
+  "command": {
+    "command_id": "7f9d2c41-…",
+    "status": "disconnected",
+    "reject_reason": null,
+    "sim_mode": "auto",
+    "used_sim_slot": 0,
+    "duration_sec": 74,
+    "cause": "answered"
+  }
+}`}</Code>
+          <PairTable
+            head={[l.dial.thValue, l.dial.thMeaning]}
+            rows={l.dial.statuses}
+            testId="dial-statuses"
+          />
+          <p className="text-sm text-fg-muted">{l.dial.statusNote}</p>
+
+          <SubTitle>{l.dial.reasonsTitle}</SubTitle>
+          <PairTable
+            head={[l.dial.thValue, l.dial.thMeaning]}
+            rows={l.dial.reasons}
+            testId="dial-reasons"
+          />
+
+          <SubTitle>{l.dial.errorsTitle}</SubTitle>
+          <Code>{`{ "success": false, "error_code": "device_offline",
+  "command_id": "7f9d2c41-…", "status": "offline" }`}</Code>
+          <div className="my-3 overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead className="bg-surface-2 text-xs uppercase text-fg-muted">
+                <tr>
+                  <th className="px-3 py-2">{l.thHttp}</th>
+                  <th className="px-3 py-2">{l.thCode}</th>
+                  <th className="px-3 py-2">{l.thReason}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {l.dial.errors.map((row) => (
+                  <tr key={row.code} className="border-t border-border">
+                    <td className="px-3 py-2">{row.http}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{row.code}</td>
+                    <td className="px-3 py-2">{row.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <SubTitle>{l.dial.limitsTitle}</SubTitle>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {l.dial.limits.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+
+          <SubTitle>{l.dial.securityTitle}</SubTitle>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {l.dial.security.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </Section>
 
         <Section id="limits" title={l.toc.limits}>

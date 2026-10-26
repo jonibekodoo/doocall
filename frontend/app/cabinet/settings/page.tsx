@@ -743,6 +743,53 @@ function WebhookStatusLine({ info }: { info: WebhookDeliveryStatus }) {
   );
 }
 
+/** "API orqali masofaviy qo'ng'iroq": lets the public API (calls.dial) ring
+ * operators' phones. Off by default; company admins only. */
+function ApiDialToggle() {
+  const t = useTranslations("settings");
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["s-account"],
+    queryFn: fetchAccountSettings,
+  });
+  const save = useMutation({
+    mutationFn: (enabled: boolean) =>
+      saveAccountSettings({ api_dial_enabled: enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["s-account"] }),
+  });
+  const settings = data?.settings;
+  if (!settings) return null;
+  const enabled = Boolean(settings.api_dial_enabled);
+  return (
+    <div
+      data-testid="api-dial"
+      className="space-y-1.5 rounded-md border border-border p-3"
+    >
+      <label className="flex items-center justify-between gap-3 text-sm font-medium">
+        {t("apiDial")}
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={save.isPending}
+          onChange={(event) => save.mutate(event.target.checked)}
+          data-testid="api-dial-toggle"
+          className="size-4 accent-[var(--accent)]"
+        />
+      </label>
+      <p className="text-xs leading-relaxed text-warning">
+        {t("apiDialWarning")}
+      </p>
+      <a
+        href="/docs/api#remote-dial"
+        target="_blank"
+        className="inline-block text-xs font-semibold text-accent hover:underline"
+      >
+        {t("apiDialDocs")}
+      </a>
+    </div>
+  );
+}
+
 function IntegrationTab() {
   const t = useTranslations("settings");
   const queryClient = useQueryClient();
@@ -939,6 +986,7 @@ function IntegrationTab() {
           >
             {t("apiDocsLink")}
           </a>
+          <ApiDialToggle />
 
           <div className="border-t border-border pt-3">
             <p className="text-sm font-semibold">{t("webhookUrl")}</p>

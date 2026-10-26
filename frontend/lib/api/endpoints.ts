@@ -309,6 +309,8 @@ export interface AccountSettings {
   timezone: string;
   /** Default calling code (digits, no "+") for numbers typed without one. */
   phone_code: string;
+  /** Public API may start Remote Dial calls (calls.dial); admin-only. */
+  api_dial_enabled?: boolean;
 }
 export const fetchAccountSettings = () =>
   get<{ success: boolean; settings: AccountSettings }>("/settings/account");
