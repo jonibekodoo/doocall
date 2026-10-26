@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Info } from "lucide-react";
+import { CheckCircle2, Copy, Info, XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { CrmProviderPage } from "@/components/CrmProviderPage";
+import { useToastStore } from "@/components/ui/Toast";
 import {
   cleanUserMap,
   CrmUserMapEditor,
@@ -14,6 +15,7 @@ import {
 import { fetchIntegrations } from "@/lib/api/endpoints";
 import type {
   Bitrix24CardOptions,
+  Bitrix24ClickToCall,
   Bitrix24CreateCard,
   Bitrix24PortalMode,
 } from "@/lib/api/types";
@@ -217,6 +219,131 @@ function CardOptionsEditor({
   );
 }
 
+function StatusLine({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <p className="flex items-center gap-1.5 text-xs">
+      {ok ? (
+        <CheckCircle2 className="size-3.5 text-accent" />
+      ) : (
+        <XCircle className="size-3.5 text-fg-faint" />
+      )}
+      <span className={ok ? "text-fg" : "text-fg-muted"}>{label}</span>
+    </p>
+  );
+}
+
+/** "Bir bosishda qo'ng'iroq": Bitrix24 ONEXTERNALCALLSTART → Remote Dial on
+ * the operator's phone. Saved with the page's Connect button. */
+function ClickToCallSection({
+  info,
+  enabled,
+  onEnabled,
+  token,
+  onToken,
+}: {
+  info: Bitrix24ClickToCall;
+  enabled: boolean;
+  onEnabled: (value: boolean) => void;
+  token: string;
+  onToken: (value: string) => void;
+}) {
+  const t = useTranslations("crm.bitrix24");
+  const toast = (kind: "success" | "error", text: string) =>
+    useToastStore.getState().push({ kind, text });
+  return (
+    <section
+      data-testid="b24-click-to-call"
+      className="mt-6 space-y-3 rounded-lg border border-border bg-surface p-4"
+    >
+      <h2 className="text-base font-semibold">{t("c2cTitle")}</h2>
+      <p className="text-xs leading-relaxed text-fg-muted">{t("c2cIntro")}</p>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => onEnabled(event.target.checked)}
+          data-testid="b24-c2c-enabled"
+          className="mt-0.5 size-4 accent-[var(--accent)]"
+        />
+        {t("c2cEnable")}
+      </label>
+
+      {info.click_to_call_url && (
+        <div className="text-sm">
+          <span className="mb-1 block text-xs text-fg-muted">
+            {t("c2cUrl")}
+          </span>
+          <div className="flex max-w-xl gap-2">
+            <input
+              readOnly
+              value={info.click_to_call_url}
+              data-testid="b24-c2c-url"
+              onFocus={(event) => event.currentTarget.select()}
+              className="min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              data-testid="b24-c2c-copy"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(info.click_to_call_url);
+                  toast("success", t("c2cCopied"));
+                } catch {
+                  toast("error", t("c2cCopyFailed"));
+                }
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs hover:bg-surface-2"
+            >
+              <Copy className="size-3.5" /> {t("c2cCopy")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <label className="block max-w-xl text-sm">
+        <span className="mb-1 block text-xs text-fg-muted">
+          {t("c2cToken")}
+        </span>
+        <input
+          value={token}
+          onChange={(event) => onToken(event.target.value)}
+          placeholder={info.b24_app_token_set ? t("c2cTokenStored") : ""}
+          autoComplete="off"
+          data-testid="b24-c2c-token"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm"
+        />
+        <span className="mt-1 block text-xs text-fg-faint">
+          {t("c2cTokenHint")}
+        </span>
+      </label>
+
+      <div className="space-y-1" data-testid="b24-c2c-status">
+        <StatusLine
+          ok={info.b24_app_token_set}
+          label={
+            info.b24_app_token_set ? t("c2cTokenSet") : t("c2cTokenMissing")
+          }
+        />
+        <StatusLine
+          ok={info.external_line_registered}
+          label={
+            info.external_line_registered
+              ? t("c2cLineRegistered")
+              : t("c2cLineMissing")
+          }
+        />
+      </div>
+      <a
+        href="/docs/bitrix24#click-to-call"
+        target="_blank"
+        className="inline-block text-xs font-semibold text-accent hover:underline"
+      >
+        {t("c2cDocs")}
+      </a>
+    </section>
+  );
+}
+
 export default function Bitrix24IntegrationPage() {
   const t = useTranslations("crm.bitrix24");
   const { data } = useQuery({
@@ -244,6 +371,23 @@ export default function Bitrix24IntegrationPage() {
   };
   const leadSourceValid = LEAD_SOURCE_RE.test(options.lead_source.trim());
   const relevant = leadSourceRelevant(options, portal);
+
+  // Click-to-call: toggle + (write-only) Bitrix24 application_token.
+  const c2cInfo: Bitrix24ClickToCall = {
+    click_to_call_enabled: Boolean(config.click_to_call_enabled),
+    click_to_call_url: String(config.click_to_call_url ?? ""),
+    b24_app_token_set: Boolean(config.b24_app_token_set),
+    external_line_registered: Boolean(config.external_line_registered),
+  };
+  const [c2cEnabled, setC2cEnabled] = useState(false);
+  const [c2cToken, setC2cToken] = useState("");
+  useEffect(() => {
+    if (!row) return;
+    setC2cEnabled(
+      Boolean((row.config as Record<string, unknown>).click_to_call_enabled),
+    );
+    setC2cToken("");
+  }, [row]);
 
   const configured = Boolean(row?.configured);
   return (
@@ -284,6 +428,15 @@ export default function Bitrix24IntegrationPage() {
             leadSourceInvalid={relevant && !leadSourceValid}
           />
           {configured && (
+            <ClickToCallSection
+              info={c2cInfo}
+              enabled={c2cEnabled}
+              onEnabled={setC2cEnabled}
+              token={c2cToken}
+              onToken={setC2cToken}
+            />
+          )}
+          {configured && (
             <CrmUserMapEditor
               provider="bitrix24"
               map={userMap}
@@ -301,6 +454,11 @@ export default function Bitrix24IntegrationPage() {
         // value is kept); when it applies, saving is blocked instead.
         ...(leadSourceValid ? { lead_source: options.lead_source.trim() } : {}),
         ...(configured ? { user_map: cleanUserMap(userMap) } : {}),
+        ...(configured ? { click_to_call_enabled: c2cEnabled } : {}),
+        // The token is write-only: sent only when something was typed.
+        ...(configured && c2cToken.trim()
+          ? { b24_app_token: c2cToken.trim() }
+          : {}),
       }}
       saveBlocked={relevant && !leadSourceValid}
     />

@@ -213,3 +213,14 @@ export interface DialCommandState {
   duration_sec?: number | null;
   cause?: string | null;
 }
+
+/** Bitrix24 click-to-call (ONEXTERNALCALLSTART → Remote Dial) config. */
+export interface Bitrix24ClickToCall {
+  click_to_call_enabled: boolean;
+  /** Handler URL for the Bitrix24 outgoing webhook (shown to admins). */
+  click_to_call_url: string;
+  /** Bitrix24 application_token saved (the secret itself is never sent). */
+  b24_app_token_set: boolean;
+  /** DooCall's external line exists in Bitrix24 telephony. */
+  external_line_registered: boolean;
+}

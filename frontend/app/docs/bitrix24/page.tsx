@@ -16,6 +16,8 @@ export const metadata = {
 };
 
 interface GuideSection {
+  /** Anchor for deep links (e.g. /docs/bitrix24#click-to-call). */
+  id?: string;
   step?: number;
   title: string;
   body: React.ReactNode;
@@ -151,6 +153,97 @@ const RU: Guide = {
         />
       ),
     },
+    {
+      id: "click-to-call",
+      title: "Звонок в один клик из Bitrix24 (click-to-call)",
+      body: (
+        <>
+          <p>
+            Сотрудник нажимает на номер в карточке Bitrix24 — DooCall отправляет
+            команду в приложение на телефоне сопоставленного оператора, оператор
+            подтверждает, и телефон набирает номер. Итог звонка записывается в
+            Bitrix24 как обычно.
+          </p>
+          <p>Что нужно заранее:</p>
+          <DocsList
+            items={[
+              "Приложение DooCall 1.16.3 или новее на телефоне оператора, в приложении включён «Удалённый звонок» и выданы разрешения на звонки.",
+              "Интеграция с Bitrix24 подключена (шаги 1–3 выше).",
+              "Операторы DooCall сопоставлены с пользователями Bitrix24 (Настройки → Интеграция → Bitrix24).",
+            ]}
+          />
+        </>
+      ),
+    },
+    {
+      title: "Настройка click-to-call",
+      body: (
+        <>
+          <DocsList
+            items={[
+              <>
+                <b>DooCall:</b> Настройки → Интеграция → Bitrix24 → блок{" "}
+                <b>«Звонок в один клик»</b>: включите опцию и нажмите{" "}
+                <b>«Подключить»</b>. Появится адрес обработчика — скопируйте
+                его.
+              </>,
+              <>
+                <b>Bitrix24:</b> Разработчикам → Другое →{" "}
+                <b>«Исходящий вебхук»</b>. В поле URL обработчика вставьте
+                скопированный адрес, событие — <code>ONEXTERNALCALLSTART</code>.
+                Сохраните.
+              </>,
+              <>
+                На странице исходящего вебхука скопируйте{" "}
+                <b>«Токен приложения» (application_token)</b>, вставьте его в
+                DooCall в поле application_token и снова нажмите «Подключить».
+              </>,
+              <>
+                Проверьте сопоставление операторов с пользователями Bitrix24 —
+                по сотруднику, нажавшему на номер, DooCall выбирает телефон
+                оператора.
+              </>,
+              <>
+                <b>Bitrix24:</b> Телефония → Настройки → номер по умолчанию для
+                исходящих звонков — выберите линию <b>DooCall</b>.
+              </>,
+            ]}
+          />
+          <DocsNote>
+            В кабинете DooCall видно, сохранён ли application_token и
+            зарегистрирована ли линия DooCall в телефонии Bitrix24.
+          </DocsNote>
+        </>
+      ),
+    },
+    {
+      title: "Как работает click-to-call",
+      body: (
+        <DocsList
+          items={[
+            "Клик по номеру → Bitrix24 отправляет событие ONEXTERNALCALLSTART (сотрудник и номер) на адрес обработчика DooCall.",
+            "DooCall проверяет application_token, находит сопоставленного оператора и его телефон онлайн.",
+            "Телефон просит оператора подтвердить звонок (до 30 секунд), затем набирает номер.",
+            "После звонка запись загружается с телефона, и звонок регистрируется в Bitrix24, как и остальные звонки.",
+          ]}
+        />
+      ),
+    },
+    {
+      title: "Проблемы с click-to-call",
+      body: (
+        <DocsList
+          items={[
+            "По клику ничего не происходит — проверьте, что линия DooCall выбрана по умолчанию для исходящих и в исходящем вебхуке указано событие ONEXTERNALCALLSTART.",
+            "Линия DooCall не зарегистрирована — сохраните интеграцию ещё раз и проверьте право «Телефония (telephony)» у входящего вебхука.",
+            "application_token не задан или не совпадает — скопируйте токен заново со страницы исходящего вебхука.",
+            "Сотрудник Bitrix24 не сопоставлен с оператором — сопоставьте его в DooCall.",
+            "Телефон оператора не в сети — откройте приложение DooCall и проверьте интернет.",
+            "Оператор не подтвердил звонок за 30 секунд или отклонил его — повторите клик.",
+          ]}
+        />
+      ),
+    },
   ],
 };
 
@@ -272,6 +365,99 @@ const UZ: Guide = {
               Qo’ng’iroq tushmadi — DooCall kabinetidagi Bitrix24
               sahifasida statusni va integratsiya yoqilganini tekshiring.
             </>,
+          ]}
+        />
+      ),
+    },
+    {
+      id: "click-to-call",
+      title: "Bitrix24’dan bir bosishda qo’ng’iroq (click-to-call)",
+      body: (
+        <>
+          <p>
+            Xodim Bitrix24 kartochkasidagi raqamni bosadi — DooCall moslangan
+            operator telefonidagi ilovaga buyruq yuboradi, operator tasdiqlaydi
+            va telefon raqamni teradi. Qo’ng’iroq natijasi Bitrix24’ga
+            odatdagidek yoziladi.
+          </p>
+          <p>Oldindan nima kerak:</p>
+          <DocsList
+            items={[
+              "Operator telefonida DooCall ilovasi 1.16.3 yoki yangiroq, ilovada «Masofaviy qo’ng’iroq» yoqilgan va qo’ng’iroq ruxsatlari berilgan.",
+              "Bitrix24 integratsiyasi ulangan (yuqoridagi 1–3-qadamlar).",
+              "DooCall operatorlari Bitrix24 foydalanuvchilariga moslangan (Sozlamalar → Integratsiya → Bitrix24).",
+            ]}
+          />
+        </>
+      ),
+    },
+    {
+      title: "Click-to-call’ni sozlash",
+      body: (
+        <>
+          <DocsList
+            items={[
+              <>
+                <b>DooCall:</b> Sozlamalar → Integratsiya → Bitrix24 →{" "}
+                <b>«Bir bosishda qo’ng’iroq»</b> bloki: belgini yoqing va{" "}
+                <b>«Ulash»</b> tugmasini bosing. Ishlov beruvchi manzili paydo
+                bo’ladi — uni nusxalang.
+              </>,
+              <>
+                <b>Bitrix24:</b> Dasturchilar uchun → Boshqa →{" "}
+                <b>«Chiquvchi vebhuk»</b>. Ishlov beruvchi URL maydoniga
+                nusxalangan manzilni qo’ying, hodisa —{" "}
+                <code>ONEXTERNALCALLSTART</code>. Saqlang.
+              </>,
+              <>
+                Chiquvchi vebhuk sahifasidan{" "}
+                <b>«Ilova tokeni» (application_token)</b>ni nusxalang, uni
+                DooCall’dagi application_token maydoniga qo’ying va yana
+                «Ulash»ni bosing.
+              </>,
+              <>
+                Operatorlar Bitrix24 foydalanuvchilariga moslanganini tekshiring
+                — raqamni bosgan xodimga qarab DooCall operator telefonini
+                tanlaydi.
+              </>,
+              <>
+                <b>Bitrix24:</b> Telefoniya → Sozlamalar → chiquvchi
+                qo’ng’iroqlar uchun standart raqam — <b>DooCall</b> liniyasini
+                tanlang.
+              </>,
+            ]}
+          />
+          <DocsNote>
+            DooCall kabinetida application_token saqlangani va DooCall liniyasi
+            Bitrix24 telefoniyasida ro’yxatdan o’tgani ko’rinadi.
+          </DocsNote>
+        </>
+      ),
+    },
+    {
+      title: "Click-to-call qanday ishlaydi",
+      body: (
+        <DocsList
+          items={[
+            "Raqam bosiladi → Bitrix24 ONEXTERNALCALLSTART hodisasini (xodim va raqam) DooCall ishlov beruvchi manziliga yuboradi.",
+            "DooCall application_token’ni tekshiradi, moslangan operatorni va uning onlayn telefonini topadi.",
+            "Telefon operatordan qo’ng’iroqni tasdiqlashni so’raydi (30 soniyagacha), so’ng raqamni teradi.",
+            "Qo’ng’iroqdan keyin yozuv telefondan yuklanadi va qo’ng’iroq Bitrix24’da boshqa qo’ng’iroqlar kabi ro’yxatga olinadi.",
+          ]}
+        />
+      ),
+    },
+    {
+      title: "Click-to-call muammolari",
+      body: (
+        <DocsList
+          items={[
+            "Bosilganda hech narsa bo’lmaydi — chiquvchi qo’ng’iroqlar uchun DooCall liniyasi standart qilib tanlanganini va chiquvchi vebhukda ONEXTERNALCALLSTART hodisasi ko’rsatilganini tekshiring.",
+            "DooCall liniyasi ro’yxatdan o’tmagan — integratsiyani qayta saqlang va kiruvchi vebhukda «Telefoniya (telephony)» huquqi borligini tekshiring.",
+            "application_token kiritilmagan yoki mos emas — tokenni chiquvchi vebhuk sahifasidan qayta nusxalang.",
+            "Bitrix24 xodimi operatorga moslanmagan — uni DooCall’da moslang.",
+            "Operator telefoni onlayn emas — DooCall ilovasini oching va internetni tekshiring.",
+            "Operator 30 soniya ichida tasdiqlamadi yoki rad etdi — qayta bosing.",
           ]}
         />
       ),
@@ -400,6 +586,95 @@ const EN: Guide = {
         />
       ),
     },
+    {
+      id: "click-to-call",
+      title: "Click-to-call from Bitrix24",
+      body: (
+        <>
+          <p>
+            An employee clicks a number in a Bitrix24 card — DooCall sends a
+            command to the app on the mapped operator's phone, the operator
+            confirms and the phone dials. The call result is recorded in
+            Bitrix24 as usual.
+          </p>
+          <p>Prerequisites:</p>
+          <DocsList
+            items={[
+              "DooCall app 1.16.3 or newer on the operator's phone, with “Remote call” enabled and call permissions granted.",
+              "The Bitrix24 integration is connected (steps 1–3 above).",
+              "DooCall operators are mapped to Bitrix24 users (Settings → Integration → Bitrix24).",
+            ]}
+          />
+        </>
+      ),
+    },
+    {
+      title: "Setting up click-to-call",
+      body: (
+        <>
+          <DocsList
+            items={[
+              <>
+                <b>DooCall:</b> Settings → Integration → Bitrix24 →{" "}
+                <b>“Click-to-call”</b> block: turn it on and press{" "}
+                <b>“Connect”</b>. The handler URL appears — copy it.
+              </>,
+              <>
+                <b>Bitrix24:</b> Developer resources → Other →{" "}
+                <b>“Outgoing webhook”</b>. Paste the copied URL as the handler
+                URL and choose the event <code>ONEXTERNALCALLSTART</code>. Save.
+              </>,
+              <>
+                On the outgoing webhook page copy the{" "}
+                <b>“Application token” (application_token)</b>, paste it into
+                the application_token field in DooCall and press “Connect”
+                again.
+              </>,
+              <>
+                Check that operators are mapped to Bitrix24 users — DooCall
+                picks the operator's phone by the employee who clicked.
+              </>,
+              <>
+                <b>Bitrix24:</b> Telephony → Settings → default number for
+                outgoing calls — choose the <b>DooCall</b> line.
+              </>,
+            ]}
+          />
+          <DocsNote>
+            The DooCall cabinet shows whether the application_token is saved and
+            whether the DooCall line is registered in Bitrix24 telephony.
+          </DocsNote>
+        </>
+      ),
+    },
+    {
+      title: "How click-to-call works",
+      body: (
+        <DocsList
+          items={[
+            "A number is clicked → Bitrix24 sends the ONEXTERNALCALLSTART event (employee and number) to DooCall's handler URL.",
+            "DooCall checks the application_token and finds the mapped operator and their online phone.",
+            "The phone asks the operator to confirm (up to 30 seconds), then dials.",
+            "After the call the recording is uploaded from the phone and the call is registered in Bitrix24 like any other call.",
+          ]}
+        />
+      ),
+    },
+    {
+      title: "Click-to-call troubleshooting",
+      body: (
+        <DocsList
+          items={[
+            "Nothing happens on click — check that the DooCall line is the default for outgoing calls and that the outgoing webhook uses the ONEXTERNALCALLSTART event.",
+            "The DooCall line isn't registered — save the integration again and check the inbound webhook has the “Telephony (telephony)” permission.",
+            "application_token missing or wrong — copy the token again from the outgoing webhook page.",
+            "The Bitrix24 employee isn't mapped to an operator — map them in DooCall.",
+            "The operator's phone is offline — open the DooCall app and check the internet connection.",
+            "The operator didn't confirm within 30 seconds or declined — click again.",
+          ]}
+        />
+      ),
+    },
   ],
 };
 
@@ -416,9 +691,11 @@ export default async function Bitrix24GuidePage() {
       footer={guide.footer}
     >
       {guide.sections.map((section) => (
-        <DocsSection key={section.title} step={section.step} title={section.title}>
-          {section.body}
-        </DocsSection>
+        <div key={section.title} id={section.id} className="scroll-mt-20">
+          <DocsSection step={section.step} title={section.title}>
+            {section.body}
+          </DocsSection>
+        </div>
       ))}
     </DocsShell>
   );
