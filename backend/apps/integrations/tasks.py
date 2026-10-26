@@ -204,3 +204,69 @@ def attach_late_audio(record_id: int) -> str:
         outcome = _late_bitrix24(integration, record, record_url)
     logger.info("late audio company=%s call=%s bitrix24=%s", record.company_id, record.pk, outcome)
     return outcome
+
+
+# Bitrix24 STATUS_CODE (SIP-like) for a click-to-call that never became a call.
+B24_NO_CALL_STATUS = {"offline": 304, "expired": 304, "rejected": 603, "failed": 603}
+
+
+@shared_task(
+    name="apps.integrations.tasks.close_bitrix_click_to_call",
+    autoretry_for=(providers.ProviderError,),
+    retry_backoff=30,
+    max_retries=3,
+)
+def close_bitrix_click_to_call(command_id: str) -> str:
+    """Finish the Bitrix24 call opened by ONEXTERNALCALLSTART when the dial
+    ended without a call (offline/rejected/expired/failed): DURATION 0,
+    304 missed / 603 declined. Idempotent — the link is claimed atomically
+    (also stops a later upload from reusing it); released on a Bitrix error
+    so the retry can claim it again."""
+    from apps.dial.models import DialCommand
+
+    claimed = (
+        DialCommand.all_objects.filter(
+            pk=command_id,
+            b24_used_at__isnull=True,
+            status__in=list(B24_NO_CALL_STATUS),
+        )
+        .exclude(b24_call_id="")
+        .update(b24_used_at=timezone.now())
+    )
+    if not claimed:
+        return "skipped"  # already closed / reused, or a real call happened
+    command = DialCommand.all_objects.get(pk=command_id)
+    integration = CrmIntegration.all_objects.filter(
+        company_id=command.company_id, provider=CrmIntegration.Provider.BITRIX24, is_enabled=True
+    ).first()
+    if integration is None:
+        return "skipped"
+    config = dict(integration.config)
+    user_id = (
+        int(command.b24_user_id)
+        if str(command.b24_user_id).isdigit()
+        else providers.b24_user_for(config, command.operator_id)
+    )
+    status_code = B24_NO_CALL_STATUS[command.status]
+    try:
+        providers._b24_call(
+            config,
+            "telephony.externalcall.finish",
+            {
+                "CALL_ID": command.b24_call_id,
+                "USER_ID": user_id,
+                "DURATION": 0,
+                "STATUS_CODE": status_code,
+            },
+        )
+    except providers.ProviderError:
+        DialCommand.all_objects.filter(pk=command_id).update(b24_used_at=None)
+        raise
+    logger.info(
+        "bitrix24 click-to-call closed company=%s command=%s status=%s code=%s",
+        command.company_id,
+        command.pk,
+        command.status,
+        status_code,
+    )
+    return "closed"

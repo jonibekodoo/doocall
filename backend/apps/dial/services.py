@@ -24,6 +24,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -272,6 +273,7 @@ def apply_ack(session: DeviceSession, frame: dict[str, Any]) -> bool:
         command.acked_at = timezone.now()
         fields.append("acked_at")
     command.save(update_fields=fields)
+    close_bitrix_call_if_unanswered(command)
     return True
 
 
@@ -290,7 +292,28 @@ def apply_status(session: DeviceSession, frame: dict[str, Any]) -> bool:
         command.cause = cause if cause in CAUSES else ""
         fields.append("cause")
     command.save(update_fields=fields)
+    close_bitrix_call_if_unanswered(command)
     return True
+
+
+# Final states in which no call reached the network: the Bitrix24 call that
+# ONEXTERNALCALLSTART opened must be closed (no CDR will ever finish it).
+NO_CALL_STATES = {
+    DialCommand.Status.OFFLINE,
+    DialCommand.Status.REJECTED,
+    DialCommand.Status.EXPIRED,
+    DialCommand.Status.FAILED,
+}
+
+
+def close_bitrix_call_if_unanswered(command: DialCommand) -> None:
+    """After commit: close the click-to-call's Bitrix24 call (async task)."""
+    if not command.b24_call_id or command.b24_used_at or command.status not in NO_CALL_STATES:
+        return
+    from apps.integrations.tasks import close_bitrix_click_to_call
+
+    command_id = str(command.pk)
+    transaction.on_commit(lambda: close_bitrix_click_to_call.delay(command_id))
 
 
 # ── Cabinet side ──────────────────────────────────────────────────────────
@@ -354,13 +377,19 @@ def display_name(user: User) -> str:
 
 
 def expire_stale(company_id: int) -> int:
-    """Commands the phone never acknowledged within 30 s."""
-    expired: int = DialCommand.all_objects.filter(
+    """Commands the phone never acknowledged within the ack window."""
+    stale = DialCommand.all_objects.filter(
         company_id=company_id,
         status=DialCommand.Status.SENT,
         acked_at__isnull=True,
         created_at__lt=timezone.now() - ACK_TIMEOUT,
-    ).update(status=DialCommand.Status.EXPIRED, updated_at=timezone.now())
+    )
+    with_b24 = list(stale.exclude(b24_call_id="").values_list("pk", flat=True))
+    expired: int = stale.update(status=DialCommand.Status.EXPIRED, updated_at=timezone.now())
+    for command in DialCommand.all_objects.filter(
+        pk__in=with_b24, status=DialCommand.Status.EXPIRED
+    ):
+        close_bitrix_call_if_unanswered(command)
     return expired
 
 
@@ -539,6 +568,7 @@ def _dial(
         b24_entity_type=(b24 or {}).get("entity_type", "")[:16],
         b24_entity_id=(b24 or {}).get("entity_id", "")[:32],
     )
+    close_bitrix_call_if_unanswered(command)  # offline at dispatch
     AuditLog.objects.create(
         company=company,
         actor=user,
