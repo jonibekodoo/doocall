@@ -538,11 +538,13 @@ class KotibAnalysisWebhookView(View):
         if len(raw) > ka.MAX_BODY_BYTES:
             return reply(413, message="body too large")
 
+        # Enforced once an analysis secret is saved; never an unsigned bypass.
         secret = str(integration.config.get("analysis_secret") or "")
-        if secret and not ka.signature_ok(
-            secret, raw, request.headers.get("X-Kotib-Signature", "")
-        ):
-            return reply(401, message="invalid signature")
+        if secret:
+            ok, diag = ka.verify_signature(integration.config, raw, request.headers)
+            if not ok:
+                ka.record_rejection(company.pk, diag, request.content_type or "")
+                return reply(401, message="invalid signature")
 
         try:
             payload = json.loads(raw)

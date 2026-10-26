@@ -242,12 +242,32 @@ company's secret URL; the cabinet reads the stored results.
   token is per company (`secrets.token_urlsafe(32)`), created on Kotib
   connect (or lazily when the integrations list is opened), kept across
   re-saves, replaced by *rotate*, wiped by disconnect.
-- Signature: once the admin saved the secret Kotib gave them, header
-  `X-Kotib-Signature` is required. **Assumption** (Kotib does not name the
-  algorithm): hex HMAC-SHA256 of the raw body with that secret, optional
-  `sha256=` prefix, case-insensitive, constant-time compare. Before a secret
-  is saved, messages are accepted on the token alone and stored with
-  `signature_verified: false`.
+- Signature: once the admin saved the secret Kotib gave them, a valid
+  signature is required (no unsigned bypass, no plain token/secret
+  equality). Kotib does not name the algorithm, so every safe HMAC-SHA256
+  variant over the **exact raw body** is accepted, each compared in
+  constant time:
+  - header `X-Kotib-Signature` (also `X-Signature`, `X-Webhook-Signature`,
+    `X-Hub-Signature-256`);
+  - value `<digest>`, `sha256=<digest>` / `SHA256=<digest>`, or
+    `t=<ts>,v1=<digest>` (message `<ts>.<body>`);
+  - digest hex (any case) or base64 standard/url-safe, with or without `=`
+    padding;
+  - key: the saved analysis secret, or the `webhook_secret` DooCall sent
+    Kotib at connect, as UTF-8 text and also as hex-decoded bytes when it
+    looks like hex.
+
+  Before a secret is saved, messages are accepted on the token alone and
+  stored with `signature_verified: false`.
+- Rejected signatures (diagnostics carry metadata only, never the header
+  value, a secret or the body): one `WARNING` per company per 10 min from
+  `apps.integrations.kotib_analysis` ("kotib analysis signature mismatch")
+  with the signature headers present, each header's length, charset class
+  (hex/base64/other), prefix kind, body length, content type and the
+  key/encoding names tried. The last 20 rejections per company are kept in
+  the Django cache (Redis; key `kotib:analysis:rejects:<company_id>`, 7 days):
+  `python manage.py shell -c "from apps.integrations import kotib_analysis
+  as ka; print(ka.recent_rejections(<company_id>))"`.
 - Responses: `200 {success, status: "stored", matched}` ·
   `200 {status: "ignored"}` for other events · `400` malformed (bad JSON,
   `audio_data_id` not a number, dates without offset) · `401` bad/missing
