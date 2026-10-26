@@ -11,6 +11,8 @@ WebSocket service and the web workers see the same registry.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 import re
 import uuid
@@ -30,7 +32,7 @@ from apps.api.auth import require_active_company
 from apps.api.errors import ApiError
 from apps.core import domains
 from apps.core.models import AuditLog
-from apps.core.phone import normalize_phone
+from apps.core.phone import NATIONAL_LENGTH, normalize_phone
 
 from .models import DialCommand
 
@@ -87,8 +89,22 @@ def clean_device_id(raw: Any) -> str:
     return _DEVICE_ID_RE.sub("", str(raw or ""))[:64]
 
 
-def group_name(company_id: int, device_id: str) -> str:
-    return f"dev_{company_id}_{device_id}"
+def group_name(company_id: int, operator_id: int, device_id: str) -> str:
+    """Dial routing group — bound to the OPERATOR as well as the phone, so
+    another operator claiming the same device_id can never receive it."""
+    return f"dev_{company_id}_{operator_id}_{device_id}"
+
+
+def operator_group(company_id: int, operator_id: int) -> str:
+    return f"op_{company_id}_{operator_id}"
+
+
+def company_group(company_id: int) -> str:
+    return f"co_{company_id}"
+
+
+def key_hash(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode()).hexdigest()
 
 
 def _online_key(company_id: int, device_id: str) -> str:
@@ -102,12 +118,17 @@ class DeviceSession:
     operator_id: int
     device_id: str
     channel: str
+    key_hash: str = ""  # sha256 of the api_key the socket logged in with
 
 
-def authenticate_socket(api_key: Any, raw_device_id: Any, host: str) -> tuple[int, int, str] | None:
+def authenticate_socket(
+    api_key: Any, raw_device_id: Any, host: str
+) -> tuple[int, int, str, str] | None:
     """Same checks as REST authenticate_device: active operator by api_key,
     device-host/tenant guard, active (not suspended / trial-expired)
-    company. Returns (company_id, operator_id, device_id) or None."""
+    company — and the phone must not be claimed right now by ANOTHER
+    operator's live socket. Returns (company_id, operator_id, device_id,
+    key_hash) or None."""
     device_id = clean_device_id(raw_device_id)
     if not isinstance(api_key, str) or not api_key or not device_id:
         return None
@@ -125,13 +146,45 @@ def authenticate_socket(api_key: Any, raw_device_id: Any, host: str) -> tuple[in
         require_active_company(operator.company)
     except ApiError:
         return None
+    claim = online(operator.company_id, device_id)
+    if claim and claim.get("operator_id") != operator.pk:
+        return None  # someone else is logged in on this phone right now
     Device.all_objects.update_or_create(
         company=operator.company,
         operator=operator,
         device_id=device_id,
         defaults={"last_seen_at": timezone.now()},
     )
-    return operator.company_id, operator.pk, device_id
+    return operator.company_id, operator.pk, device_id, key_hash(api_key)
+
+
+def session_valid(session: DeviceSession) -> bool:
+    """Still allowed? Operator active, same api_key, company usable."""
+    operator = (
+        OperatorProfile.all_objects.select_related("company")
+        .filter(pk=session.operator_id, company_id=session.company_id, is_active=True)
+        .first()
+    )
+    if operator is None or not hmac.compare_digest(key_hash(operator.api_key), session.key_hash):
+        return False
+    try:
+        require_active_company(operator.company)
+    except ApiError:
+        return False
+    return True
+
+
+def revoke(group: str) -> None:
+    """Close every socket in ``group`` now (consumer handler session_revoke)."""
+    async_to_sync(get_channel_layer().group_send)(group, {"type": "session.revoke"})
+
+
+def revoke_operator(company_id: int, operator_id: int) -> None:
+    revoke(operator_group(company_id, operator_id))
+
+
+def revoke_company(company_id: int) -> None:
+    revoke(company_group(company_id))
 
 
 def mark_online(session: DeviceSession, connected_at: str) -> None:
@@ -142,6 +195,7 @@ def mark_online(session: DeviceSession, connected_at: str) -> None:
             "operator_id": session.operator_id,
             "device_id": session.device_id,
             "channel": session.channel,
+            "key_hash": session.key_hash,
             "connected_at": connected_at,
             "last_seen": timezone.now().isoformat(),
         },
@@ -167,9 +221,12 @@ def _command_for(session: DeviceSession, raw_id: Any) -> DialCommand | None:
         command_id = uuid.UUID(str(raw_id))
     except (ValueError, TypeError):
         return None
-    # Only this company's commands addressed to THIS device.
+    # Only this company's commands addressed to THIS device AND operator.
     command: DialCommand | None = DialCommand.all_objects.filter(
-        pk=command_id, company_id=session.company_id, device_id=session.device_id
+        pk=command_id,
+        company_id=session.company_id,
+        device_id=session.device_id,
+        operator_id=session.operator_id,
     ).first()
     return command
 
@@ -270,8 +327,14 @@ def normalize_number(raw: Any, phone_code: str) -> str:
     number = normalize_phone(text, phone_code)
     if not _E164.fullmatch(number):
         raise DialError("invalid_number", INVALID_NUMBER_MESSAGE, 400)
-    if not any(number.startswith(f"+{code}") for code in allowed_codes(phone_code)):
+    matches = [code for code in allowed_codes(phone_code) if number.startswith(f"+{code}")]
+    if not matches:
         raise DialError("destination_not_allowed", NOT_ALLOWED_MESSAGE, 400)
+    # The country's exact national length when known (+998 → 9 digits, …).
+    code = max(matches, key=len)
+    national = NATIONAL_LENGTH.get(code)
+    if national is not None and len(number) - 1 - len(code) != national:
+        raise DialError("invalid_number", INVALID_NUMBER_MESSAGE, 400)
     return number
 
 
@@ -331,13 +394,40 @@ def dial(
     return _dial(company, user, device_id, raw_number, key)
 
 
+def _marker_still_valid(company_id: int, marker: dict[str, Any], devices: Any) -> bool:
+    """Re-validate the target before sending (not just the online marker)."""
+    try:
+        operator_id = int(marker.get("operator_id"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    if not devices.filter(operator_id=operator_id).exists():
+        return False
+    return session_valid(
+        DeviceSession(
+            company_id,
+            operator_id,
+            str(marker.get("device_id")),
+            "",
+            str(marker.get("key_hash") or ""),
+        )
+    )
+
+
 def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -> DialCommand:
     devices = Device.all_objects.filter(company=company, device_id=device_id).select_related(
         "operator"
     )
     if not device_id or not devices.exists():
         raise DialError("device_not_found", "device not found", 404)
+    try:
+        require_active_company(company)
+    except ApiError:
+        raise DialError("subscription_inactive", "company subscription is inactive", 402) from None
     marker = online(company.pk, device_id)
+    if marker and not _marker_still_valid(company.pk, marker, devices):
+        # Stale/revoked session (key rotated, operator off): never send to it.
+        revoke_operator(company.pk, int(marker["operator_id"]))
+        marker = None
     # The operator the phone is logged in as right now (else the last known).
     if marker:
         operator_id = int(marker["operator_id"])
@@ -376,7 +466,7 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
     if marker:
         layer = get_channel_layer()
         async_to_sync(layer.group_send)(
-            group_name(company.pk, device_id),
+            group_name(company.pk, operator_id, device_id),
             {
                 "type": "dial.command",
                 "payload": {
@@ -398,3 +488,39 @@ def visible_commands(user: User) -> Any:
         return qs
     own = operator_of(user)
     return qs.filter(Q(created_by=user) | Q(operator=own)) if own else qs.filter(created_by=user)
+
+
+# ── Failed socket logins per client IP (connection-flood / guessing) ──────
+AUTH_FAIL_LIMIT = 20
+AUTH_FAIL_WINDOW_SECONDS = 600
+
+
+def client_ip(scope: dict[str, Any]) -> str:
+    """nginx sets X-Real-IP to $remote_addr (overwrites any client value);
+    without a proxy, the socket peer."""
+    headers = dict(scope.get("headers") or [])
+    real: str = headers.get(b"x-real-ip", b"").decode(errors="replace").strip()
+    if real:
+        return real[:64]
+    client = scope.get("client") or ("", 0)
+    peer: str = str(client[0])[:64]
+    return peer
+
+
+def _fail_key(ip: str) -> str:
+    return f"dial:wsfail:{ip}"
+
+
+def auth_blocked(ip: str) -> bool:
+    return bool(ip) and int(cache.get(_fail_key(ip)) or 0) >= AUTH_FAIL_LIMIT
+
+
+def note_auth_failure(ip: str) -> None:
+    if not ip:
+        return
+    key = _fail_key(ip)
+    if not cache.add(key, 1, AUTH_FAIL_WINDOW_SECONDS):
+        try:
+            cache.incr(key)
+        except ValueError:  # expired between add and incr
+            cache.set(key, 1, AUTH_FAIL_WINDOW_SECONDS)

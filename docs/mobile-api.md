@@ -117,8 +117,22 @@ an allowed country code: the company's own code plus `DIAL_ALLOWED_CODES`
 only) → else 400 `destination_not_allowed` "Bu yo'nalishga masofaviy
 qo'ng'iroq ruxsat etilmagan".
 
+Access stays checked after login: every ping (25 s) re-verifies that the
+operator is active, the api_key is unchanged and the company is usable;
+rotating the key, deactivating/deleting the operator or suspending the
+company also pushes an immediate revoke. Either way the socket is closed
+with **4001** and the phone goes offline (it reconnects and must log in
+again). The cabinet re-validates the target before every dial too. A phone
+is bound to one operator at a time: while a live socket of operator A owns
+a `device_id`, operator B's `auth` with that `device_id` gets
+`auth.error`; dial routing groups include the operator. Numbers must also
+have the destination country's exact national length (+998/+992/+996 → 9,
++7 → 10, +993 → 8 digits). Too many failed logins (bad key or no `auth`
+within 10 s) from one IP (20 per 10 min, from nginx's `X-Real-IP`) → new
+sockets from it are refused at the handshake.
+
 Ack/status frames update a command only if it belongs to the same company
-AND was addressed to this `device_id`; states never go backwards and
+AND was addressed to this `device_id` and operator; states never go backwards and
 `rejected`/`disconnected`/`failed` are final. Unknown frame types after auth
 are ignored. A command never acked within 30 s becomes `expired` (a late
 real ack still updates it). Offline devices are **not** queued: the command
