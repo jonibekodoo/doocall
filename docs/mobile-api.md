@@ -55,6 +55,27 @@ the company Contact catalogue by normalized counterparty number, else `null`
 (§5.4): `success, status:"received", call_id, server_id ("srv_…"),
 received_at (ISO-8601 UTC "…Z"), resolved_name, audio{stored,url,size_bytes}`.
 
+**Late audio (re-upload of the same `call_id`).** When the phone finds the
+recording after the call was already uploaded *without* audio, it re-sends
+the same full payload with `audio_file` and/or `audio_file_realtime`:
+
+| Existing call (same company) | Payload has audio | Result |
+|---|---|---|
+| has **no** audio, same operator (or no operator) | yes | **200** `{"success": true, "server_id": "srv_…", "audio_attached": true}` — audio validated exactly like a new upload (400 bad Base64, 413 too large), stored; no other call field changes |
+| has no audio | no | 409 duplicate (unchanged) |
+| already has audio | any | 409 duplicate (unchanged) |
+| belongs to another operator of the company | yes | 409 duplicate |
+| doesn't exist for this company (incl. another tenant's call_id) | any | normal new upload |
+
+Concurrent retries are serialized on the call row: exactly one gets
+`audio_attached`, the rest the 409. The 409 body is the same §5.4 duplicate
+envelope as before. `CallAudio.content_type` comes from the file name
+(`.ogg` audio/ogg, `.m4a` audio/mp4, `.mp3` audio/mpeg, `.wav` audio/wav,
+…; unknown → application/octet-stream). After a late attach, Bitrix24 gets
+the recording on the call registered earlier (stored telephony CALL_ID);
+Kotib sees `record_url` via `calls.get`; amoCRM/Odoo/custom webhook are
+not re-sent.
+
 ### POST `/api/call/v1/calls/list` (§6)
 `{user_name, api_key, call_ids[]}` → `{"success": true, "calls":[
 {"call_id","exists",("server_id" only when exists)]}`. Scoped to the
@@ -67,6 +88,34 @@ Aggregates the calling operator's own records:
 ### POST `/api/call/v1/log` (§8)
 `{user_name, api_key, hours, log_text}` → stores an `AppLog` row →
 `{"success": true}`.
+
+### WebSocket `wss://api.doocall.uz/api/call/v1/ws` — Remote Dial
+
+The cabinet's "Call" button makes the operator's phone place an outgoing
+call. Message names/fields match the app's `SocketContract.kt` exactly
+(`BACKEND_REMOTE_DIAL_CONTRACT.md` in the mobile repo). Served by the ASGI
+entrypoint `doocall.asgi:application` (Django Channels, Redis channel
+layer); REST stays on WSGI.
+
+| Direction | Frame | Notes |
+|---|---|---|
+| app → server | `{"type":"auth","api_key","device_id"}` | **first frame, within 10 s** — else the socket is closed (4008). `api_key` is checked like REST (active operator, device host/tenant guard, company not suspended / trial not expired). Anything else before `auth.ok`, non-JSON, or > 8 KB → closed |
+| server → app | `{"type":"auth.ok"}` | device joins its routing group and is marked online (registry TTL 70 s) |
+| server → app | `{"type":"auth.error","reason":"invalid_token"}` | then close (app backs off and retries) |
+| server → app | `{"type":"ping","ts":<unix>}` | every 25 s; app answers `{"type":"pong","ts"}` |
+| server → app | `{"type":"call.dial","command_id","number","issued_at"}` | `number` E.164 (company `phone_code`), `issued_at` ISO UTC; **no** `sim_slot` |
+| app → server | `{"type":"call.dial.ack","command_id","status":"received","sim_mode":"auto"\|"device_picker","used_sim_slot":0\|1\|null}` / `{…,"status":"rejected","reason"}` | reasons: `permission_denied`, `invalid_number`, `another_call_active`, `sim_disabled`, `duplicate`, `feature_disabled` |
+| app → server | `{"type":"call.status","command_id","state":"dialing"\|"active"\|"disconnected"\|"failed","duration_sec","cause"}` | `duration_sec`/`cause` on `disconnected` |
+
+Ack/status frames update a command only if it belongs to the same company
+AND was addressed to this `device_id`; states never go backwards and
+`rejected`/`disconnected`/`failed` are final. Unknown frame types after auth
+are ignored. A command never acked within 30 s becomes `expired` (a late
+real ack still updates it). Offline devices are **not** queued: the command
+is recorded as `offline` and never sent later. Each command is sent once,
+with one `command_id`; the call result of record remains the normal CDR
+upload. Cabinet side: `POST /api/web/v1/dial`, `GET /api/web/v1/dial/devices`,
+`GET /api/web/v1/dial/<command_id>` (see web-api docs / report).
 
 ## Verified by contract tests (`backend/apps/api/tests/`)
 

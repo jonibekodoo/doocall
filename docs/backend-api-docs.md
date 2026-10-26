@@ -318,6 +318,13 @@ bo'lishi qulay.
   "message": "call_id already exists"
 }
 
+// 200 OK — kechikkan audio (shu call_id avval AUDIOSIZ yuklangan edi)
+{
+  "success":        true,
+  "server_id":      "srv_9f1c2b3a4d5e6f708192a3b4c5d6e7f8",
+  "audio_attached": true
+}
+
 // 4xx/5xx — xatolik
 {
   "success": false,
@@ -326,6 +333,20 @@ bo'lishi qulay.
   "message": "invalid api_key"
 }
 ```
+
+**Kechikkan audio (qayta yuklash).** Qo'ng'iroq audiosiz yuklangandan keyin
+yozuv topilsa, ilova AYNAN shu `call_id` bilan to'liq payloadni
+`audio_file` (va/yoki `audio_file_realtime`) bilan qayta yuboradi:
+- serverdagi qo'ng'iroqda audio **yo'q** va payloadda audio **bor** (shu
+  kompaniya, shu operator) → audio oddiy yuklashdagi kabi tekshiriladi
+  (400/413), saqlanadi, javob `200 {success, server_id, audio_attached:
+  true}`; qo'ng'iroqning boshqa maydonlari o'zgarmaydi;
+- qo'ng'iroqda audio allaqachon bor yoki payloadda audio yo'q → avvalgidek
+  `409` dublikat (javob o'zgarmagan);
+- boshqa operatorning qo'ng'irog'i → `409`; boshqa kompaniyaning
+  `call_id`si → oddiy yangi yuklash.
+Bir vaqtdagi qayta urinishlardan faqat bittasi `audio_attached` oladi,
+qolganlari `409`.
 
 `RecordUploader.uploadRecord()` **hozircha** faqat HTTP status + body
 matnida `"already exist"`/`"duplicate"`/`"unique constraint"`/`"call_id"`
@@ -347,6 +368,7 @@ ilova tomonida (hozircha yo'q):
 |---|---|---|---|
 | Server 2xx | `true` | o'zgarmaydi | Yuklangan |
 | "already_exists" | `true` | o'zgarmaydi | Yuklangan deb hisoblanadi |
+| `audio_attached: true` | `true` | o'zgarmaydi | Kechikkan audio serverga yetdi |
 | Server xato (4xx/5xx) | `false` | **+1** | `uploadCount<3` bo'lguncha avtomatik qayta uriniladi (15 daqiqada bir) |
 | Tarmoq xatosi | `false` | o'zgarmaydi | Cheksiz qayta uriniladi |
 | `uploadCount>=3` | `false` | — | Faqat qo'lda "Upload" ekranida, cheklovsiz |

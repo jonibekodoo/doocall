@@ -7,3 +7,5 @@ djangorestframework-stubs==3.15.2
 pytest==8.3.4
 pytest-django==4.9.0
 pytest-cov==6.0.0
+# channels.testing (WebsocketCommunicator) imports daphne at package import.
+daphne==4.1.2
