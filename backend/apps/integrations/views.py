@@ -74,6 +74,15 @@ CONFIG_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
+def _ensure_c2c_token(integration: CrmIntegration) -> None:
+    """Lazily give a configured Bitrix24 integration its click-to-call
+    handler token (independent of click_to_call_enabled)."""
+    config = integration.config or {}
+    if str(config.get("webhook_url") or "").strip() and not config.get("c2c_token"):
+        integration.config = {**config, "c2c_token": secrets_module.token_urlsafe(32)}
+        integration.save(update_fields=["config", "updated_at"])
+
+
 def click_to_call_url(company: Company, token: str) -> str:
     scheme = getattr(settings, "URL_SCHEME", "https")
     return f"{scheme}://{company.slug}.{settings.DOMAIN_ROOT}/api/public/bitrix24/click-to-call/{token}"
@@ -245,6 +254,9 @@ class IntegrationsView(AdminCabinetView):
         kotib = rows.get(CrmIntegration.Provider.KOTIB)
         if kotib is not None and kotib.is_enabled:
             kotib_analysis.ensure_token(kotib)  # rows connected before the AI webhook
+        bitrix = rows.get(CrmIntegration.Provider.BITRIX24)
+        if bitrix is not None:
+            _ensure_c2c_token(bitrix)  # the URL is needed BEFORE enabling
         return Response(
             {
                 "success": True,
@@ -269,6 +281,15 @@ class IntegrationDetailView(AdminCabinetView):
         config = _merge_config(
             provider, dict(request.data.get("config") or {}), existing, self.company
         )
+        if (
+            provider == CrmIntegration.Provider.BITRIX24
+            and config.get("click_to_call_enabled")
+            and not str(config.get("b24_app_token") or "").strip()
+        ):
+            # Click-to-call events must be signed by Bitrix24 — no token, no feature.
+            raise ApiError(
+                ErrorCode.MISSING_FIELD, "Avval Bitrix24 bergan application_token ni kiriting", 400
+            )
         is_enabled = bool(
             request.data.get("is_enabled", integration.is_enabled if integration else False)
         )
@@ -290,9 +311,12 @@ class IntegrationDetailView(AdminCabinetView):
                 # Fresh portal mode (leads / simple CRM) on every save.
                 providers.b24_refresh_mode(config, force=True)
                 if config.get("click_to_call_enabled"):
-                    config.setdefault("c2c_token", secrets_module.token_urlsafe(32))
                     if not config.get("external_line_id"):
                         providers.b24_register_external_line(config)
+        if provider == CrmIntegration.Provider.BITRIX24 and str(config.get("webhook_url") or ""):
+            # Handler URL exists as soon as Bitrix24 is configured: the admin
+            # creates Bitrix's outgoing webhook first, then gets its token.
+            config.setdefault("c2c_token", secrets_module.token_urlsafe(32))
         if integration is None:
             integration = CrmIntegration.all_objects.create(
                 company=self.company, provider=provider, config=config, is_enabled=is_enabled

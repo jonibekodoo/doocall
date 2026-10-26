@@ -305,15 +305,18 @@ class TestClickToCall:
         assert fire(bitrix, body).status_code == 401
         assert not DialCommand.all_objects.exists()
 
-    def test_no_app_token_configured_accepts(
+    def test_no_app_token_configured_is_refused(
         self, bitrix: CrmIntegration, operator: OperatorProfile
     ) -> None:
+        """Rows saved before the rule (no stored token) accept nothing."""
         bitrix.config = {k: v for k, v in bitrix.config.items() if k != "b24_app_token"}
         bitrix.save()
         go_online(operator)
+        assert fire(bitrix, event()).status_code == 401
         body = event()
         body.pop("auth[application_token]")
-        assert fire(bitrix, body).json()["status"] == "sent"
+        assert fire(bitrix, body).status_code == 401
+        assert not DialCommand.all_objects.exists()
 
     def test_disabled_or_other_event_ignored(
         self, bitrix: CrmIntegration, operator: OperatorProfile
@@ -543,17 +546,67 @@ class TestClickToCallSettings:
         )
         response = client.put(
             self.URL,
-            {"is_enabled": True, "config": {"webhook_url": HOOK, "click_to_call_enabled": True}},
+            {
+                "is_enabled": True,
+                "config": {
+                    "webhook_url": HOOK,
+                    "click_to_call_enabled": True,
+                    "b24_app_token": "t",
+                },
+            },
             format="json",
         )
         assert response.status_code == 200
         card = self._card(client)
         assert card["external_line_registered"] is False and card["click_to_call_url"]
 
-    def test_disabled_shows_no_url(self, client: APIClient, company: Company) -> None:
+    def test_unconfigured_shows_no_url(self, client: APIClient, company: Company) -> None:
         card = self._card(client)
         assert card["click_to_call_enabled"] is False and card["click_to_call_url"] == ""
         assert card["b24_app_token_set"] is False
+
+    def test_url_available_before_enabling(self, client: APIClient, company: Company) -> None:
+        """Bitrix shows the application_token only after its outgoing webhook
+        exists — so the handler URL must come first."""
+        row = CrmIntegration.all_objects.create(
+            company=company, provider="bitrix24", is_enabled=True, config={"webhook_url": HOOK}
+        )
+        card = self._card(client)
+        assert card["click_to_call_enabled"] is False
+        row.refresh_from_db()
+        token = row.config["c2c_token"]
+        assert card["click_to_call_url"].endswith(f"/api/public/bitrix24/click-to-call/{token}")
+        assert self._card(client)["click_to_call_url"] == card["click_to_call_url"]  # stable
+
+    def test_put_response_carries_the_url(
+        self, client: APIClient, company: Company, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(providers, "_http_json", FakeBitrix())
+        response = client.put(
+            self.URL, {"is_enabled": True, "config": {"webhook_url": HOOK}}, format="json"
+        )
+        card = response.json()["integration"]["config"]
+        assert card["click_to_call_enabled"] is False and card["click_to_call_url"]
+
+    def test_handler_before_enabling(
+        self, client: APIClient, company: Company, operator: OperatorProfile
+    ) -> None:
+        row = CrmIntegration.all_objects.create(
+            company=company,
+            provider="bitrix24",
+            is_enabled=True,
+            config={"webhook_url": HOOK, "user_map": {str(operator.pk): "21"}},
+        )
+        url = self._card(client)["click_to_call_url"]
+        path = "/" + url.split("/", 3)[3]
+        go_online(operator)
+        assert APIClient().post(path, event()).status_code == 401  # no app token yet
+        row.refresh_from_db()
+        row.config = {**row.config, "b24_app_token": "app-secret-token"}
+        row.save()
+        response = APIClient().post(path, event())
+        assert response.json() == {"success": True, "status": "ignored", "reason": "disabled"}
+        assert not DialCommand.all_objects.exists()
 
 
 # ── Closing the Bitrix24 call when the dial ends without a call ───────────
@@ -751,3 +804,86 @@ class TestCloseBitrixCall:
         monkeypatch.setattr(providers, "_http_json", fake)
         tasks.close_bitrix_click_to_call(str(command.pk))
         assert _finishes(fake)[0]["USER_ID"] == 21  # user_map entry of the operator
+
+
+class TestApplicationTokenRequired:
+    URL = "/api/web/v1/settings/integrations/bitrix24"
+
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_enabling_without_token_is_400(
+        self, client: APIClient, company: Company, monkeypatch: pytest.MonkeyPatch, enabled: bool
+    ) -> None:
+        monkeypatch.setattr(providers, "_http_json", FakeBitrix())
+        response = client.put(
+            self.URL,
+            {"is_enabled": enabled, "config": {"webhook_url": HOOK, "click_to_call_enabled": True}},
+            format="json",
+        )
+        assert response.status_code == 400
+        assert response.json()["message"] == "Avval Bitrix24 bergan application_token ni kiriting"
+        assert not CrmIntegration.all_objects.filter(company=company).exists()
+
+    def test_masked_echo_of_stored_token_is_enough(
+        self, client: APIClient, bitrix: CrmIntegration, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(providers, "_http_json", FakeBitrix())
+        rows = client.get("/api/web/v1/settings/integrations").json()["integrations"]
+        masked = next(r for r in rows if r["provider"] == "bitrix24")["config"]["b24_app_token"]
+        response = client.put(
+            self.URL,
+            {
+                "is_enabled": True,
+                "config": {"click_to_call_enabled": True, "b24_app_token": masked},
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        bitrix.refresh_from_db()
+        assert bitrix.config["b24_app_token"] == "app-secret-token"
+
+    def test_clearing_token_while_enabled_is_400(
+        self, client: APIClient, bitrix: CrmIntegration, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(providers, "_http_json", FakeBitrix())
+        response = client.put(self.URL, {"config": {"b24_app_token": ""}}, format="json")
+        assert response.status_code == 400
+
+    def test_disabling_click_to_call_needs_no_token(
+        self, client: APIClient, company: Company, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(providers, "_http_json", FakeBitrix())
+        response = client.put(
+            self.URL,
+            {"is_enabled": True, "config": {"webhook_url": HOOK, "click_to_call_enabled": False}},
+            format="json",
+        )
+        assert response.status_code == 200
+
+
+class TestSecretPathsMaskedInLogs:
+    def test_unit_mask(self) -> None:
+        from apps.integrations.logmask import mask
+
+        assert (
+            mask("Unauthorized: /api/public/bitrix24/click-to-call/tok-SECRET123")
+            == "Unauthorized: /api/public/bitrix24/click-to-call/tok-***"
+        )
+        assert mask('"POST /api/public/kotib/analysis/abcdEFGH?x=1 HTTP/1.1"') == (
+            '"POST /api/public/kotib/analysis/abcd***?x=1 HTTP/1.1"'
+        )
+        assert mask("/api/v1 nothing secret") == "/api/v1 nothing secret"
+
+    def test_django_request_log_is_masked(
+        self, bitrix: CrmIntegration, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="django.request"):
+            fire(bitrix, {"event": "ONEXTERNALCALLSTART"})  # 401: no application_token
+            APIClient().post(
+                "/api/public/kotib/analysis/kotibSECRETtoken", {}, format="json"
+            )  # 404
+        text = caplog.text
+        assert "/api/public/bitrix24/click-to-call/tok-***" in text
+        assert "/api/public/kotib/analysis/koti***" in text
+        assert bitrix.config["c2c_token"] not in text and "kotibSECRETtoken" not in text

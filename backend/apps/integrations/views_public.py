@@ -614,9 +614,10 @@ class Bitrix24ClickToCallView(View):
         if sub is not None and sub != company.slug:
             return reply(404, message="unknown endpoint")
         fields = _b24_event_fields(request)
+        # Signed by Bitrix24 or nothing: a missing stored token is a 401 too.
         expected = str(integration.config.get("b24_app_token") or "")
         given = fields.get("auth[application_token]", "")
-        if expected and not hmac.compare_digest(expected.encode(), given.encode()):
+        if not expected or not hmac.compare_digest(expected.encode(), given.encode()):
             return reply(401, message="invalid application_token")
         if not integration.is_enabled or not integration.config.get("click_to_call_enabled"):
             return reply(status="ignored", reason="disabled")
