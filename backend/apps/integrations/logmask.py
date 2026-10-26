@@ -94,3 +94,57 @@ def install() -> None:
         logger = logging.getLogger(name)
         if not any(isinstance(f, SecretPathFilter) for f in logger.filters):
             logger.addFilter(SecretPathFilter())
+
+
+# ── Sentry ────────────────────────────────────────────────────────────────
+# The SDK builds events from the raw request, so url/query_string/Referer,
+# transaction names, breadcrumbs and exception messages can carry the same
+# secrets. Wired as before_send / before_send_transaction / before_breadcrumb.
+PUBLIC_PREFIX = "/api/public/"
+DROP_HEADERS = frozenset(
+    h.lower()
+    for h in ("X-Kotib-Signature", "X-Signature", "X-Webhook-Signature", "X-Hub-Signature-256")
+)
+_SIG_PARAM = re.compile(r"(^|[&;])(sig=)[^&;#]*")
+
+
+def _deep_mask(value: Any) -> Any:
+    if isinstance(value, str):
+        return mask(value)
+    if isinstance(value, dict):
+        return {k: _deep_mask(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_deep_mask(v) for v in value]
+    return value
+
+
+def _scrub_request(request: dict[str, Any]) -> None:
+    url = str(request.get("url") or "")
+    if "/api/public/rec/" in url:
+        query = request.get("query_string")
+        if isinstance(query, str):
+            request["query_string"] = _SIG_PARAM.sub(r"\1\2***", query)
+        elif isinstance(query, dict) and "sig" in query:
+            query["sig"] = "***"
+    if PUBLIC_PREFIX in url:
+        request.pop("data", None)  # webhook bodies (transcripts, events)
+    headers = request.get("headers")
+    if isinstance(headers, dict):
+        request["headers"] = {
+            k: v for k, v in headers.items() if str(k).lower() not in DROP_HEADERS
+        }
+    elif isinstance(headers, list):  # [[name, value], …]
+        request["headers"] = [h for h in headers if not (h and str(h[0]).lower() in DROP_HEADERS)]
+
+
+def sentry_before_send(event: dict[str, Any], hint: Any = None) -> dict[str, Any]:
+    """Mask secret paths/sig everywhere in an event; drop signature headers
+    and /api/public/* request bodies. Also used for transactions."""
+    request = event.get("request")
+    if isinstance(request, dict):
+        _scrub_request(request)
+    return _deep_mask(event)  # type: ignore[no-any-return]
+
+
+def sentry_before_breadcrumb(crumb: dict[str, Any], hint: Any = None) -> dict[str, Any]:
+    return _deep_mask(crumb)  # type: ignore[no-any-return]
