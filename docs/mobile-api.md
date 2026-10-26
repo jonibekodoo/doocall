@@ -103,9 +103,19 @@ layer); REST stays on WSGI.
 | server → app | `{"type":"auth.ok"}` | device joins its routing group and is marked online (registry TTL 70 s) |
 | server → app | `{"type":"auth.error","reason":"invalid_token"}` | then close (app backs off and retries) |
 | server → app | `{"type":"ping","ts":<unix>}` | every 25 s; app answers `{"type":"pong","ts"}` |
-| server → app | `{"type":"call.dial","command_id","number","issued_at"}` | `number` E.164 (company `phone_code`), `issued_at` ISO UTC; **no** `sim_slot` |
-| app → server | `{"type":"call.dial.ack","command_id","status":"received","sim_mode":"auto"\|"device_picker","used_sim_slot":0\|1\|null}` / `{…,"status":"rejected","reason"}` | reasons: `permission_denied`, `invalid_number`, `another_call_active`, `sim_disabled`, `duplicate`, `feature_disabled` |
+| server → app | `{"type":"call.dial","command_id","number","issued_at","admin_name"}` | `number` E.164 (company `phone_code`), `issued_at` ISO UTC, `admin_name` = who pressed "Call" (full name, else e-mail) for the phone's confirmation prompt; **no** `sim_slot` |
+| app → server | `{"type":"call.dial.ack","command_id","status":"received","sim_mode":"auto"\|"device_picker","used_sim_slot":0\|1\|null}` / `{…,"status":"rejected","reason"}` | reasons: `permission_denied`, `invalid_number`, `another_call_active`, `sim_disabled`, `duplicate`, `feature_disabled`, `user_declined`, `timeout` (operator confirmation); anything else is stored as `unknown` |
 | app → server | `{"type":"call.status","command_id","state":"dialing"\|"active"\|"disconnected"\|"failed","duration_sec","cause"}` | `duration_sec`/`cause` on `disconnected` |
+
+Numbers the cabinet may send (defence in depth — the app validates too):
+after stripping spaces, dashes and parentheses only `+?[0-9]{7,15}` is
+accepted (no `*`/`#` USSD/MMI codes, no `,` `;` `p` `w` pauses, no letters,
+no short codes) → else 400 `invalid_number` "Raqam noto'g'ri: …". The
+number is normalized with the company `phone_code` and must then start with
+an allowed country code: the company's own code plus `DIAL_ALLOWED_CODES`
+(setting or env, default `998,992,996,7,993`; empty = the company's code
+only) → else 400 `destination_not_allowed` "Bu yo'nalishga masofaviy
+qo'ng'iroq ruxsat etilmagan".
 
 Ack/status frames update a command only if it belongs to the same company
 AND was addressed to this `device_id`; states never go backwards and

@@ -11,6 +11,7 @@ WebSocket service and the web workers see the same registry.
 
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from typing import Any
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
@@ -47,6 +49,9 @@ REJECT_REASONS = {
     "sim_disabled",
     "duplicate",
     "feature_disabled",
+    # Operator confirmation on the phone (app 1.16+).
+    "user_declined",
+    "timeout",
 }
 SIM_MODES = {"auto", "device_picker"}
 CAUSES = {"answered", "no_answer", "rejected", "busy", "failed"}
@@ -237,12 +242,41 @@ def operator_of(user: User) -> OperatorProfile | None:
     return profile
 
 
+INVALID_NUMBER_MESSAGE = "Raqam noto'g'ri: faqat raqamlar (7–15 ta), boshida + bo'lishi mumkin"
+NOT_ALLOWED_MESSAGE = "Bu yo'nalishga masofaviy qo'ng'iroq ruxsat etilmagan"
+DEFAULT_ALLOWED_CODES = "998,992,996,7,993"
+_SEPARATORS = re.compile(r"[\s\-()]")
+_DIGITS_ONLY = re.compile(r"\+?[0-9]{7,15}")
+
+
+def allowed_codes(phone_code: str) -> set[str]:
+    """Country codes a remote dial may go to: the company's own code plus
+    DIAL_ALLOWED_CODES (setting or env, default 998,992,996,7,993; empty →
+    the company's code only). Blocks premium/international destinations."""
+    raw = getattr(settings, "DIAL_ALLOWED_CODES", None)
+    if raw is None:
+        raw = os.environ.get("DIAL_ALLOWED_CODES", DEFAULT_ALLOWED_CODES)
+    codes = {c.strip().lstrip("+") for c in str(raw).split(",")}
+    return {c for c in codes if c.isdigit()} | ({phone_code} if phone_code else set())
+
+
 def normalize_number(raw: Any, phone_code: str) -> str:
-    text = str(raw or "").strip()
-    number = normalize_phone(text, phone_code) if text else ""
-    if "*" in text or "#" in text or not _E164.fullmatch(number):
-        raise DialError("invalid_number", "number must be a full phone number (E.164)", 400)
+    """Strict: digits (7–15) with an optional leading + after stripping
+    spaces/dashes/parens — so no USSD/MMI (*, #), pauses (, ; p w) or
+    letters; normalized with the company code; country code allow-listed."""
+    text = _SEPARATORS.sub("", str(raw or ""))
+    if not _DIGITS_ONLY.fullmatch(text):
+        raise DialError("invalid_number", INVALID_NUMBER_MESSAGE, 400)
+    number = normalize_phone(text, phone_code)
+    if not _E164.fullmatch(number):
+        raise DialError("invalid_number", INVALID_NUMBER_MESSAGE, 400)
+    if not any(number.startswith(f"+{code}") for code in allowed_codes(phone_code)):
+        raise DialError("destination_not_allowed", NOT_ALLOWED_MESSAGE, 400)
     return number
+
+
+def display_name(user: User) -> str:
+    return (user.get_full_name() or user.email or user.username or "").strip()[:100]
 
 
 def expire_stale(company_id: int) -> int:
@@ -350,6 +384,8 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
                     "command_id": str(command.pk),
                     "number": number,
                     "issued_at": command.created_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    # Who asked — the phone shows it in the confirmation prompt.
+                    "admin_name": display_name(user),
                 },
             },
         )
