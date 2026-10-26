@@ -98,6 +98,33 @@ services:
       resources:
         limits: { cpus: "2", memory: 1g }
 
+  # Remote Dial: phones keep a WebSocket open to /api/call/v1/ws — nginx sends
+  # exactly that path here, every other /api/ stays on gunicorn. Same image +
+  # env as backend, ASGI under uvicorn; the Redis channel layer fans dial
+  # commands out across workers/containers. Never runs migrations (backend /
+  # scripts/deploy.sh own those). On stop uvicorn closes sockets with 1012 and
+  # the app reconnects (with backoff) to the surviving container.
+  ws:
+    <<: *backend-base
+    command: ["sh", "-c", "exec uvicorn doocall.asgi:application --host 0.0.0.0 --port 8001 --ws-ping-interval 20 --ws-ping-timeout 20 --ws-max-size 16384 --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --workers ${WS_WORKERS:-2}"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy  # migrations applied before first start
+    healthcheck:
+      # The http branch of the ASGI app is plain Django → same /healthz/.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/healthz/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512m }
+
   celery-worker:
     <<: *backend-base
     command: celery -A doocall worker --loglevel=warning --concurrency=${CELERY_CONCURRENCY:-4}
@@ -166,6 +193,8 @@ services:
         condition: service_healthy
       frontend:
         condition: service_healthy
+    # No depends_on ws: the ws upstream resolves at runtime, so a ws problem
+    # never keeps the whole site's nginx from starting.
     <<: *restart
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz/"]

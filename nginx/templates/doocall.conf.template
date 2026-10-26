@@ -13,6 +13,14 @@ upstream doocall_frontend {
     server frontend:3000;
 }
 
+# Remote Dial WebSocket (uvicorn). Resolved at run time, so dev nginx
+# still starts when the ws container is down.
+upstream doocall_ws {
+    zone doocall_ws 64k;
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    server ws:8001 resolve;
+}
+
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -26,6 +34,22 @@ server {
     server_name ${DOMAIN_ROOT} www.${DOMAIN_ROOT} doocall.local;
 
     client_max_body_size 25m;
+
+    # Remote Dial: device WebSocket → ASGI `ws` service. Exact match, so
+    # every other /api/ path below keeps going to gunicorn.
+    location = /api/call/v1/ws {
+        proxy_pass http://doocall_ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
 
     location /api/ {
         proxy_pass http://doocall_backend;
@@ -62,6 +86,22 @@ server {
 
     location = / {
         return 302 /cabinet;
+    }
+
+    # Remote Dial: device WebSocket → ASGI `ws` service. Exact match, so
+    # every other /api/ path below keeps going to gunicorn.
+    location = /api/call/v1/ws {
+        proxy_pass http://doocall_ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
     }
 
     location /api/ {
@@ -143,6 +183,22 @@ server {
 
     location = / {
         return 302 /cabinet;
+    }
+
+    # Remote Dial: device WebSocket → ASGI `ws` service. Exact match, so
+    # every other /api/ path below keeps going to gunicorn.
+    location = /api/call/v1/ws {
+        proxy_pass http://doocall_ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
     }
 
     location /api/ {
