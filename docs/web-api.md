@@ -72,6 +72,62 @@ POST (after DB commit): JSON body `{event: "call.received", call_id,
 server_id, …}` with header **`X-Doocall-Signature`** =
 HMAC-SHA256(webhook_secret, raw body). 3 retries with backoff.
 
+## Remote Dial for integrations
+
+The operator's phone places an outgoing call (Remote Dial, see
+mobile-api.md) — requested by an external system instead of the cabinet.
+Same number validation (digits only, allowed country codes, exact national
+length), per-device rate limit (1 per 10 s, 20/h), audit row
+(`dial.requested`, `source` api/bitrix24) and "never queued when offline"
+rule as the cabinet. On the phone the operator still confirms every dial.
+
+### Public API (`POST /api/v1`, `user_name` + company `api_key`)
+
+Opt-in per company: `GET/PUT /settings/account` → `api_dial_enabled`
+(default `false`, company admin). Off → `403 {error_code: "feature_disabled"}`.
+The Kotib read-only key can never call these (403).
+
+| Action | Body | Result |
+|---|---|---|
+| `calls.dial` | `{operator: <operator user_name>, number, device_id?}` | the operator's given device (must be theirs) or their most recently seen **online** device → `200 {success: true, command_id, status: "sent"}` · `409 {success: false, error_code: "device_offline", command_id, status: "offline"}` (not queued) · `400 invalid_number` / `destination_not_allowed` · `404 operator_not_found` / `device_not_found` · `429 rate_limited` · `402 subscription_inactive` — errors as `{success: false, error_code, message}`. `created_by` = the API user (`requested_by` on the phone = their name) |
+| `calls.dial.status` | `{command_id}` | `{success: true, command: {command_id, device_id, operator: {id, full_name}, number, status, reject_reason, sim_mode, used_sim_slot, duration_sec, cause, created_at, acked_at, updated_at}}` (company-scoped; 404 otherwise; 400 bad UUID). Poll it — statuses: sent, received, rejected, dialing, active, disconnected, failed, expired, offline |
+
+### Bitrix24 click-to-call
+
+A Bitrix24 user clicks a phone number in the CRM → Bitrix fires
+`ONEXTERNALCALLSTART` → DooCall finds the mapped operator (`user_map`,
+Bitrix user → operator) and that operator's phone dials it. The Bitrix24
+call registered by Bitrix (`data[CALL_ID]`) is kept on the command; when the
+resulting outbound CDR is delivered (same operator + number, ≤ 10 min) it
+is **finished** (`telephony.externalcall.finish` + recording) instead of a
+new call being registered.
+
+Config (`PUT /settings/integrations/bitrix24`, `config`):
+`click_to_call_enabled` (bool) and `b24_app_token` (secret, masked; the
+*application token* Bitrix24 shows for the outgoing webhook). GET adds
+`click_to_call_url` (full URL with our token, "" until enabled — admin
+only), `b24_app_token_set` (bool), `external_line_registered` (bool).
+Saving with click-to-call on creates the token and tries
+`telephony.externalLine.add` (NUMBER/NAME "DooCall", best effort —
+Bitrix24 documents it as application-context only, so a plain inbound
+webhook may be refused; the setting still works if the portal routes
+clicks to the webhook).
+
+Setup in Bitrix24:
+1. Developer resources → Other → **Outgoing webhook**: handler URL =
+   `click_to_call_url`, event **ONEXTERNALCALLSTART** (scope telephony);
+   copy its *application token* into `b24_app_token`.
+2. Map Bitrix users to operators (`user_map`, Bitrix24 users screen).
+3. Telephony settings: make the DooCall line / handler the default for
+   outgoing calls from the CRM.
+
+Handler `POST /api/public/bitrix24/click-to-call/<token>` (form-encoded as
+Bitrix sends, JSON also accepted): unknown token 404; `b24_app_token` set
+and `auth[application_token]` wrong → 401; otherwise always 200 —
+`{status: "sent"|"offline"|"duplicate"|"refused"|"ignored", …}`. The same
+`CALL_ID` (Bitrix resends) never dials twice; an unmapped Bitrix user is
+ignored and logged.
+
 ## amoCRM: per-operator managers
 
 Same contract as the Bitrix24 mapping below. `config.user_map` =

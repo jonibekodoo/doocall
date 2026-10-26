@@ -29,11 +29,18 @@ from .tasks import WebhookBlocked, deliver_webhook
 
 ONLINE_WINDOW = timedelta(minutes=5)
 
-ACCOUNT_FLAGS = ("contact_import_enabled", "recording_enabled", "pin_enabled")
+ACCOUNT_FLAGS = (
+    "contact_import_enabled",
+    "recording_enabled",
+    "pin_enabled",
+    # Remote Dial through the public API (calls.dial) — opt-in.
+    "api_dial_enabled",
+)
 ACCOUNT_FLAG_DEFAULTS = {
     "contact_import_enabled": True,
     "recording_enabled": True,
     "pin_enabled": False,
+    "api_dial_enabled": False,
 }
 
 

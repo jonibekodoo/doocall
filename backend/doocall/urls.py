@@ -6,6 +6,7 @@ from django.urls import include, path, re_path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from apps.integrations.views_public import (
+    Bitrix24ClickToCallView,
     CrmLogoView,
     CustomApiView,
     IntegratorLogoView,
@@ -42,6 +43,12 @@ urlpatterns = [
     re_path(r"^api/v1/?$", CustomApiView.as_view(), name="public-api"),
     # Permanent recording link for CRMs (302 → presigned MinIO URL).
     path("api/public/rec/<str:rec_id>", RecordRedirectView.as_view(), name="public-rec"),
+    # Bitrix24 click-to-call (ONEXTERNALCALLSTART outgoing webhook → Remote Dial).
+    path(
+        "api/public/bitrix24/click-to-call/<str:token>",
+        Bitrix24ClickToCallView.as_view(),
+        name="public-bitrix24-click-to-call",
+    ),
     # Kotib AI analysis results (per-company secret token, optional HMAC).
     path(
         "api/public/kotib/analysis/<str:token>",

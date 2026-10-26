@@ -364,17 +364,21 @@ def expire_stale(company_id: int) -> int:
     return expired
 
 
-def _rate_limit(company_id: int, device_id: str, user: User) -> None:
+def _rate_limit(company_id: int, device_id: str, user: User | None) -> None:
     now = timezone.now()
     recent = DialCommand.all_objects.filter(company_id=company_id)
     by_device = recent.filter(device_id=device_id)
-    by_user = recent.filter(created_by=user)
-    if (
+    limited = (
         by_device.filter(created_at__gte=now - DEVICE_MIN_INTERVAL).exists()
         or by_device.filter(created_at__gte=now - timedelta(hours=1)).count() >= DEVICE_PER_HOUR
-        or by_user.filter(created_at__gte=now - USER_MIN_INTERVAL).exists()
-        or by_user.filter(created_at__gte=now - timedelta(hours=1)).count() >= USER_PER_HOUR
-    ):
+    )
+    if user is not None and not limited:
+        by_user = recent.filter(created_by=user)
+        limited = (
+            by_user.filter(created_at__gte=now - USER_MIN_INTERVAL).exists()
+            or by_user.filter(created_at__gte=now - timedelta(hours=1)).count() >= USER_PER_HOUR
+        )
+    if limited:
         raise DialError("rate_limited", "too many dial requests — wait a moment", 429)
 
 
@@ -424,10 +428,71 @@ def _marker_still_valid(company_id: int, marker: dict[str, Any], devices: Any) -
     )
 
 
-def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -> DialCommand:
+def dial_operator(
+    *,
+    company: Any,
+    operator: OperatorProfile,
+    user: User | None,
+    raw_number: Any,
+    raw_device_id: Any = "",
+    requester: str | None = None,
+    source: str = "api",
+    b24: dict[str, str] | None = None,
+) -> DialCommand:
+    """Dial from an OPERATOR (integrations): the given device if it is
+    theirs, else their most recently seen online device (else the last
+    known one → offline). The caller is trusted to address any operator of
+    the company (company-level API key / Bitrix24 user mapping)."""
+    devices = Device.all_objects.filter(company=company, operator=operator)
+    device_id = clean_device_id(raw_device_id)
+    if device_id:
+        if not devices.filter(device_id=device_id).exists():
+            raise DialError("device_not_found", "device not found for this operator", 404)
+    else:
+        candidates = [
+            clean_device_id(d)
+            for d in devices.order_by("-last_seen_at", "-pk").values_list("device_id", flat=True)
+        ]
+        if not candidates:
+            raise DialError("device_not_found", "the operator has no registered device", 404)
+        live = [
+            (marker.get("last_seen") or "", dev)
+            for dev in candidates
+            if (marker := online(company.pk, dev)) and marker.get("operator_id") == operator.pk
+        ]
+        device_id = max(live)[1] if live else candidates[0]
+    return _dial(
+        company,
+        user,
+        device_id,
+        raw_number,
+        "",
+        target_operator_id=operator.pk,
+        privileged=True,
+        requester=requester,
+        source=source,
+        b24=b24,
+    )
+
+
+def _dial(
+    company: Any,
+    user: User | None,
+    device_id: str,
+    raw_number: Any,
+    key: str,
+    *,
+    target_operator_id: int | None = None,
+    privileged: bool = False,
+    requester: str | None = None,
+    source: str = "cabinet",
+    b24: dict[str, str] | None = None,
+) -> DialCommand:
     devices = Device.all_objects.filter(company=company, device_id=device_id).select_related(
         "operator"
     )
+    if target_operator_id is not None:
+        devices = devices.filter(operator_id=target_operator_id)
     if not device_id or not devices.exists():
         raise DialError("device_not_found", "device not found", 404)
     try:
@@ -439,14 +504,22 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
         # Stale/revoked session (key rotated, operator off): never send to it.
         revoke_operator(company.pk, int(marker["operator_id"]))
         marker = None
+    if (
+        marker
+        and target_operator_id is not None
+        and marker.get("operator_id") != target_operator_id
+    ):
+        marker = None  # the phone is logged in as someone else → offline for them
     # The operator the phone is logged in as right now (else the last known).
-    if marker:
+    if target_operator_id is not None:
+        operator_id = target_operator_id
+    elif marker:
         operator_id = int(marker["operator_id"])
     else:
         last = devices.order_by("-last_seen_at", "-pk").first()
         operator_id = last.operator_id if last else 0
-    if not user.is_company_admin:
-        own = operator_of(user)
+    if not privileged and (user is None or not user.is_company_admin):
+        own = operator_of(user) if user is not None else None
         if own is None or own.pk != operator_id or not devices.filter(operator=own).exists():
             raise DialError("forbidden", "you can only dial from your own device", 403)
     number = normalize_number(raw_number, company.phone_code)
@@ -460,6 +533,11 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
         number=number,
         idempotency_key=key,
         status=DialCommand.Status.SENT if marker else DialCommand.Status.OFFLINE,
+        source=source,
+        b24_call_id=(b24 or {}).get("call_id", "")[:64],
+        b24_user_id=(b24 or {}).get("user_id", "")[:16],
+        b24_entity_type=(b24 or {}).get("entity_type", "")[:16],
+        b24_entity_id=(b24 or {}).get("entity_id", "")[:32],
     )
     AuditLog.objects.create(
         company=company,
@@ -472,6 +550,7 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
             "operator_id": operator_id,
             "number": number,
             "status": command.status,
+            "source": source,
         },
     )
     if marker:
@@ -487,7 +566,7 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
                     # Mandatory for the phone (≤ 60 s old): server clock, UTC.
                     "issued_at": timezone.now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     # Who asked — the phone shows it in the confirmation prompt.
-                    "requested_by": display_name(user),
+                    "requested_by": (requester or (display_name(user) if user else ""))[:64],
                 },
             },
         )

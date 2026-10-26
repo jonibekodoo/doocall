@@ -44,6 +44,15 @@ class DialCommand(TenantModel):
     cause = models.CharField(max_length=16, blank=True, default="")
     # Client retry dedupe (same user + key within 60 s → same command).
     idempotency_key = models.CharField(max_length=64, blank=True, default="")
+    # Bitrix24 click-to-call (ONEXTERNALCALLSTART): Bitrix already registered
+    # this call — the later CDR delivery finishes/attaches to it instead of
+    # registering a new one (b24_used_at marks that it was consumed).
+    source = models.CharField(max_length=16, blank=True, default="cabinet")
+    b24_call_id = models.CharField(max_length=64, blank=True, default="")
+    b24_user_id = models.CharField(max_length=16, blank=True, default="")
+    b24_entity_type = models.CharField(max_length=16, blank=True, default="")
+    b24_entity_id = models.CharField(max_length=32, blank=True, default="")
+    b24_used_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     acked_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -52,6 +61,7 @@ class DialCommand(TenantModel):
         indexes = [
             models.Index(fields=["company", "-created_at"], name="dial_company_created_idx"),
             models.Index(fields=["company", "device_id", "-created_at"], name="dial_device_idx"),
+            models.Index(fields=["company", "b24_call_id"], name="dial_b24_call_idx"),
         ]
 
     def __str__(self) -> str:
