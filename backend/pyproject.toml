@@ -59,6 +59,15 @@ disable_error_code = ["misc"]
 module = ["celery.*"]
 ignore_missing_imports = true
 
+# Django Channels ships no type stubs (Remote Dial WebSocket).
+[[tool.mypy.overrides]]
+module = ["channels.*", "daphne.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["apps.dial.consumers", "apps.dial.tests.*"]
+disable_error_code = ["misc"]
+
 [[tool.mypy.overrides]]
 module = ["doocall.celery"]
 disallow_untyped_defs = false

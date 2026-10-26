@@ -60,6 +60,12 @@ class ProviderError(Exception):
     """Delivery/validation failure surfaced to the cabinet UI and status row."""
 
 
+# Key a sender may set in the (copied) config it receives to report the
+# CRM-side id of the delivered call; tasks.deliver() pops it into
+# CrmDelivery.external_id.
+DELIVERY_EXTERNAL_ID = "__delivery_external_id"
+
+
 class CallSkipped(Exception):
     """The integration's own options say this call must not be sent (not a
     failure): recorded as an ok delivery with a "skipped" note."""
@@ -726,6 +732,9 @@ def _bitrix24_send(
         )
         user_id = fallback
         registered = _b24_register(config, record, user_id, binding)
+    # Hand the CALL_ID back to deliver() (stored on the CrmDelivery row so a
+    # late recording can be attached); never persisted into the config.
+    config[DELIVERY_EXTERNAL_ID] = str(registered["CALL_ID"])[:64]
     _b24_call(
         config,
         "telephony.externalcall.finish",

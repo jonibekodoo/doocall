@@ -80,6 +80,9 @@ def deliver(
         status=status,
         error=error,
         is_retry=is_retry,
+        external_id=str(work.get(providers.DELIVERY_EXTERNAL_ID) or "")
+        if status == CrmDelivery.Status.OK
+        else "",
     )
 
 
@@ -158,3 +161,46 @@ def dispatch_call(record_id: int) -> int:
         if deliver(integration, record, record_url).status == CrmDelivery.Status.OK:
             sent += 1
     return sent
+
+
+def _late_bitrix24(integration: CrmIntegration, record: CallRecord, record_url: str) -> str:
+    """Attach a late recording to the Bitrix24 call registered earlier."""
+    delivery = (
+        CrmDelivery.all_objects.filter(
+            call=record, provider=CrmIntegration.Provider.BITRIX24, status=CrmDelivery.Status.OK
+        )
+        .exclude(external_id="")
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if delivery is None:
+        return "skipped"  # never delivered, or delivered before CALL_IDs were stored
+    try:
+        attached = providers._b24_attach_recording(
+            dict(integration.config), {"CALL_ID": delivery.external_id}, record, record_url
+        )
+    except Exception as exc:  # noqa: BLE001 - report, never break the upload
+        logger.warning(
+            "late audio bitrix24 attach failed for call %s: %s", record.pk, type(exc).__name__
+        )
+        return "error"
+    return "attached" if attached in ("mp3", "wav") else "error"
+
+
+@shared_task(name="apps.integrations.tasks.attach_late_audio")
+def attach_late_audio(record_id: int) -> str:
+    """A recording reached an already-delivered call: attach it where the
+    CRM supports that (Bitrix24, via the stored telephony CALL_ID). Kotib
+    reads record_url from calls.get itself; amoCRM/Odoo/webhook: no change."""
+    record = CallRecord.all_objects.select_related("company").filter(pk=record_id).first()
+    if record is None:
+        return "skipped"
+    record_url = public_record_url(record)
+    integration = CrmIntegration.all_objects.filter(
+        company=record.company, provider=CrmIntegration.Provider.BITRIX24, is_enabled=True
+    ).first()
+    outcome = "skipped"
+    if integration is not None and record_url:
+        outcome = _late_bitrix24(integration, record, record_url)
+    logger.info("late audio company=%s call=%s bitrix24=%s", record.company_id, record.pk, outcome)
+    return outcome
