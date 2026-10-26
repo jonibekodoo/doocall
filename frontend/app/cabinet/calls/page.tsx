@@ -13,6 +13,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { CallAiBadge } from "@/app/cabinet/ai/ai-shared";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { DirectionIcon } from "@/components/calls-shared";
+import { RemoteDialButton } from "@/components/RemoteDialButton";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import { CallMapButton } from "@/components/CallMapButton";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -169,8 +170,11 @@ function CallDrawer({
             {call.counterparty_name && (
               <span className="block">{call.counterparty_name}</span>
             )}
-            <span className="tnum">
-              {formatPhone(call.counterparty_number)}
+            <span className="flex items-center gap-1.5">
+              <span className="tnum">
+                {formatPhone(call.counterparty_number)}
+              </span>
+              <RemoteDialButton number={call.counterparty_number} />
             </span>
           </span>,
         ],
@@ -418,13 +422,17 @@ function CallsInner() {
         row.counterparty_name ? (
           <span className="block min-w-0">
             <span className="block truncate">{row.counterparty_name}</span>
-            <span className="tnum block text-xs text-fg-faint">
-              {formatPhone(row.counterparty_number)}
+            <span className="flex items-center gap-1 text-xs text-fg-faint">
+              <span className="tnum">
+                {formatPhone(row.counterparty_number)}
+              </span>
+              <RemoteDialButton number={row.counterparty_number} />
             </span>
           </span>
         ) : (
           <span className="flex items-center gap-1.5">
             <span className="tnum">{formatPhone(row.counterparty_number)}</span>
+            <RemoteDialButton number={row.counterparty_number} />
             <Link
               href={`/cabinet/contacts?fromCall=${row.id}`}
               title={tContacts("createFromCall")}

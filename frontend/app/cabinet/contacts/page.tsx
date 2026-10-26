@@ -10,6 +10,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { z } from "zod";
 
+import { RemoteDialButton } from "@/components/RemoteDialButton";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { PAGE_SIZE, Pagination } from "@/components/ui/Pagination";
@@ -224,8 +225,13 @@ function ContactsInner() {
       key: "phone",
       header: t("phone"),
       cell: (row) => (
-        <span className="tnum">
-          {row.phones.map((phone) => formatPhone(phone)).join(", ")}
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {row.phones.map((phone) => (
+            <span key={phone} className="inline-flex items-center gap-1">
+              <span className="tnum">{formatPhone(phone)}</span>
+              <RemoteDialButton number={phone} />
+            </span>
+          ))}
         </span>
       ),
     },

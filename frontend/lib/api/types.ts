@@ -182,3 +182,34 @@ export interface WebhookDeliveryStatus {
   last_ok_at: string | null;
   last_error_at: string | null;
 }
+
+/** Remote Dial: a company phone that can be asked to dial a number. */
+export interface DialDevice {
+  device_id: string;
+  operator: { id: number; full_name: string } | null;
+  model: string;
+  online: boolean;
+  last_seen: string | null;
+}
+
+export type DialStatus =
+  | "sent"
+  | "received"
+  | "rejected"
+  | "dialing"
+  | "active"
+  | "disconnected"
+  | "failed"
+  | "expired"
+  | "offline";
+
+export interface DialCommandState {
+  status: DialStatus;
+  reject_reason?: string | null;
+  /** e.g. "ask" when the phone asks which SIM to use. */
+  sim_mode?: string | null;
+  /** 0-based SIM slot actually used. */
+  used_sim_slot?: number | null;
+  duration_sec?: number | null;
+  cause?: string | null;
+}
