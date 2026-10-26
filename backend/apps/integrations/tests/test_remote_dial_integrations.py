@@ -3,6 +3,7 @@ and Bitrix24 click-to-call (ONEXTERNALCALLSTART) incl. CALL_ID reuse."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
 from datetime import timedelta
@@ -553,3 +554,200 @@ class TestClickToCallSettings:
         card = self._card(client)
         assert card["click_to_call_enabled"] is False and card["click_to_call_url"] == ""
         assert card["b24_app_token_set"] is False
+
+
+# ── Closing the Bitrix24 call when the dial ends without a call ───────────
+@pytest.fixture
+def run_close(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """.delay() → run the task inline (no worker in tests); records ids."""
+    ran: list[str] = []
+
+    def delay(command_id: str) -> None:
+        ran.append(command_id)
+        with contextlib.suppress(providers.ProviderError):  # celery would retry
+            tasks.close_bitrix_click_to_call(command_id)
+
+    monkeypatch.setattr(tasks.close_bitrix_click_to_call, "delay", delay)
+    return ran
+
+
+def _finishes(fake: FakeBitrix) -> list[dict[str, Any]]:
+    return [p for m, p in fake.calls if m == "telephony.externalcall.finish"]
+
+
+def _session(op: OperatorProfile) -> dial.DeviceSession:
+    return dial.DeviceSession(op.company_id, op.pk, "phone0001", "chan", dial.key_hash(op.api_key))
+
+
+class TestCloseBitrixCall:
+    def test_offline_at_dispatch_closes_as_missed(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        run_close: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        django_capture_on_commit_callbacks: Any,
+    ) -> None:
+        fake = FakeBitrix()
+        monkeypatch.setattr(providers, "_http_json", fake)
+        Device.all_objects.create(
+            company=operator.company, operator=operator, device_id="phone0001"
+        )
+        with django_capture_on_commit_callbacks(execute=True):
+            assert fire(bitrix, event()).json()["status"] == "offline"
+        assert _finishes(fake) == [
+            {"CALL_ID": "externalCall.abc123", "USER_ID": 21, "DURATION": 0, "STATUS_CODE": 304}
+        ]
+        assert DialCommand.all_objects.get().b24_used_at is not None
+
+    @pytest.mark.parametrize(
+        ("frame", "code"),
+        [
+            ({"type": "call.dial.ack", "status": "rejected", "reason": "user_declined"}, 603),
+            ({"type": "call.status", "state": "failed", "cause": "failed"}, 603),
+        ],
+    )
+    def test_rejected_or_failed_closes_as_declined(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        run_close: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        django_capture_on_commit_callbacks: Any,
+        frame: dict[str, Any],
+        code: int,
+    ) -> None:
+        fake = FakeBitrix()
+        monkeypatch.setattr(providers, "_http_json", fake)
+        go_online(operator)
+        fire(bitrix, event())
+        cid = str(DialCommand.all_objects.get().pk)
+        apply = dial.apply_ack if frame["type"] == "call.dial.ack" else dial.apply_status
+        with django_capture_on_commit_callbacks(execute=True):
+            assert apply(_session(operator), {**frame, "command_id": cid})
+        assert [f["STATUS_CODE"] for f in _finishes(fake)] == [code]
+
+    def test_expired_closes_as_missed(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        run_close: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        django_capture_on_commit_callbacks: Any,
+    ) -> None:
+        fake = FakeBitrix()
+        monkeypatch.setattr(providers, "_http_json", fake)
+        go_online(operator)
+        fire(bitrix, event())
+        DialCommand.all_objects.update(created_at=timezone.now() - timedelta(seconds=61))
+        with django_capture_on_commit_callbacks(execute=True):
+            assert dial.expire_stale(operator.company_id) == 1
+        assert [f["STATUS_CODE"] for f in _finishes(fake)] == [304]
+
+    def test_real_call_states_do_not_close(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        run_close: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+        django_capture_on_commit_callbacks: Any,
+    ) -> None:
+        monkeypatch.setattr(providers, "_http_json", FakeBitrix())
+        go_online(operator)
+        fire(bitrix, event())
+        cid = str(DialCommand.all_objects.get().pk)
+        with django_capture_on_commit_callbacks(execute=True):
+            dial.apply_ack(
+                _session(operator),
+                {"type": "call.dial.ack", "command_id": cid, "status": "received"},
+            )
+            dial.apply_status(
+                _session(operator),
+                {
+                    "type": "call.status",
+                    "command_id": cid,
+                    "state": "disconnected",
+                    "duration_sec": 5,
+                },
+            )
+        assert run_close == []  # the CDR upload finishes that Bitrix call
+
+    def test_cabinet_commands_never_touch_bitrix(
+        self,
+        operator: OperatorProfile,
+        run_close: list[str],
+        django_capture_on_commit_callbacks: Any,
+    ) -> None:
+        command = DialCommand.all_objects.create(
+            company=operator.company,
+            operator=operator,
+            device_id="d",
+            number="+998901234567",
+            status="offline",
+        )
+        with django_capture_on_commit_callbacks(execute=True):
+            dial.close_bitrix_call_if_unanswered(command)
+        assert run_close == []
+
+    def test_idempotent_and_blocks_later_reuse(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        outbound: CallRecord,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        command = _c2c_command(operator, outbound, status="rejected")
+        fake = FakeBitrix()
+        monkeypatch.setattr(providers, "_http_json", fake)
+        assert tasks.close_bitrix_click_to_call(str(command.pk)) == "closed"
+        assert tasks.close_bitrix_click_to_call(str(command.pk)) == "skipped"
+        assert len(_finishes(fake)) == 1
+        # A later outbound upload of that number registers a NEW call.
+        tasks.dispatch_call(outbound.pk)
+        assert "telephony.externalcall.register" in fake.methods()
+
+    def test_bitrix_error_releases_claim_for_retry(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        outbound: CallRecord,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        command = _c2c_command(operator, outbound, status="expired")
+        monkeypatch.setattr(
+            providers, "_http_json", FakeBitrix(fail={"telephony.externalcall.finish"})
+        )
+        with pytest.raises(providers.ProviderError):
+            tasks.close_bitrix_click_to_call(str(command.pk))
+        command.refresh_from_db()
+        assert command.b24_used_at is None
+        fake = FakeBitrix()
+        monkeypatch.setattr(providers, "_http_json", fake)
+        assert tasks.close_bitrix_click_to_call(str(command.pk)) == "closed"
+
+    def test_already_used_by_upload_is_skipped(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        outbound: CallRecord,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        command = _c2c_command(operator, outbound, status="expired", b24_used_at=timezone.now())
+        fake = FakeBitrix()
+        monkeypatch.setattr(providers, "_http_json", fake)
+        assert tasks.close_bitrix_click_to_call(str(command.pk)) == "skipped"
+        assert fake.calls == []
+
+    def test_unmapped_bitrix_user_falls_back(
+        self,
+        bitrix: CrmIntegration,
+        operator: OperatorProfile,
+        outbound: CallRecord,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        command = _c2c_command(operator, outbound, status="failed")
+        DialCommand.all_objects.filter(pk=command.pk).update(b24_user_id="")
+        fake = FakeBitrix()
+        monkeypatch.setattr(providers, "_http_json", fake)
+        tasks.close_bitrix_click_to_call(str(command.pk))
+        assert _finishes(fake)[0]["USER_ID"] == 21  # user_map entry of the operator
