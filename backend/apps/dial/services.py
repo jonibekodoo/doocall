@@ -37,9 +37,13 @@ from apps.core.phone import NATIONAL_LENGTH, normalize_phone
 from .models import DialCommand
 
 ONLINE_TTL_SECONDS = 70  # > 2 × the 25 s ping interval
-ACK_TIMEOUT = timedelta(seconds=30)
-DEVICE_MIN_INTERVAL = timedelta(seconds=5)
-DEVICE_PER_HOUR = 30
+# The phone acks only AFTER the operator confirms (up to 30 s, app 1.16.1):
+# a command stays "sent" (awaiting confirmation) until then.
+ACK_TIMEOUT = timedelta(seconds=60)
+# Same as the phone's own limit (1 per 10 s, 20/h) — never send a command
+# it would refuse as rate_limited.
+DEVICE_MIN_INTERVAL = timedelta(seconds=10)
+DEVICE_PER_HOUR = 20
 USER_MIN_INTERVAL = timedelta(seconds=2)
 USER_PER_HOUR = 120
 IDEMPOTENCY_WINDOW = timedelta(seconds=60)
@@ -54,6 +58,8 @@ REJECT_REASONS = {
     # Operator confirmation on the phone (app 1.16+).
     "user_declined",
     "timeout",
+    "expired",  # issued_at missing or > 60 s old on the phone (replay guard)
+    "rate_limited",  # the phone's own limit
 }
 SIM_MODES = {"auto", "device_picker"}
 CAUSES = {"answered", "no_answer", "rejected", "busy", "failed"}
@@ -338,8 +344,13 @@ def normalize_number(raw: Any, phone_code: str) -> str:
     return number
 
 
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
+
+
 def display_name(user: User) -> str:
-    return (user.get_full_name() or user.email or user.username or "").strip()[:100]
+    """Plain-text requester name for the phone's confirmation (≤ 64)."""
+    name = user.get_full_name() or user.email or user.username or ""
+    return " ".join(_CONTROL.sub(" ", name).split())[:64]
 
 
 def expire_stale(company_id: int) -> int:
@@ -473,9 +484,10 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
                     "type": "call.dial",
                     "command_id": str(command.pk),
                     "number": number,
-                    "issued_at": command.created_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    # Mandatory for the phone (≤ 60 s old): server clock, UTC.
+                    "issued_at": timezone.now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     # Who asked — the phone shows it in the confirmation prompt.
-                    "admin_name": display_name(user),
+                    "requested_by": display_name(user),
                 },
             },
         )

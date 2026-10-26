@@ -103,8 +103,8 @@ layer); REST stays on WSGI.
 | server → app | `{"type":"auth.ok"}` | device joins its routing group and is marked online (registry TTL 70 s) |
 | server → app | `{"type":"auth.error","reason":"invalid_token"}` | then close (app backs off and retries) |
 | server → app | `{"type":"ping","ts":<unix>}` | every 25 s; app answers `{"type":"pong","ts"}` |
-| server → app | `{"type":"call.dial","command_id","number","issued_at","admin_name"}` | `number` E.164 (company `phone_code`), `issued_at` ISO UTC, `admin_name` = who pressed "Call" (full name, else e-mail) for the phone's confirmation prompt; **no** `sim_slot` |
-| app → server | `{"type":"call.dial.ack","command_id","status":"received","sim_mode":"auto"\|"device_picker","used_sim_slot":0\|1\|null}` / `{…,"status":"rejected","reason"}` | reasons: `permission_denied`, `invalid_number`, `another_call_active`, `sim_disabled`, `duplicate`, `feature_disabled`, `user_declined`, `timeout` (operator confirmation); anything else is stored as `unknown` |
+| server → app | `{"type":"call.dial","command_id","number","issued_at","requested_by"}` | `number` E.164 (company `phone_code`); `issued_at` **mandatory** `yyyy-MM-ddTHH:mm:ssZ` UTC from the server clock at send time (the phone refuses > 60 s old as `expired`); `requested_by` = who pressed "Call" (full name, else e-mail; plain text, ≤ 64) for the phone's confirmation prompt; **no** `sim_slot` |
+| app → server | `{"type":"call.dial.ack","command_id","status":"received","sim_mode":"auto"\|"device_picker","used_sim_slot":0\|1\|null}` / `{…,"status":"rejected","reason"}` | reasons: `permission_denied`, `invalid_number`, `another_call_active`, `sim_disabled`, `duplicate`, `feature_disabled` (remote dial is opt-in on the phone, default OFF), `user_declined` / `timeout` (operator confirmation), `expired` (stale `issued_at`), `rate_limited` (phone's own limit); anything else is stored as `unknown` |
 | app → server | `{"type":"call.status","command_id","state":"dialing"\|"active"\|"disconnected"\|"failed","duration_sec","cause"}` | `duration_sec`/`cause` on `disconnected` |
 
 Numbers the cabinet may send (defence in depth — the app validates too):
@@ -134,7 +134,11 @@ sockets from it are refused at the handshake.
 Ack/status frames update a command only if it belongs to the same company
 AND was addressed to this `device_id` and operator; states never go backwards and
 `rejected`/`disconnected`/`failed` are final. Unknown frame types after auth
-are ignored. A command never acked within 30 s becomes `expired` (a late
+are ignored. Since app 1.16.1 the ack arrives only after the operator
+confirms on the phone (up to 30 s), so a command stays `sent` (awaiting
+confirmation) and becomes `expired` only after 60 s without any ack. The
+cabinet's per-device limit equals the phone's (1 dial per 10 s, 20 per
+hour), so the phone never has to refuse with `rate_limited` (a late
 real ack still updates it). Offline devices are **not** queued: the command
 is recorded as `offline` and never sent later. Each command is sent once,
 with one `command_id`; the call result of record remains the normal CDR

@@ -226,9 +226,9 @@ class TestDial:
                 "command_id",
                 "number",
                 "issued_at",
-                "admin_name",
+                "requested_by",
             }  # no sim_slot
-            assert frame["admin_name"] == "boss@dial-co.uz"
+            assert frame["requested_by"] == "boss@dial-co.uz"
 
             cid = body["command_id"]
             await ws.send_json_to(
@@ -460,7 +460,7 @@ class TestValidationAndLimits:
         assert again.status_code == 429 and again.json()["error_code"] == "rate_limited"
         # 30/hour per device.
         DialCommand.all_objects.update(created_at=timezone.now() - timedelta(minutes=10))
-        for _ in range(29):
+        for _ in range(19):
             DialCommand.all_objects.create(
                 company=op_a.company,
                 device_id="aaaa1111bbbb2222",
@@ -521,7 +521,7 @@ class TestValidationAndLimits:
             await ws.receive_json_from()
             await database_sync_to_async(
                 lambda: DialCommand.all_objects.filter(pk=cid).update(
-                    created_at=timezone.now() - timedelta(seconds=31)
+                    created_at=timezone.now() - timedelta(seconds=61)
                 )
             )()
             assert (await get(admin_client, f"{DIAL}/{cid}")).json()["command"][
@@ -687,7 +687,9 @@ class TestHardening:
         )
         assert uk.status_code == 409
 
-    @pytest.mark.parametrize("reason", ["user_declined", "timeout"])
+    @pytest.mark.parametrize(
+        "reason", ["user_declined", "timeout", "expired", "rate_limited", "feature_disabled"]
+    )
     def test_new_reject_reasons_are_stored(
         self, op_a: OperatorProfile, admin_client: APIClient, reason: str
     ) -> None:
@@ -733,7 +735,7 @@ class TestHardening:
 
         run(scenario)
 
-    def test_admin_name_uses_full_name(
+    def test_requested_by_uses_full_name(
         self, op_a: OperatorProfile, admin: User, admin_client: APIClient
     ) -> None:
         admin.first_name, admin.last_name = "Jonibek", "Yorqulov"
@@ -744,7 +746,90 @@ class TestHardening:
             await post(
                 admin_client, DIAL, {"device_id": "aaaa1111bbbb2222", "number": "+998901234567"}
             )
-            assert (await ws.receive_json_from())["admin_name"] == "Jonibek Yorqulov"
+            assert (await ws.receive_json_from())["requested_by"] == "Jonibek Yorqulov"
             await ws.disconnect()
 
         run(scenario)
+
+
+class TestMobile1161:
+    """Contract of mobile 1.16.1: confirmation before the ack, issued_at,
+    requested_by, device-side rate limit."""
+
+    def test_awaiting_confirmation_stays_sent_until_60s(
+        self, op_a: OperatorProfile, admin_client: APIClient
+    ) -> None:
+        async def scenario() -> None:
+            ws = await connect(op_a)
+            cid = (
+                await post(
+                    admin_client, DIAL, {"device_id": "aaaa1111bbbb2222", "number": "+998901234567"}
+                )
+            ).json()["command_id"]
+            await ws.receive_json_from()
+
+            def age(seconds: int) -> None:
+                DialCommand.all_objects.filter(pk=cid).update(
+                    created_at=timezone.now() - timedelta(seconds=seconds)
+                )
+
+            await database_sync_to_async(age)(45)  # operator still deciding
+            assert (await get(admin_client, f"{DIAL}/{cid}")).json()["command"]["status"] == "sent"
+            # Confirmed at 45 s → the ack still counts.
+            await ws.send_json_to(
+                {
+                    "type": "call.dial.ack",
+                    "command_id": cid,
+                    "status": "received",
+                    "sim_mode": "auto",
+                    "used_sim_slot": 1,
+                }
+            )
+            assert (await settle(admin_client, cid, "received"))["used_sim_slot"] == 1
+            await ws.disconnect()
+
+        run(scenario)
+
+    def test_issued_at_is_fresh_utc(self, op_a: OperatorProfile, admin_client: APIClient) -> None:
+        from datetime import UTC, datetime
+
+        async def scenario() -> None:
+            ws = await connect(op_a)
+            await post(
+                admin_client, DIAL, {"device_id": "aaaa1111bbbb2222", "number": "+998901234567"}
+            )
+            frame = await ws.receive_json_from()
+            issued = datetime.strptime(frame["issued_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+            assert abs((timezone.now() - issued).total_seconds()) < 5
+            await ws.disconnect()
+
+        run(scenario)
+
+    def test_requested_by_is_plain_and_capped(
+        self, op_a: OperatorProfile, admin: User, admin_client: APIClient
+    ) -> None:
+        admin.first_name = "Ali\n\t<b>Boss</b>" + "x" * 80
+        admin.last_name = ""
+        admin.save()
+
+        async def scenario() -> None:
+            ws = await connect(op_a)
+            await post(
+                admin_client, DIAL, {"device_id": "aaaa1111bbbb2222", "number": "+998901234567"}
+            )
+            name = (await ws.receive_json_from())["requested_by"]
+            assert "\n" not in name and "\t" not in name and len(name) <= 64
+            assert name.startswith("Ali <b>Boss</b>")  # plain text; the app renders it as text
+            await ws.disconnect()
+
+        run(scenario)
+
+    def test_device_limit_matches_the_phone(
+        self, op_a: OperatorProfile, admin_client: APIClient
+    ) -> None:
+        body = {"device_id": "aaaa1111bbbb2222", "number": "+998901234567"}
+        assert admin_client.post(DIAL, body, format="json").status_code == 409
+        DialCommand.all_objects.update(created_at=timezone.now() - timedelta(seconds=7))
+        assert admin_client.post(DIAL, body, format="json").status_code == 429  # < 10 s
+        DialCommand.all_objects.update(created_at=timezone.now() - timedelta(seconds=11))
+        assert admin_client.post(DIAL, body, format="json").status_code == 409
