@@ -142,12 +142,11 @@ class CustomApiView(APIView):
             company = _kotib_company(api_key)
             allowed_actions = KOTIB_ALLOWED_ACTIONS
         if company is None:
-            raise ApiError(
-                ErrorCode.INVALID_API_KEY, "invalid api_key", http.HTTP_401_UNAUTHORIZED
-            )
-        member = User.objects.filter(company=company).filter(
-            username__iexact=user_name
-        ).first() or User.objects.filter(company=company, email__iexact=user_name).first()
+            raise ApiError(ErrorCode.INVALID_API_KEY, "invalid api_key", http.HTTP_401_UNAUTHORIZED)
+        member = (
+            User.objects.filter(company=company).filter(username__iexact=user_name).first()
+            or User.objects.filter(company=company, email__iexact=user_name).first()
+        )
         if member is None:
             raise ApiError(
                 ErrorCode.INVALID_API_KEY,
@@ -168,11 +167,15 @@ class CustomApiView(APIView):
                 f"action {action!r} is not allowed for this api_key",
                 http.HTTP_403_FORBIDDEN,
             )
+        self._member = member  # the API user (created_by of remote dials)
         handler = {
             "calls.list": self._calls_list,
             "calls.get": self._calls_get,
             "users.list": self._users_list,
             "account.info": self._account_info,
+            # Remote Dial (company opt-in; never for the Kotib read-only key).
+            "calls.dial": self._calls_dial,
+            "calls.dial.status": self._calls_dial_status,
         }.get(action)
         if handler is None:
             raise ApiError(
@@ -195,9 +198,7 @@ class CustomApiView(APIView):
             offset = max(0, int(data.get("offset") or 0))
             limit = min(MAX_LIMIT, max(1, int(data.get("limit") or 50)))
         except (TypeError, ValueError):
-            raise ApiError(
-                ErrorCode.MISSING_FIELD, "offset/limit must be integers", 400
-            ) from None
+            raise ApiError(ErrorCode.MISSING_FIELD, "offset/limit must be integers", 400) from None
         total = qs.count()
         rows = list(qs.order_by("-start_time")[offset : offset + limit])
         return Response(
@@ -237,6 +238,75 @@ class CustomApiView(APIView):
         ]
         return Response({"success": True, "users": rows})
 
+    def _dial_enabled(self, company: Company) -> None:
+        if not (company.feature_flags or {}).get("api_dial_enabled", False):
+            raise ApiError(
+                "feature_disabled",
+                "remote dial via the API is not enabled for this account",
+                http.HTTP_403_FORBIDDEN,
+            )
+
+    def _calls_dial(self, company: Company, data: dict[str, Any]) -> Response:
+        """{operator: <user_name>, number, device_id?} → the operator's phone
+        dials (same validation, allowlist, rate limits, audit as the cabinet)."""
+        from apps.dial import services as dial
+
+        self._dial_enabled(company)
+        operator = OperatorProfile.all_objects.filter(
+            company=company, user_name=str(data.get("operator") or "").strip(), is_active=True
+        ).first()
+        if operator is None:
+            raise ApiError("operator_not_found", "operator not found", http.HTTP_404_NOT_FOUND)
+        try:
+            command = dial.dial_operator(
+                company=company,
+                operator=operator,
+                user=self._member,
+                raw_number=data.get("number"),
+                raw_device_id=data.get("device_id") or "",
+                source="api",
+            )
+        except dial.DialError as exc:
+            return Response(
+                {"success": False, "error_code": exc.code, "message": exc.message},
+                status=exc.status,
+            )
+        if command.status == command.Status.OFFLINE:
+            return Response(
+                {
+                    "success": False,
+                    "error_code": "device_offline",
+                    "command_id": str(command.pk),
+                    "status": "offline",
+                },
+                status=http.HTTP_409_CONFLICT,
+            )
+        return Response({"success": True, "command_id": str(command.pk), "status": command.status})
+
+    def _calls_dial_status(self, company: Company, data: dict[str, Any]) -> Response:
+        import uuid
+
+        from apps.dial import services as dial
+        from apps.dial.models import DialCommand
+        from apps.dial.views import command_body
+
+        self._dial_enabled(company)
+        try:
+            command_id = uuid.UUID(str(data.get("command_id") or ""))
+        except ValueError:
+            raise ApiError(
+                ErrorCode.MISSING_FIELD, "command_id must be a UUID", http.HTTP_400_BAD_REQUEST
+            ) from None
+        dial.expire_stale(company.pk)
+        command = (
+            DialCommand.all_objects.select_related("operator")
+            .filter(company=company, pk=command_id)
+            .first()
+        )
+        if command is None:
+            raise ApiError("not_found", "command not found", http.HTTP_404_NOT_FOUND)
+        return Response({"success": True, "command": command_body(command)})
+
     def _account_info(self, company: Company, data: dict[str, Any]) -> Response:
         return Response(
             {
@@ -264,9 +334,7 @@ class RecordRedirectView(View):
         record = CallRecord.all_objects.filter(server_id=rec_id).first()
         if record is None:
             return HttpResponse(status=404)
-        audio = (
-            record.audios.filter(kind=CallAudio.Kind.PRIMARY).first() or record.audios.first()
-        )
+        audio = record.audios.filter(kind=CallAudio.Kind.PRIMARY).first() or record.audios.first()
         if audio is None:
             return HttpResponse(status=404)
         return HttpResponseRedirect(storage.presigned_url(audio.object_key))
@@ -351,7 +419,9 @@ class SalesLogoView(View):
         except Exception:  # noqa: BLE001
             return HttpResponse(status=404)
         ext = manager.logo_key.rsplit(".", 1)[-1].lower()
-        response = HttpResponse(payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream"))
+        response = HttpResponse(
+            payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream")
+        )
         response["Cache-Control"] = "public, max-age=86400"
         return response
 
@@ -375,7 +445,9 @@ class ProviderLogoView(View):
         except Exception:  # noqa: BLE001
             return HttpResponse(status=404)
         ext = cfg.logo_key.rsplit(".", 1)[-1].lower()
-        response = HttpResponse(payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream"))
+        response = HttpResponse(
+            payload, content_type=LOGO_TYPES.get(ext, "application/octet-stream")
+        )
         response["Cache-Control"] = "public, max-age=86400"
         return response
 
@@ -492,3 +564,156 @@ class KotibAnalysisWebhookView(View):
                 if attempt:
                     raise
         return reply(200, status="stored", matched=analysis.call_id is not None)
+
+
+def _b24_event_fields(request: HttpRequest) -> dict[str, str]:
+    """Flatten Bitrix24's event POST: form keys like ``data[PHONE_NUMBER]``
+    (what Bitrix sends) or a JSON body with nested data/auth objects."""
+    if request.content_type == "application/json":
+        try:
+            body = json.loads(request.body or b"{}")
+        except ValueError:
+            return {}
+        flat: dict[str, str] = {}
+        if isinstance(body, dict):
+            for key, value in body.items():
+                if isinstance(value, dict):
+                    flat.update({f"{key}[{k}]": str(v) for k, v in value.items()})
+                else:
+                    flat[str(key)] = str(value)
+        return flat
+    return {key: request.POST.get(key, "") for key in request.POST}
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class Bitrix24ClickToCallView(View):
+    """``POST /api/public/bitrix24/click-to-call/<token>`` — Bitrix24's
+    outgoing webhook for ONEXTERNALCALLSTART (a user clicked a phone number
+    in the CRM). The Bitrix user is mapped to a DooCall operator (user_map)
+    and that operator's phone dials through Remote Dial. Always a quick 200
+    once the token is valid; Bitrix may resend — one dial per CALL_ID."""
+
+    def post(self, request: HttpRequest, token: str) -> HttpResponse:
+        import logging
+
+        from django.core.cache import cache
+
+        from apps.dial import services as dial
+        from apps.dial.models import DialCommand
+
+        log = logging.getLogger("apps.integrations.click_to_call")
+
+        def reply(code: int = 200, **body: Any) -> JsonResponse:
+            return JsonResponse({"success": code == 200, **body}, status=code)
+
+        integration = _b24_click_to_call_integration(token)
+        if integration is None:
+            return reply(404, message="unknown endpoint")
+        company = integration.company
+        sub = domains.company_subdomain(request.get_host())
+        if sub is not None and sub != company.slug:
+            return reply(404, message="unknown endpoint")
+        fields = _b24_event_fields(request)
+        # Signed by Bitrix24 or nothing: a missing stored token is a 401 too.
+        expected = str(integration.config.get("b24_app_token") or "")
+        given = fields.get("auth[application_token]", "")
+        if not expected or not hmac.compare_digest(expected.encode(), given.encode()):
+            return reply(401, message="invalid application_token")
+        if not integration.is_enabled or not integration.config.get("click_to_call_enabled"):
+            return reply(status="ignored", reason="disabled")
+        if fields.get("event", "").upper() != "ONEXTERNALCALLSTART":
+            return reply(status="ignored", reason="event")
+
+        call_id = fields.get("data[CALL_ID]", "").strip()[:64]
+        b24_user = fields.get("data[USER_ID]", "").strip()
+        number = fields.get("data[PHONE_NUMBER_INTERNATIONAL]") or fields.get(
+            "data[PHONE_NUMBER]", ""
+        )
+        if not call_id:
+            return reply(status="ignored", reason="no_call_id")
+        # Bitrix may resend the event: one dial per CALL_ID.
+        if DialCommand.all_objects.filter(
+            company=company, b24_call_id=call_id
+        ).exists() or not cache.add(f"dial:b24:{company.pk}:{call_id}", 1, 600):
+            return reply(status="duplicate")
+
+        mapped = [
+            int(op_id)
+            for op_id, b24_id in (integration.config.get("user_map") or {}).items()
+            if str(b24_id) == b24_user and str(op_id).isdigit()
+        ]
+        operators = list(
+            OperatorProfile.all_objects.filter(company=company, pk__in=mapped, is_active=True)
+        )
+        if not operators:
+            log.info(
+                "bitrix24 click-to-call company=%s call=%s ignored=unmapped_user",
+                company.pk,
+                call_id,
+            )
+            return reply(status="ignored", reason="unmapped_user")
+        # Several operators mapped to one Bitrix user: prefer one that is online.
+        operators.sort(key=lambda op: not _has_online_device(company.pk, op))
+        try:
+            command = dial.dial_operator(
+                company=company,
+                operator=operators[0],
+                user=None,
+                raw_number=number,
+                requester="Bitrix24",
+                source="bitrix24",
+                b24={
+                    "call_id": call_id,
+                    "user_id": b24_user,
+                    "entity_type": fields.get("data[CRM_ENTITY_TYPE]", ""),
+                    "entity_id": fields.get("data[CRM_ENTITY_ID]", ""),
+                },
+            )
+        except dial.DialError as exc:
+            log.info(
+                "bitrix24 click-to-call company=%s call=%s refused=%s",
+                company.pk,
+                call_id,
+                exc.code,
+            )
+            return reply(status="refused", error_code=exc.code)
+        log.info(
+            "bitrix24 click-to-call company=%s call=%s command=%s status=%s",
+            company.pk,
+            call_id,
+            command.pk,
+            command.status,
+        )
+        return reply(status=command.status, command_id=str(command.pk))
+
+
+def _has_online_device(company_id: int, operator: OperatorProfile) -> bool:
+    from apps.accounts.models import Device
+    from apps.dial import services as dial
+
+    for device_id in Device.all_objects.filter(operator=operator).values_list(
+        "device_id", flat=True
+    ):
+        marker = dial.online(company_id, dial.clean_device_id(device_id))
+        if marker and marker.get("operator_id") == operator.pk:
+            return True
+    return False
+
+
+def _b24_click_to_call_integration(token: str) -> CrmIntegration | None:
+    """Bitrix24 integration owning this click-to-call token (constant time)."""
+    if not token:
+        return None
+    integration: CrmIntegration | None = (
+        CrmIntegration.all_objects.filter(
+            provider=CrmIntegration.Provider.BITRIX24, config__c2c_token=token
+        )
+        .select_related("company")
+        .first()
+    )
+    if integration is None:
+        return None
+    stored = str(integration.config.get("c2c_token") or "")
+    if not stored or not hmac.compare_digest(stored.encode(), token.encode()):
+        return None
+    return integration

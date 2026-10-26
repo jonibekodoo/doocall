@@ -24,6 +24,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -272,6 +273,7 @@ def apply_ack(session: DeviceSession, frame: dict[str, Any]) -> bool:
         command.acked_at = timezone.now()
         fields.append("acked_at")
     command.save(update_fields=fields)
+    close_bitrix_call_if_unanswered(command)
     return True
 
 
@@ -290,7 +292,28 @@ def apply_status(session: DeviceSession, frame: dict[str, Any]) -> bool:
         command.cause = cause if cause in CAUSES else ""
         fields.append("cause")
     command.save(update_fields=fields)
+    close_bitrix_call_if_unanswered(command)
     return True
+
+
+# Final states in which no call reached the network: the Bitrix24 call that
+# ONEXTERNALCALLSTART opened must be closed (no CDR will ever finish it).
+NO_CALL_STATES = {
+    DialCommand.Status.OFFLINE,
+    DialCommand.Status.REJECTED,
+    DialCommand.Status.EXPIRED,
+    DialCommand.Status.FAILED,
+}
+
+
+def close_bitrix_call_if_unanswered(command: DialCommand) -> None:
+    """After commit: close the click-to-call's Bitrix24 call (async task)."""
+    if not command.b24_call_id or command.b24_used_at or command.status not in NO_CALL_STATES:
+        return
+    from apps.integrations.tasks import close_bitrix_click_to_call
+
+    command_id = str(command.pk)
+    transaction.on_commit(lambda: close_bitrix_click_to_call.delay(command_id))
 
 
 # ── Cabinet side ──────────────────────────────────────────────────────────
@@ -354,27 +377,37 @@ def display_name(user: User) -> str:
 
 
 def expire_stale(company_id: int) -> int:
-    """Commands the phone never acknowledged within 30 s."""
-    expired: int = DialCommand.all_objects.filter(
+    """Commands the phone never acknowledged within the ack window."""
+    stale = DialCommand.all_objects.filter(
         company_id=company_id,
         status=DialCommand.Status.SENT,
         acked_at__isnull=True,
         created_at__lt=timezone.now() - ACK_TIMEOUT,
-    ).update(status=DialCommand.Status.EXPIRED, updated_at=timezone.now())
+    )
+    with_b24 = list(stale.exclude(b24_call_id="").values_list("pk", flat=True))
+    expired: int = stale.update(status=DialCommand.Status.EXPIRED, updated_at=timezone.now())
+    for command in DialCommand.all_objects.filter(
+        pk__in=with_b24, status=DialCommand.Status.EXPIRED
+    ):
+        close_bitrix_call_if_unanswered(command)
     return expired
 
 
-def _rate_limit(company_id: int, device_id: str, user: User) -> None:
+def _rate_limit(company_id: int, device_id: str, user: User | None) -> None:
     now = timezone.now()
     recent = DialCommand.all_objects.filter(company_id=company_id)
     by_device = recent.filter(device_id=device_id)
-    by_user = recent.filter(created_by=user)
-    if (
+    limited = (
         by_device.filter(created_at__gte=now - DEVICE_MIN_INTERVAL).exists()
         or by_device.filter(created_at__gte=now - timedelta(hours=1)).count() >= DEVICE_PER_HOUR
-        or by_user.filter(created_at__gte=now - USER_MIN_INTERVAL).exists()
-        or by_user.filter(created_at__gte=now - timedelta(hours=1)).count() >= USER_PER_HOUR
-    ):
+    )
+    if user is not None and not limited:
+        by_user = recent.filter(created_by=user)
+        limited = (
+            by_user.filter(created_at__gte=now - USER_MIN_INTERVAL).exists()
+            or by_user.filter(created_at__gte=now - timedelta(hours=1)).count() >= USER_PER_HOUR
+        )
+    if limited:
         raise DialError("rate_limited", "too many dial requests — wait a moment", 429)
 
 
@@ -424,10 +457,71 @@ def _marker_still_valid(company_id: int, marker: dict[str, Any], devices: Any) -
     )
 
 
-def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -> DialCommand:
+def dial_operator(
+    *,
+    company: Any,
+    operator: OperatorProfile,
+    user: User | None,
+    raw_number: Any,
+    raw_device_id: Any = "",
+    requester: str | None = None,
+    source: str = "api",
+    b24: dict[str, str] | None = None,
+) -> DialCommand:
+    """Dial from an OPERATOR (integrations): the given device if it is
+    theirs, else their most recently seen online device (else the last
+    known one → offline). The caller is trusted to address any operator of
+    the company (company-level API key / Bitrix24 user mapping)."""
+    devices = Device.all_objects.filter(company=company, operator=operator)
+    device_id = clean_device_id(raw_device_id)
+    if device_id:
+        if not devices.filter(device_id=device_id).exists():
+            raise DialError("device_not_found", "device not found for this operator", 404)
+    else:
+        candidates = [
+            clean_device_id(d)
+            for d in devices.order_by("-last_seen_at", "-pk").values_list("device_id", flat=True)
+        ]
+        if not candidates:
+            raise DialError("device_not_found", "the operator has no registered device", 404)
+        live = [
+            (marker.get("last_seen") or "", dev)
+            for dev in candidates
+            if (marker := online(company.pk, dev)) and marker.get("operator_id") == operator.pk
+        ]
+        device_id = max(live)[1] if live else candidates[0]
+    return _dial(
+        company,
+        user,
+        device_id,
+        raw_number,
+        "",
+        target_operator_id=operator.pk,
+        privileged=True,
+        requester=requester,
+        source=source,
+        b24=b24,
+    )
+
+
+def _dial(
+    company: Any,
+    user: User | None,
+    device_id: str,
+    raw_number: Any,
+    key: str,
+    *,
+    target_operator_id: int | None = None,
+    privileged: bool = False,
+    requester: str | None = None,
+    source: str = "cabinet",
+    b24: dict[str, str] | None = None,
+) -> DialCommand:
     devices = Device.all_objects.filter(company=company, device_id=device_id).select_related(
         "operator"
     )
+    if target_operator_id is not None:
+        devices = devices.filter(operator_id=target_operator_id)
     if not device_id or not devices.exists():
         raise DialError("device_not_found", "device not found", 404)
     try:
@@ -439,14 +533,22 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
         # Stale/revoked session (key rotated, operator off): never send to it.
         revoke_operator(company.pk, int(marker["operator_id"]))
         marker = None
+    if (
+        marker
+        and target_operator_id is not None
+        and marker.get("operator_id") != target_operator_id
+    ):
+        marker = None  # the phone is logged in as someone else → offline for them
     # The operator the phone is logged in as right now (else the last known).
-    if marker:
+    if target_operator_id is not None:
+        operator_id = target_operator_id
+    elif marker:
         operator_id = int(marker["operator_id"])
     else:
         last = devices.order_by("-last_seen_at", "-pk").first()
         operator_id = last.operator_id if last else 0
-    if not user.is_company_admin:
-        own = operator_of(user)
+    if not privileged and (user is None or not user.is_company_admin):
+        own = operator_of(user) if user is not None else None
         if own is None or own.pk != operator_id or not devices.filter(operator=own).exists():
             raise DialError("forbidden", "you can only dial from your own device", 403)
     number = normalize_number(raw_number, company.phone_code)
@@ -460,7 +562,13 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
         number=number,
         idempotency_key=key,
         status=DialCommand.Status.SENT if marker else DialCommand.Status.OFFLINE,
+        source=source,
+        b24_call_id=(b24 or {}).get("call_id", "")[:64],
+        b24_user_id=(b24 or {}).get("user_id", "")[:16],
+        b24_entity_type=(b24 or {}).get("entity_type", "")[:16],
+        b24_entity_id=(b24 or {}).get("entity_id", "")[:32],
     )
+    close_bitrix_call_if_unanswered(command)  # offline at dispatch
     AuditLog.objects.create(
         company=company,
         actor=user,
@@ -472,6 +580,7 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
             "operator_id": operator_id,
             "number": number,
             "status": command.status,
+            "source": source,
         },
     )
     if marker:
@@ -487,7 +596,7 @@ def _dial(company: Any, user: User, device_id: str, raw_number: Any, key: str) -
                     # Mandatory for the phone (≤ 60 s old): server clock, UTC.
                     "issued_at": timezone.now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     # Who asked — the phone shows it in the confirmation prompt.
-                    "requested_by": display_name(user),
+                    "requested_by": (requester or (display_name(user) if user else ""))[:64],
                 },
             },
         )
