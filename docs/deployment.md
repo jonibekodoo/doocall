@@ -3,7 +3,8 @@
 Single host, Docker Compose (`docker-compose.prod.yml`): nginx (TLS,
 host-routed) → Next.js standalone + gunicorn/Django → Postgres 16 /
 Redis 7 / MinIO. Celery worker + beat for exports, webhooks, billing
-sweeps and audio retention.
+sweeps and audio retention. A separate `ws` service (uvicorn, ASGI) holds
+the phones' Remote Dial WebSockets — see §11.
 
 ## 1. Server requirements
 
@@ -147,6 +148,7 @@ curl -s https://app.doocall.uz/healthz/          # {"status":"ok"}
 | `files.doocall.uz` | MinIO (presigned audio + APK; 9000-port tashqariga ochilmaydi) |
 | `*.doocall.uz` | kompaniya kabineti + web/mobil API (host↔tenant guard) |
 | `:80` | ACME webroot + hamma narsani https'ga 301 |
+| `= /api/call/v1/ws` (har `/api/` bor blokda) | Remote Dial WebSocket → `ws` (uvicorn), §11 |
 
 Mobil ilova qurilma sozlamasida `server` maydoniga kompaniyaning o'z
 subdomenini yozadi: `https://<slug>.doocall.uz`.
@@ -174,6 +176,17 @@ Zaxiralarni serverdan TASHQARIGA ko'chiring (rclone / ikkinchi host / s3).
 
 ## 8. Yangilash (deploy)
 
+Server mode (host nginx owns 80/443) — zero-downtime blue-green:
+
+```bash
+cd /opt/doocall && git pull
+scripts/deploy.sh                    # backend + ws + frontend + celery + nginx
+scripts/deploy.sh ws                 # faqat ws (Remote Dial)
+scripts/deploy.sh nginx              # template'larni qayta render + graceful reload
+```
+
+Plain single-host stack:
+
 ```bash
 cd /opt/doocall && git pull
 docker compose -f docker-compose.prod.yml up -d --build
@@ -200,11 +213,95 @@ docker compose -f docker-compose.prod.yml restart nginx
 * Payme/Click panelida callback URL'larni `https://app.doocall.uz/...`
   ga yangilang.
 
+## 11. Remote Dial WebSocket (`ws` service)
+
+Phones keep a WebSocket open to **`wss://api.doocall.uz/api/call/v1/ws`**
+(hard-coded in the app); the cabinet's "dial" button reaches the phone
+through it. `api.doocall.uz` has no block of its own — it lands in the
+`*.doocall.uz` wildcard (`api` is a reserved subdomain, so no tenant guard).
+
+**Service.** `ws` runs the backend image with
+`uvicorn doocall.asgi:application` on port 8001 (`--ws-ping-interval 20
+--ws-ping-timeout 20 --ws-max-size 16384 --proxy-headers
+--timeout-graceful-shutdown 20 --workers $WS_WORKERS`). Same `.env` as
+backend; the Redis channel layer (`CHANNELS_REDIS_URL`, default `REDIS_URL`
+— the same Redis) fans dial commands out across workers and containers. It
+never runs migrations. Healthcheck: `GET /healthz/` on :8001 — the ASGI
+app's `http` branch is plain Django (`get_asgi_application()`); only
+`websocket` goes to the Channels router.
+
+Two keep-alives, independent of each other: uvicorn sends protocol-level
+ping frames every 20 s (a socket that misses the pong for 20 s is dropped),
+and the server sends an app-level `{"type":"ping"}` every 25 s that also
+refreshes the device's online marker (TTL 70 s). Both are far inside nginx's
+3600 s read/send timeout. `--ws-max-size 16384` caps incoming frames at the
+protocol level; the consumer itself closes on frames over 8 KB. nginx does **not** depend on it — the
+upstream resolves at runtime, so a `ws` problem never keeps the site down.
+
+**nginx.** Every server block that serves `/api/` (landing, `app.`, the
+`*.` wildcard; dev also the jprq tunnels) has an exact
+`location = /api/call/v1/ws` → `doocall_ws` (`ws:8001`) with HTTP/1.1,
+`Upgrade`/`Connection` headers, `proxy_read_timeout`/`proxy_send_timeout
+3600s` and `proxy_buffering off`. Every other `/api/` path still goes to
+gunicorn. The exact match means `/api/call/v1/ws/` (trailing slash) is
+**not** routed to `ws`.
+
+**Server mode — host nginx (outside this repo, DevOps).** The host vhost
+for `*.doocall.uz` must forward the upgrade too, otherwise the handshake
+dies at the host and the container nginx only sees a plain GET:
+
+```nginx
+# in the host's *.doocall.uz (and doocall.uz / app.doocall.uz) server blocks
+location = /api/call/v1/ws {
+    proxy_pass http://127.0.0.1:8090;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+}
+```
+
+Then `sudo nginx -t && sudo systemctl reload nginx`.
+
+**Deploy.** `scripts/deploy.sh ws` builds the image, runs check + migrate
+from it, starts a second `ws` container, waits for its healthcheck plus a
+WebSocket-upgrade probe (101, or 401/403 = the app answered but refused an
+anonymous socket — no device has to be connected), lets nginx's resolver
+pick it up, then stops the old one. Stopping closes its sockets with code
+1012; the phones reconnect with backoff and land on the new container.
+`scripts/deploy.sh nginx` re-renders the templates, runs `nginx -t` and
+reloads gracefully (the previous config is restored if the test fails).
+The full deploy (no arguments) does all of it, nginx last.
+
+**Verify.**
+
+```bash
+# through the container nginx (server mode) — expect 101, or 401/403
+curl -s -o /dev/null -w '%{http_code}\n' --http1.1 --max-time 3 \
+  -H 'Host: api.doocall.uz' -H 'X-Forwarded-Proto: https' \
+  -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+  -H 'Sec-WebSocket-Key: ZG9vY2FsbC13cy1wcm9iZQ==' \
+  http://127.0.0.1:8090/api/call/v1/ws
+# end to end over TLS (same headers):  https://api.doocall.uz/api/call/v1/ws
+# 404 → the request reached gunicorn (route not live: scripts/deploy.sh nginx)
+# 502 → ws container down:  docker compose … ps ws ; … logs --tail 50 ws
+```
+
 ## Env knobs (Phase 9)
 
 | Var | Default | Meaning |
 |---|---|---|
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` | 4 / 2 | backend concurrency |
+| `WS_WORKERS` | 2 | uvicorn worker processes of the `ws` service (Remote Dial sockets) |
+| `CHANNELS_REDIS_URL` | `REDIS_URL` | Redis for the Channels layer (Remote Dial); set only to split it off |
+| `CHANNELS_PREFIX` | `doocall:ws` | key prefix of the channel layer in that Redis |
+| `WS_HOST_PORT` (dev only) | 8002 | host port of the dev `ws` service (a phone on the LAN can connect directly) |
 | `CELERY_CONCURRENCY` | 4 | worker processes |
 | `AUDIO_PRESIGN_EXPIRY_SECONDS` | 3600 | presigned URL TTL (hard-capped at 1h) |
 | `AUDIO_RETENTION_DAYS` | 30 | global audio retention |
