@@ -14,8 +14,11 @@ Nothing here logs the token, the secret or any transcript text.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
+import logging
+import re
 import secrets
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -23,6 +26,7 @@ from typing import Any
 
 import nh3
 from django.conf import settings
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from apps.calls.models import CallRecord
@@ -30,6 +34,8 @@ from apps.companies.models import Company
 from apps.core.phone import normalize_phone
 
 from .models import CallAnalysis, CrmIntegration
+
+logger = logging.getLogger(__name__)
 
 EVENT = "analysis.completed"
 MAX_BODY_BYTES = 2 * 1024 * 1024
@@ -87,11 +93,165 @@ def find_integration(token: str) -> CrmIntegration | None:
 
 
 def signature_ok(secret: str, body: bytes, header: str) -> bool:
-    given = (header or "").strip()
-    if given.lower().startswith("sha256="):
-        given = given[len("sha256=") :]
-    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return bool(given) and hmac.compare_digest(expected, given.lower())
+    """Back-compat single-key check (hex/base64, optional sha256= prefix)."""
+    ok, _ = verify_signature({"analysis_secret": secret}, body, {SIGNATURE_HEADERS[0]: header})
+    return ok
+
+
+# Kotib's spec doesn't name the signature algorithm. Accepted (all HMAC-SHA256
+# over the exact raw body — never unsigned, never plain token equality):
+#   headers  X-Kotib-Signature (+ common aliases below)
+#   value    <digest> | sha256=<digest> | t=<ts>,v1=<digest> (message "<ts>.<body>")
+#   digest   hex (any case) | base64 std/url-safe, with or without padding
+#   key      the saved analysis secret, or the webhook_secret we sent Kotib at
+#            connect (a secret shared only with Kotib) — as UTF-8, and
+#            hex-decoded when it looks like hex.
+SIGNATURE_HEADERS = (
+    "X-Kotib-Signature",
+    "X-Signature",
+    "X-Webhook-Signature",
+    "X-Hub-Signature-256",
+)
+KEY_FIELDS = ("analysis_secret", "webhook_secret")
+_HEX = re.compile(r"[0-9a-fA-F]+")
+_B64 = re.compile(r"[A-Za-z0-9+/_-]+={0,2}")
+
+
+def _keys(config: dict[str, Any]) -> list[tuple[str, bytes]]:
+    keys: list[tuple[str, bytes]] = []
+    for field in KEY_FIELDS:
+        secret = str(config.get(field) or "")
+        if not secret:
+            continue
+        keys.append((f"{field}:utf8", secret.encode()))
+        if len(secret) % 2 == 0 and _HEX.fullmatch(secret):
+            keys.append((f"{field}:hex", bytes.fromhex(secret)))
+    return keys
+
+
+def _parse(value: str) -> tuple[str, list[tuple[str | None, str]]]:
+    """(prefix kind, [(timestamp or None, digest)]) from one header value."""
+    value = value.strip()
+    if (
+        "," in value
+        and "=" in value
+        and value.lower().split("=", 1)[0].strip() in ("t", "ts", "timestamp")
+    ):
+        parts = {
+            k.strip().lower(): v.strip()
+            for k, _, v in (p.partition("=") for p in value.split(","))
+        }
+        ts = parts.get("t") or parts.get("ts") or parts.get("timestamp")
+        digests = [parts[k] for k in ("v1", "sig", "signature", "sha256") if parts.get(k)]
+        return "t,v1", [(ts, d) for d in digests]
+    if value.lower().startswith("sha256="):
+        return "sha256=", [(None, value[len("sha256=") :].strip())]
+    return "none", [(None, value)]
+
+
+def _encodings(digest: bytes) -> list[tuple[str, str]]:
+    std = base64.b64encode(digest).decode()
+    url = base64.urlsafe_b64encode(digest).decode()
+    return [
+        ("hex", digest.hex()),
+        ("base64", std),
+        ("base64-nopad", std.rstrip("=")),
+        ("base64url", url),
+        ("base64url-nopad", url.rstrip("=")),
+    ]
+
+
+def charset_class(value: str) -> str:
+    if not value:
+        return "empty"
+    if _HEX.fullmatch(value):
+        return "hex"
+    if _B64.fullmatch(value):
+        return "base64"
+    return "other"
+
+
+def verify_signature(
+    config: dict[str, Any], body: bytes, headers: Any
+) -> tuple[bool, dict[str, Any]]:
+    """(valid, diagnostics). Diagnostics are metadata only — never the
+    header value, the secret or the body."""
+    present = [name for name in SIGNATURE_HEADERS if headers.get(name)]
+    keys = _keys(config)
+    diag: dict[str, Any] = {
+        "headers_present": present,
+        "body_len": len(body),
+        "keys_tried": [name for name, _ in keys],
+        "encodings_tried": [name for name, _ in _encodings(b"")],
+        "signatures": [],
+    }
+    for header in present:
+        value = str(headers.get(header) or "")
+        kind, candidates = _parse(value)
+        diag["signatures"].append(
+            {
+                "header": header,
+                "length": len(value),
+                "prefix": kind,
+                "charset": charset_class(candidates[0][1] if candidates else ""),
+            }
+        )
+        for ts, given in candidates:
+            if not given:
+                continue
+            messages = [body] if ts is None else [f"{ts}.".encode() + body, ts.encode() + body]
+            for _, key in keys:
+                for message in messages:
+                    digest = hmac.new(key, message, hashlib.sha256).digest()
+                    for name, expected in _encodings(digest):
+                        candidate = given.lower() if name == "hex" else given
+                        if hmac.compare_digest(expected.encode(), candidate.encode()):
+                            return True, {**diag, "matched": name}
+    return False, diag
+
+
+REJECT_LOG_LIMIT = 20
+REJECT_LOG_TTL = 7 * 24 * 3600
+REJECT_WARN_SECONDS = 600
+
+
+def _reject_key(company_id: int) -> str:
+    return f"kotib:analysis:rejects:{company_id}"
+
+
+def record_rejection(company_id: int, diag: dict[str, Any], content_type: str) -> None:
+    """Keep the last 20 rejected deliveries' metadata (cache/Redis) and log one
+    WARNING per company per 10 min. Metadata only — no body/signature/secret."""
+    from django.core.cache import cache
+
+    entry = {
+        "at": timezone.now().isoformat(),
+        "content_type": (content_type or "")[:100],
+        **diag,
+    }
+    key = _reject_key(company_id)
+    entries = [entry, *(cache.get(key) or [])][:REJECT_LOG_LIMIT]
+    cache.set(key, entries, REJECT_LOG_TTL)
+    if cache.add(f"kotib:analysis:reject-warn:{company_id}", 1, REJECT_WARN_SECONDS):
+        logger.warning(
+            "kotib analysis signature mismatch company=%s headers=%s signatures=%s "
+            "body_len=%s content_type=%s keys_tried=%s encodings_tried=%s",
+            company_id,
+            diag["headers_present"] or "none",
+            diag["signatures"],
+            diag["body_len"],
+            entry["content_type"],
+            diag["keys_tried"],
+            diag["encodings_tried"],
+        )
+
+
+def recent_rejections(company_id: int) -> list[dict[str, Any]]:
+    """Newest first, for DevOps: ``manage.py shell -c "from apps.integrations
+    import kotib_analysis as ka; print(ka.recent_rejections(<company_id>))"``."""
+    from django.core.cache import cache
+
+    return list(cache.get(_reject_key(company_id)) or [])
 
 
 def sanitize_html(value: Any) -> str:

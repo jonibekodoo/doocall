@@ -3,13 +3,16 @@ Kotib card settings (secret / rotate / disconnect)."""
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
+import logging
 from datetime import timedelta
 from typing import Any
 
 import pytest
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -17,6 +20,7 @@ from apps.accounts.models import OperatorProfile, User
 from apps.calls.models import CallRecord
 from apps.companies.models import Company
 from apps.core.models import AuditLog
+from apps.integrations import kotib_analysis as ka
 from apps.integrations.models import CallAnalysis, CrmIntegration
 
 pytestmark = pytest.mark.django_db
@@ -292,6 +296,170 @@ def analysis(kotib: CrmIntegration, call: CallRecord) -> CallAnalysis:
 @pytest.fixture
 def operator_user(operator: OperatorProfile) -> User:
     return operator.user
+
+
+def _post_raw(integration: CrmIntegration, raw: bytes, **headers: str) -> Any:
+    return APIClient().generic(
+        "POST",
+        _url(integration),
+        raw.decode(),
+        content_type="application/json",
+        **headers,  # type: ignore[arg-type]
+    )
+
+
+def _digest(key: bytes, message: bytes) -> bytes:
+    return hmac.new(key, message, hashlib.sha256).digest()
+
+
+HEX_SECRET = "0f" * 32  # a secret Kotib may treat as hex-encoded key bytes
+
+
+class TestSignatureVariants:
+    """Kotib's real format isn't specified — every safe HMAC-SHA256 variant
+    over the raw body is accepted; unsigned/plain-token never is."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_cache(self) -> Any:
+        cache.clear()
+        yield
+        cache.clear()
+
+    @pytest.mark.parametrize(
+        "encode",
+        [
+            lambda d: d.hex(),
+            lambda d: d.hex().upper(),
+            lambda d: "sha256=" + d.hex(),
+            lambda d: "SHA256=" + d.hex(),
+            lambda d: base64.b64encode(d).decode(),
+            lambda d: base64.b64encode(d).decode().rstrip("="),
+            lambda d: base64.urlsafe_b64encode(d).decode(),
+            lambda d: base64.urlsafe_b64encode(d).decode().rstrip("="),
+            lambda d: "sha256=" + base64.b64encode(d).decode(),
+        ],
+        ids=[
+            "hex",
+            "HEX",
+            "sha256=hex",
+            "SHA256=hex",
+            "b64",
+            "b64-nopad",
+            "b64url",
+            "b64url-nopad",
+            "sha256=b64",
+        ],
+    )
+    def test_digest_encodings(self, kotib: CrmIntegration, call: CallRecord, encode: Any) -> None:
+        _with_secret(kotib)
+        raw = json.dumps(_payload(call)).encode()
+        sig = encode(_digest(SECRET.encode(), raw))
+        response = _post_raw(kotib, raw, HTTP_X_KOTIB_SIGNATURE=sig)
+        assert response.status_code == 200, response.content
+        assert CallAnalysis.all_objects.get().signature_verified is True
+
+    @pytest.mark.parametrize("as_hex", [False, True])
+    def test_hex_looking_secret_as_text_or_bytes(
+        self, kotib: CrmIntegration, call: CallRecord, as_hex: bool
+    ) -> None:
+        kotib.config = {**kotib.config, "analysis_secret": HEX_SECRET}
+        kotib.save()
+        raw = json.dumps(_payload(call)).encode()
+        key = bytes.fromhex(HEX_SECRET) if as_hex else HEX_SECRET.encode()
+        response = _post_raw(kotib, raw, HTTP_X_KOTIB_SIGNATURE=_digest(key, raw).hex())
+        assert response.status_code == 200
+
+    def test_webhook_secret_sent_at_connect_is_accepted(
+        self, kotib: CrmIntegration, call: CallRecord
+    ) -> None:
+        _with_secret(kotib)
+        raw = json.dumps(_payload(call)).encode()
+        key = kotib.config["webhook_secret"].encode()
+        assert (
+            _post_raw(kotib, raw, HTTP_X_KOTIB_SIGNATURE=_digest(key, raw).hex()).status_code == 200
+        )
+
+    @pytest.mark.parametrize(
+        "header", ["HTTP_X_SIGNATURE", "HTTP_X_WEBHOOK_SIGNATURE", "HTTP_X_HUB_SIGNATURE_256"]
+    )
+    def test_alias_headers(self, kotib: CrmIntegration, call: CallRecord, header: str) -> None:
+        _with_secret(kotib)
+        raw = json.dumps(_payload(call)).encode()
+        sig = "sha256=" + _digest(SECRET.encode(), raw).hex()
+        assert _post_raw(kotib, raw, **{header: sig}).status_code == 200
+
+    def test_timestamped_scheme(self, kotib: CrmIntegration, call: CallRecord) -> None:
+        _with_secret(kotib)
+        raw = json.dumps(_payload(call)).encode()
+        sig = _digest(SECRET.encode(), b"1700000000." + raw).hex()
+        response = _post_raw(kotib, raw, HTTP_X_KOTIB_SIGNATURE=f"t=1700000000,v1={sig}")
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        "signature",
+        [
+            SECRET,  # plain token equality
+            "sha256=" + SECRET,
+            "tok-" + "a" * 40,  # the URL token
+            "s" * 64,  # webhook_secret itself
+            "t=1,v1=",
+        ],
+    )
+    def test_plain_secret_or_token_rejected(
+        self, kotib: CrmIntegration, call: CallRecord, signature: str
+    ) -> None:
+        _with_secret(kotib)
+        assert _send(kotib, _payload(call), signature=signature).status_code == 401
+        assert not CallAnalysis.all_objects.exists()
+
+    def test_signature_over_other_body_rejected(
+        self, kotib: CrmIntegration, call: CallRecord
+    ) -> None:
+        _with_secret(kotib)
+        raw = json.dumps(_payload(call)).encode()
+        sig = _digest(SECRET.encode(), raw + b" ").hex()
+        assert _post_raw(kotib, raw, HTTP_X_KOTIB_SIGNATURE=sig).status_code == 401
+
+    def test_mismatch_diagnostics_carry_no_secrets(
+        self,
+        kotib: CrmIntegration,
+        call: CallRecord,
+        company: Company,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        _with_secret(kotib)
+        raw = json.dumps(_payload(call)).encode()
+        bad = base64.b64encode(_digest(b"wrong", raw)).decode()
+        with caplog.at_level(logging.WARNING, logger="apps.integrations.kotib_analysis"):
+            assert _post_raw(kotib, raw, HTTP_X_KOTIB_SIGNATURE=bad).status_code == 401
+            assert _post_raw(kotib, raw, HTTP_X_KOTIB_SIGNATURE=bad).status_code == 401
+        warnings = [r for r in caplog.records if "signature mismatch" in r.getMessage()]
+        assert len(warnings) == 1  # one per company per 10 min
+        text = warnings[0].getMessage()
+        assert "X-Kotib-Signature" in text and f"'length': {len(bad)}" in text
+        assert "'charset': 'base64'" in text and "'prefix': 'none'" in text
+        assert f"body_len={len(raw)}" in text and "analysis_secret:utf8" in text
+        assert "base64url-nopad" in text
+
+        entries = ka.recent_rejections(company.pk)
+        assert len(entries) == 2
+        assert entries[0]["body_len"] == len(raw)
+        assert entries[0]["content_type"] == "application/json"
+        dumped = json.dumps(entries) + text
+        for leak in (bad, SECRET, kotib.config["webhook_secret"], "Assalomu", "tok-"):
+            assert leak not in dumped
+
+    def test_missing_header_diagnostics(self, kotib: CrmIntegration, company: Company) -> None:
+        _with_secret(kotib)
+        assert _send(kotib, _payload()).status_code == 401
+        (entry,) = ka.recent_rejections(company.pk)
+        assert entry["headers_present"] == [] and entry["signatures"] == []
+
+    def test_rejection_log_keeps_last_20(self, kotib: CrmIntegration, company: Company) -> None:
+        _with_secret(kotib)
+        for _ in range(23):
+            _send(kotib, _payload(), signature="deadbeef")
+        assert len(ka.recent_rejections(company.pk)) == 20
 
 
 class TestCabinetApi:
