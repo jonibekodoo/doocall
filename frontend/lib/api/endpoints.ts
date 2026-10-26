@@ -768,7 +768,14 @@ export const startDial = (body: {
 }) =>
   post<{ success: boolean; command_id: string; status: "sent" }>("/dial", body);
 
-export const fetchDialCommand = (commandId: string) =>
-  get<DialCommandState & { success?: boolean }>(
-    `/dial/${encodeURIComponent(commandId)}`,
-  );
+/** The backend wraps it as {success, command: {…}, now}; a bare state is
+ * accepted too. */
+export const fetchDialCommand = async (
+  commandId: string,
+): Promise<DialCommandState> => {
+  const body = await get<
+    (DialCommandState & { success?: boolean }) | { command?: DialCommandState }
+  >(`/dial/${encodeURIComponent(commandId)}`);
+  return ((body as { command?: DialCommandState })?.command ??
+    body) as DialCommandState;
+};

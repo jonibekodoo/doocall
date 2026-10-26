@@ -203,6 +203,65 @@ describe("RemoteDialButton", () => {
     expect(posts[1].idempotency_key).not.toBe(posts[0].idempotency_key);
   });
 
+  it("reads the real backend shape {success, command:{…}, now}", async () => {
+    vi.useFakeTimers();
+    const { polls } = stubApi({
+      states: [
+        {
+          success: true,
+          command: {
+            command_id: "cmd-1",
+            status: "received",
+            used_sim_slot: 0,
+          },
+          now: "2026-10-27T10:00:01+05:00",
+        },
+        {
+          success: true,
+          command: {
+            command_id: "cmd-1",
+            status: "disconnected",
+            duration_sec: 42,
+            cause: "normal",
+          },
+          now: "2026-10-27T10:00:02+05:00",
+        },
+      ],
+    });
+    renderButton();
+    await openModal();
+    await startCall();
+    await flush(1000);
+    expect(statusLine()).toHaveAttribute("data-status", "received");
+    expect(statusLine()).toHaveTextContent("Telefon qabul qildi (SIM 1)");
+    expect(statusLine()).not.toHaveTextContent("undefined");
+    await flush(1000);
+    expect(statusLine()).toHaveTextContent("Tugadi (0:42, normal)");
+    const count = polls.length;
+    await flush(3000);
+    expect(polls.length).toBe(count); // final → stopped
+  });
+
+  it.each([
+    ["missing status", { success: true, command: {} }],
+    ["unknown status", { success: true, command: { status: "weird" } }],
+    ["empty body", {}],
+  ])("%s never shows 'undefined' and keeps polling", async (_label, reply) => {
+    vi.useFakeTimers();
+    const { polls } = stubApi({ states: [reply] });
+    renderButton();
+    await openModal();
+    await startCall();
+    await flush(1000);
+    expect(statusLine()).toHaveAttribute("data-status", "sent");
+    expect(statusLine()).toHaveTextContent("Telefonga yuborildi…");
+    expect(statusLine()).not.toHaveTextContent(/undefined|weird/);
+    const count = polls.length;
+    await flush(3000);
+    expect(polls.length).toBeGreaterThan(count);
+    expect(statusLine()).toHaveTextContent("Operator tasdiqlashini kutmoqda…");
+  });
+
   it("shows 'device asks for SIM' when sim_mode is ask", async () => {
     vi.useFakeTimers();
     stubApi({ states: [{ status: "received", sim_mode: "ask" }] });
