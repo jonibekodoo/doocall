@@ -26,6 +26,7 @@ const FINAL: DialStatus[] = [
   "expired",
   "offline",
 ];
+const KNOWN: DialStatus[] = ["sent", "received", "dialing", "active", ...FINAL];
 const POLL_MS = 1000;
 // The phone acks only after the operator confirms (up to 30 s) → wait longer.
 const POLL_LIMIT_MS = 75_000;
@@ -121,7 +122,8 @@ function useStatusText() {
       case "offline":
         return t("st_offline");
       default:
-        return String(state.status);
+        // Unknown/missing status: never print it — the phone hasn't answered.
+        return t("st_sent");
     }
   };
 }
@@ -160,7 +162,11 @@ function DialModal({
     },
     retry: false,
   });
-  const state: DialCommandState | null = polled ?? initial;
+  const raw: DialCommandState | null = polled ?? initial;
+  // A missing/unknown status reads as "sent" (still waiting, keep polling).
+  const state: DialCommandState | null = raw
+    ? { ...raw, status: KNOWN.includes(raw.status) ? raw.status : "sent" }
+    : null;
   const final = state ? FINAL.includes(state.status) : false;
 
   const [timedOut, setTimedOut] = useState(false);
