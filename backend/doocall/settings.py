@@ -297,11 +297,17 @@ SENTRY_DSN = env("SENTRY_DSN", "")
 if SENTRY_DSN:  # pragma: no cover - external service wiring
     import sentry_sdk
 
+    from apps.integrations import logmask
+
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         environment=env("SENTRY_ENVIRONMENT", "production"),
         traces_sample_rate=float(env("SENTRY_TRACES_RATE", "0.05")),
         send_default_pii=False,
+        # Secret path tokens / ?sig= / signature headers never leave us.
+        before_send=logmask.sentry_before_send,
+        before_send_transaction=logmask.sentry_before_send,
+        before_breadcrumb=logmask.sentry_before_breadcrumb,
     )
 
 # Public pricing endpoint cache TTL (seconds).
