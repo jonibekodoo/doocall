@@ -80,12 +80,30 @@ class DashboardView(CabinetView):
                     "call_records",
                     filter=Q(call_records__start_time__gte=since) & queries.MISSED_REL,
                 ),
+                missed_inbound=Count(
+                    "call_records",
+                    filter=Q(call_records__start_time__gte=since) & queries.MISSED_INBOUND_REL,
+                ),
+                not_reached=Count(
+                    "call_records",
+                    filter=Q(call_records__start_time__gte=since) & queries.NOT_REACHED_REL,
+                ),
                 duration=Sum(
                     "call_records__duration",
                     filter=Q(call_records__start_time__gte=since),
                 ),
             )
-            .values("id", "user_name", "full_name", "total", "answered", "missed", "duration")
+            .values(
+                "id",
+                "user_name",
+                "full_name",
+                "total",
+                "answered",
+                "missed",
+                "missed_inbound",
+                "not_reached",
+                "duration",
+            )
             .order_by("-total")
         )
         for row in per_operator:
