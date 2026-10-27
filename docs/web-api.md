@@ -6,18 +6,38 @@ cross-tenant rows are unreachable by construction. Company-admin-only
 endpoints are marked **[admin]** (`User.is_company_admin`). Interactive docs:
 `/api/docs/`.
 
+## Missed vs not reached
+
+Product wording for a `no_answer` call depends on its direction:
+
+| Term | Meaning | Field / filter |
+|---|---|---|
+| **Missed** — Пропущен / O'tkazib yuborilgan | a CLIENT called us (inbound) and nobody answered | `missed_inbound` · `status=missed` |
+| **Not reached** — Не дозвонился / Javob bermadi | WE called the client (outbound) and they didn't answer | `not_reached` · `status=not_reached` |
+
+The older `missed` fields (and `in_missed`/`out_missed` style blocks) are kept
+for compatibility and still count `no_answer` in **any** direction
+(`missed = missed_inbound + not_reached`); `status=no_answer` likewise.
+
+The split is **cabinet/admin UI only**. Integrations are unchanged: the
+public API (`/api/v1` `calls.list` / `calls.get`), the custom webhook
+payload, Bitrix24 (`no_answer` → `STATUS_CODE` 304 in both directions),
+amoCRM (`no_answer` → 6), Odoo and Kotib send the same data as before.
+
 ## Dashboard (§6.1)
 
 `GET /dashboard?period=today|3d|7d&operator=<id>` → `general` (all/in/out ×
-total/answered/missed + duration), `per_operator` activity, `latest_calls`
-(last 10 answered), `unanswered_now` (numbers whose LAST call is missed, with
-attempt counts).
+total/answered/missed/`missed_inbound`/`not_reached` + duration),
+`per_operator` activity (`total`, `answered`, `missed`, `missed_inbound`,
+`not_reached`, `duration`), `latest_calls` (last 10 answered),
+`unanswered_now` (clients waiting for a call-back — same rule as
+`/reports/unanswered` — with attempt counts).
 
 ## Calls (§6.2)
 
 | Endpoint | Notes |
 |---|---|
-| `GET /calls` | Filters: `employees=1,2`, `date_from`/`date_to` (YYYY-MM-DD), `direction`, `status`, `search` (name or phone, E.164-normalized), `min_duration`, `sim_slot`. Pagination 30/page (`page`), returns `count`/`pages`. Sort: `ordering=duration|-duration|date|-date`. |
+| `GET /calls` | Filters: `employees=1,2`, `date_from`/`date_to` (YYYY-MM-DD), `direction`, `status` (`answered`, `no_answer` = any direction, `busy`, `failed`, plus `missed` = inbound no_answer and `not_reached` = outbound no_answer), `search` (name or phone, E.164-normalized), `min_duration`, `sim_slot`. Pagination 30/page (`page`), returns `count`/`pages`. Sort: `ordering=duration|-duration|date|-date`. |
 | `GET /calls/<id>` | Full CDR + presigned audio URLs (primary/realtime). |
 | `DELETE /calls/<id>/delete` | **[admin]** |
 | `POST /calls/export` | `{format: csv\|xlsx, filters:{…}}` → 202 + `export_id`; Celery task streams `values()` rows to MinIO. |
@@ -38,12 +58,12 @@ All accept the same filter params as `/calls`.
 
 | Endpoint | Report |
 |---|---|
-| `GET /reports/general` | all/in/out × answered/missed + total duration |
-| `GET /reports/weekday-matrix` | ISO weekday × direction/status counts |
-| `GET /reports/period-counts?group=day\|week\|month&unique=true` | period buckets; `unique` counts distinct client numbers |
-| `GET /reports/per-employee` | per-operator distribution, answered/missed, duration minutes |
-| `GET /reports/per-client` | per-number totals/answered/missed/duration/last call (top 500) |
-| `GET /reports/unanswered` | **exact drop-off semantic**: a client appears iff their LAST call is missed; disappears on the next successful call. Includes `last_success` and `attempts_since_success`. |
+| `GET /reports/general` | all/in/out × answered/missed + total duration; every block also has `missed_inbound` and `not_reached` (`inbound.not_reached` and `outbound.missed_inbound` are always 0) |
+| `GET /reports/weekday-matrix` | ISO weekday × direction/status counts (+ `missed_inbound`, `not_reached`) |
+| `GET /reports/period-counts?group=day\|week\|month&unique=true` | period buckets (`total`, `answered`, `missed`, `missed_inbound`, `not_reached`); `unique` counts distinct client numbers |
+| `GET /reports/per-employee` | per-operator distribution, answered/missed (+ `missed_inbound`, `not_reached`), duration minutes |
+| `GET /reports/per-client` | per-number totals/answered/missed (+ `missed_inbound`, `not_reached`)/duration/last call (top 500) |
+| `GET /reports/unanswered` | **clients waiting for a call-back**: a number appears iff its LAST call is `no_answer` AND the client called us with no answer (inbound `no_answer`) since our last answered call. A failed call-back (outbound `no_answer`) keeps it listed; a number we only called ourselves and never reached never appears; the next answered call removes it. Includes `last_success` and `attempts_since_success` (no_answer calls of any direction since the last success). |
 | `GET /reports/last-contact` | latest call per client (`DISTINCT ON`) |
 
 Performance guard (12k rows, local run): every endpoint 2–97ms, budget 300ms

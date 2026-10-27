@@ -12,9 +12,12 @@ Expected key facts (hand-computed):
 * operator A: 20 calls, 12 answered, 8 missed, 1055s
 * operator B: 20 calls,  9 answered, 11 missed,  735s
 * per-client totals: N1=8, N2=8, N3=7, N4=5, N5=7, N6=5
-* unanswered-now (last call missed): N1 (1 attempt since success),
-  N3 (2), N4 (5, never answered), N6 (5, never answered);
-  N2/N5 recovered → NOT in the list
+* missed_inbound / not_reached: 9 / 10; per day 3/2, 2/3, 1/3, 3/2;
+  A 2/6, B 7/4
+* unanswered-now (last call no_answer AND an inbound no_answer since the
+  last answered call): N1 (1 attempt since success), N4 (5, never
+  answered), N6 (5, never answered); N2/N5 recovered and N3 (only our
+  outbound call-backs failed since #24) → NOT in the list
 * last-contact: N1→#37, N2→#38, N3→#36, N4→#39, N5→#40, N6→#34
 """
 

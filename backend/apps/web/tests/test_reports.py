@@ -28,9 +28,27 @@ class TestGeneralReport:
     def test_exact_totals(self, client: APIClient, seeded: dict) -> None:
         report = client.get("/api/web/v1/reports/general").json()["report"]
         assert report == {
-            "all": {"total": 40, "answered": 21, "missed": 19},
-            "inbound": {"total": 19, "answered": 10, "missed": 9},
-            "outbound": {"total": 21, "answered": 11, "missed": 10},
+            "all": {
+                "total": 40,
+                "answered": 21,
+                "missed": 19,
+                "missed_inbound": 9,
+                "not_reached": 10,
+            },
+            "inbound": {
+                "total": 19,
+                "answered": 10,
+                "missed": 9,
+                "missed_inbound": 9,
+                "not_reached": 0,
+            },
+            "outbound": {
+                "total": 21,
+                "answered": 11,
+                "missed": 10,
+                "missed_inbound": 0,
+                "not_reached": 10,
+            },
             "total_duration_sec": 1790,
         }
 
@@ -38,12 +56,15 @@ class TestGeneralReport:
 class TestWeekdayMatrix:
     def test_exact_rows(self, client: APIClient, seeded: dict) -> None:
         rows = client.get("/api/web/v1/reports/weekday-matrix").json()["report"]
-        assert rows == [
-            {"weekday": 1, "total": 10, "inbound": 6, "outbound": 4, "answered": 5, "missed": 5},
-            {"weekday": 2, "total": 10, "inbound": 5, "outbound": 5, "answered": 5, "missed": 5},
-            {"weekday": 3, "total": 10, "inbound": 3, "outbound": 7, "answered": 6, "missed": 4},
-            {"weekday": 4, "total": 10, "inbound": 5, "outbound": 5, "answered": 5, "missed": 5},
+        keys = ("weekday", "total", "inbound", "outbound", "answered", "missed")
+        new = ("missed_inbound", "not_reached")
+        assert [tuple(r[k] for k in keys + new) for r in rows] == [
+            (1, 10, 6, 4, 5, 5, 3, 2),
+            (2, 10, 5, 5, 5, 5, 2, 3),
+            (3, 10, 3, 7, 6, 4, 1, 3),
+            (4, 10, 5, 5, 5, 5, 3, 2),
         ]
+        assert all(len(r) == len(keys + new) for r in rows)
 
 
 class TestPeriodCounts:
@@ -57,6 +78,8 @@ class TestPeriodCounts:
             ("2026-08-05", 10, 6, 4),
             ("2026-08-06", 10, 5, 5),
         ]
+        split = [(r["missed_inbound"], r["not_reached"]) for r in body["report"]]
+        assert split == [(3, 2), (2, 3), (1, 3), (3, 2)]
 
     def test_unique_numbers_flag(self, client: APIClient, seeded: dict) -> None:
         body = client.get("/api/web/v1/reports/period-counts?group=day&unique=true").json()
@@ -81,6 +104,9 @@ class TestPerEmployee:
         assert b["duration_minutes"] == pytest.approx(735 / 60, abs=0.1)
         assert a["inbound"] + a["outbound"] == 20
         assert b["inbound"] + b["outbound"] == 20
+        # missed = missed_inbound (client called, no answer) + not_reached.
+        assert (a["missed_inbound"], a["not_reached"]) == (2, 6)
+        assert (b["missed_inbound"], b["not_reached"]) == (7, 4)
 
 
 class TestPerClient:
@@ -90,22 +116,28 @@ class TestPerClient:
         assert totals == {N1: 8, N2: 8, N3: 7, N4: 5, N5: 7, N6: 5}
         answered = {r["counterparty_number"]: r["answered"] for r in rows}
         assert answered == {N1: 5, N2: 7, N3: 3, N4: 0, N5: 6, N6: 0}
+        split = {r["counterparty_number"]: (r["missed_inbound"], r["not_reached"]) for r in rows}
+        assert split == {N1: (2, 1), N2: (1, 0), N3: (2, 2), N4: (1, 4), N5: (1, 0), N6: (2, 3)}
 
 
 class TestUnansweredReport:
-    """The exact drop-off semantic: in the list iff the LAST call is missed."""
+    """Clients waiting for a call-back: the LAST call is no_answer and the
+    client called us (inbound no_answer) since our last answered call."""
 
     def test_exact_membership_and_attempts(self, client: APIClient, seeded: dict) -> None:
         report = client.get("/api/web/v1/reports/unanswered").json()["report"]
         by_number = {r["counterparty_number"]: r for r in report}
 
-        # N2 and N5 recovered with a successful call → dropped off.
-        assert set(by_number) == {N1, N3, N4, N6}
+        # N2 and N5 recovered with a successful call → dropped off. N3's last
+        # call is no_answer, but only OUR call-backs (#29, #36, outbound)
+        # failed since #24 was answered — "not reached", not a client
+        # waiting on us → excluded.
+        assert set(by_number) == {N1, N4, N6}
 
         assert by_number[N1]["attempts_since_success"] == 1  # only #37 after #31
         assert by_number[N1]["last_success"] is not None
-        assert by_number[N3]["attempts_since_success"] == 2  # #29, #36 after #24
-        # Never answered → all their missed calls count, no last_success.
+        # Never answered → all their missed calls count, no last_success. N4's
+        # last call is our failed #39, but the client's #32 still waits.
         assert by_number[N4]["attempts_since_success"] == 5
         assert by_number[N4]["last_success"] is None
         assert by_number[N6]["attempts_since_success"] == 5
@@ -135,6 +167,48 @@ class TestUnansweredReport:
         )
         report = client.get("/api/web/v1/reports/unanswered").json()["report"]
         assert N4 not in {r["counterparty_number"] for r in report}
+
+    def test_only_outbound_misses_never_listed(
+        self, client: APIClient, seeded: dict, company: Company
+    ) -> None:
+        """A number we only called (never reached) is not 'unanswered'; once
+        the client calls and nobody answers, it is."""
+        from datetime import timedelta
+
+        from apps.calls.models import CallRecord
+
+        from .fixture_calls import BASE
+
+        cold = "+998911119999"
+        rows = {"call_type": "outbound", "from_number": "+998990000000", "to_number": cold}
+        for i in range(2):
+            CallRecord.all_objects.create(
+                company=company,
+                operator=seeded["A"],
+                call_id=f"fx-cold-{i}",
+                call_status="no_answer",
+                counterparty_number=cold,
+                duration=0,
+                start_time=BASE + timedelta(days=4, minutes=i),
+                **rows,
+            )
+        url = "/api/web/v1/reports/unanswered"
+        assert cold not in {r["counterparty_number"] for r in client.get(url).json()["report"]}
+
+        CallRecord.all_objects.create(
+            company=company,
+            operator=seeded["A"],
+            call_id="fx-cold-back",
+            call_type="inbound",
+            call_status="no_answer",
+            from_number=cold,
+            to_number="+998990000000",
+            counterparty_number=cold,
+            duration=0,
+            start_time=BASE + timedelta(days=4, minutes=5),
+        )
+        report = {r["counterparty_number"]: r for r in client.get(url).json()["report"]}
+        assert report[cold]["attempts_since_success"] == 3
 
 
 class TestLastContact:
