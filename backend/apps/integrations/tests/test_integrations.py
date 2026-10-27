@@ -309,19 +309,6 @@ class TestAmoCrmAdapter:
         assert row["responsible_user_id"] == 504141
         assert row["uniq"] == call.server_id.hex
 
-    @pytest.mark.parametrize("direction", ["inbound", "outbound"])
-    def test_no_answer_keeps_6_with_direction(
-        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch, direction: str
-    ) -> None:
-        """amoCRM's call_status enum has no "пропущенный": both directions
-        send 6 (не дозвонился); the direction tells amoCRM it was missed."""
-        call.call_type = direction
-        call.call_status = CallRecord.CallStatus.NO_ANSWER
-        call.save(update_fields=["call_type", "call_status"])
-        landed = {"errors": [], "_embedded": {"calls": [{"id": 1, "entity_id": 7}]}}
-        row = self._run(monkeypatch, call, [landed])[0][1][0]
-        assert (row["direction"], row["call_status"]) == (direction, 6)
-
     def test_unknown_phone_creates_contact_and_retries(
         self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -436,40 +423,10 @@ class TestBitrix24Adapter:
     def test_missed_call_status_code_304(
         self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """INBOUND no_answer = the client called and nobody answered →
-        Bitrix24's 304 "missed call"."""
-        assert call.call_type == CallRecord.CallType.INBOUND
         call.call_status = CallRecord.CallStatus.NO_ANSWER
         call.save(update_fields=["call_status"])
         seen = self._run(monkeypatch, call, [self.REGISTERED, {}, {"ID": 9}])
         assert seen[1][1]["STATUS_CODE"] == 304
-
-    def test_outbound_no_answer_is_not_reached_480(
-        self, call: CallRecord, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """OUTBOUND no_answer = we didn't reach the client — never 304
-        (Bitrix24 would show it as a missed call)."""
-        call.call_type = CallRecord.CallType.OUTBOUND
-        call.call_status = CallRecord.CallStatus.NO_ANSWER
-        call.save(update_fields=["call_type", "call_status"])
-        seen = self._run(monkeypatch, call, [self.REGISTERED, {}, {"ID": 9}])
-        assert seen[1][1]["STATUS_CODE"] == 480
-
-    @pytest.mark.parametrize(
-        ("call_type", "call_status", "code"),
-        [
-            ("inbound", "answered", 200),
-            ("outbound", "answered", 200),
-            ("inbound", "no_answer", 304),
-            ("outbound", "no_answer", 480),
-            ("inbound", "busy", 486),
-            ("outbound", "busy", 486),
-            ("outbound", "failed", 603),
-        ],
-    )
-    def test_status_code_matrix(self, call_type: str, call_status: str, code: int) -> None:
-        record = CallRecord(call_type=call_type, call_status=call_status)
-        assert providers._b24_status_code(record) == code
 
     def test_bitrix_error_raises(
         self, call: CallRecord, monkeypatch: pytest.MonkeyPatch

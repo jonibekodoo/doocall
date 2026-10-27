@@ -19,6 +19,11 @@ The older `missed` fields (and `in_missed`/`out_missed` style blocks) are kept
 for compatibility and still count `no_answer` in **any** direction
 (`missed = missed_inbound + not_reached`); `status=no_answer` likewise.
 
+The split is **cabinet/admin UI only**. Integrations are unchanged: the
+public API (`/api/v1` `calls.list` / `calls.get`), the custom webhook
+payload, Bitrix24 (`no_answer` → `STATUS_CODE` 304 in both directions),
+amoCRM (`no_answer` → 6), Odoo and Kotib send the same data as before.
+
 ## Dashboard (§6.1)
 
 `GET /dashboard?period=today|3d|7d&operator=<id>` → `general` (all/in/out ×
@@ -106,20 +111,6 @@ The Kotib read-only key can never call these (403).
 |---|---|---|
 | `calls.dial` | `{operator: <operator user_name>, number, device_id?}` | the operator's given device (must be theirs) or their most recently seen **online** device → `200 {success: true, command_id, status: "sent"}` · `409 {success: false, error_code: "device_offline", command_id, status: "offline"}` (not queued) · `400 invalid_number` / `destination_not_allowed` · `404 operator_not_found` / `device_not_found` · `429 rate_limited` · `402 subscription_inactive` — errors as `{success: false, error_code, message}`. `created_by` = the API user (`requested_by` on the phone = their name) |
 | `calls.dial.status` | `{command_id}` | `{success: true, command: {command_id, device_id, operator: {id, full_name}, number, status, reject_reason, sim_mode, used_sim_slot, duration_sec, cause, created_at, acked_at, updated_at}}` (company-scoped; 404 otherwise; 400 bad UUID). Poll it — statuses: sent, received, rejected, dialing, active, disconnected, failed, expired, offline |
-
-### CRM call result codes (missed vs not reached)
-
-| DooCall call | Bitrix24 `telephony.externalcall.finish` `STATUS_CODE` | amoCRM `call_status` |
-|---|---|---|
-| answered | `200` successful call | `4` разговор состоялся |
-| inbound no_answer (missed) | `304` missed call (пропущенный) | `6` + `direction: inbound` |
-| outbound no_answer (not reached) | `480` temporarily unavailable — **not** 304, so Bitrix24 doesn't show our own unanswered call as "missed" | `6` не дозвонился |
-| busy | `486` busy | `7` номер занят |
-| failed | `603` declined | `6` |
-
-Bitrix24's code list (apidocs) has no "не дозвонился" entry; 480 is the SIP
-answer for a callee who didn't pick up. amoCRM's enum has no "пропущенный"
-value, so both directions send 6 and amoCRM tells them apart by `direction`.
 
 ### Bitrix24 click-to-call
 
