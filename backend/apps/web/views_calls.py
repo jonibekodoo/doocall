@@ -17,6 +17,7 @@ from apps.calls.models import CallRecord
 from apps.core.phone import company_phone_code, normalize_phone
 from apps.integrations.kotib_analysis import ai_marks
 
+from . import queries
 from .models import DEFAULT_CALL_COLUMNS, CallColumnPreference, ExportJob
 from .permissions import CabinetView
 from .tasks import run_export
@@ -47,6 +48,9 @@ def parse_date(value: str | None, *, end: bool = False) -> datetime | None:
     return datetime.combine(day, time.max if end else time.min, tzinfo=company_tz())
 
 
+STATUS_ALIASES = {"missed": queries.MISSED_INBOUND, "not_reached": queries.NOT_REACHED}
+
+
 def filtered_calls(params: Any) -> QuerySet[CallRecord]:
     """Apply the §6.2 filter set to the tenant-scoped queryset."""
     qs: QuerySet[CallRecord] = CallRecord.objects.select_related("operator").all()
@@ -63,7 +67,9 @@ def filtered_calls(params: Any) -> QuerySet[CallRecord]:
     if direction := params.get("direction"):
         qs = qs.filter(call_type=direction)
     if status_f := params.get("status"):
-        qs = qs.filter(call_status=status_f)
+        # "missed" = inbound no_answer, "not_reached" = outbound no_answer;
+        # "no_answer" (and every raw status) keeps meaning any direction.
+        qs = qs.filter(STATUS_ALIASES.get(status_f, Q(call_status=status_f)))
     if search := params.get("search", "").strip():
         normalized = normalize_phone(search, company_phone_code())
         qs = qs.filter(

@@ -159,6 +159,8 @@ def _clean_base(url: str) -> str:
 
 # ── amoCRM / Kommo ─────────────────────────────────────────────────────────
 # https://www.amocrm.ru/developers/content/crm_platform/calls-api
+# amoCRM's enum has no "пропущенный": an inbound no_answer is sent as 6 with
+# direction "inbound", which amoCRM itself shows as a missed incoming call.
 AMO_STATUS = {  # call_status → amoCRM "результат звонка" enum
     CallRecord.CallStatus.ANSWERED: 4,  # разговор состоялся
     CallRecord.CallStatus.NO_ANSWER: 6,  # не дозвонился
@@ -333,6 +335,21 @@ B24_STATUS = {  # call_status → SIP code per apidocs.bitrix24.com (finish)
     CallRecord.CallStatus.BUSY: 486,  # busy
     CallRecord.CallStatus.FAILED: 603,  # declined
 }
+# 304 shows as "missed" (пропущенный) in Bitrix24 — right only for an INBOUND
+# no_answer. An OUTBOUND no_answer is "not reached" (не дозвонился): the
+# apidocs list has no such code, so use 480 "temporarily unavailable" (the
+# SIP answer for a callee that didn't pick up), an unsuccessful call.
+B24_NOT_REACHED = 480
+
+
+def _b24_status_code(record: CallRecord) -> int:
+    if (
+        record.call_status == CallRecord.CallStatus.NO_ANSWER
+        and record.call_type == CallRecord.CallType.OUTBOUND
+    ):
+        return B24_NOT_REACHED
+    return B24_STATUS.get(record.call_status, 603)
+
 
 B24_AUDIO_EXTS = {"mp3", "wav"}  # attachRecord accepts only these
 
@@ -745,7 +762,7 @@ def _bitrix24_send(
             "CALL_ID": registered["CALL_ID"],
             "USER_ID": user_id,
             "DURATION": record.duration,
-            "STATUS_CODE": B24_STATUS.get(record.call_status, 603),
+            "STATUS_CODE": _b24_status_code(record),
         },
     )
     attached = "none"
@@ -811,7 +828,7 @@ def _b24_finish_click_to_call(
                 "CALL_ID": command.b24_call_id,
                 "USER_ID": user_id,
                 "DURATION": record.duration,
-                "STATUS_CODE": B24_STATUS.get(record.call_status, 603),
+                "STATUS_CODE": _b24_status_code(record),
             },
         )
     except ProviderError:

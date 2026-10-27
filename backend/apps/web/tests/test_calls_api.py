@@ -68,6 +68,23 @@ class TestCallsListFilters:
         assert client.get(f"{CALLS_URL}?sim_slot=0").json()["count"] == 40
         assert client.get(f"{CALLS_URL}?sim_slot=1").json()["count"] == 0
 
+    def test_missed_vs_not_reached_status(self, client: APIClient, seeded: dict) -> None:
+        """missed = inbound no_answer, not_reached = outbound no_answer;
+        no_answer keeps meaning both."""
+        count = lambda q: client.get(f"{CALLS_URL}?{q}").json()["count"]  # noqa: E731
+        assert count("status=no_answer") == 19
+        assert count("status=missed") == 9
+        assert count("status=not_reached") == 10
+        rows = client.get(f"{CALLS_URL}?status=missed").json()["results"]
+        assert {(r["direction"], r["status"]) for r in rows} == {("inbound", "no_answer")}
+        rows = client.get(f"{CALLS_URL}?status=not_reached").json()["results"]
+        assert {(r["direction"], r["status"]) for r in rows} == {("outbound", "no_answer")}
+        # Combined with other filters: operator A → 2 missed, 6 not reached.
+        a_id = seeded["A"].pk
+        assert count(f"employees={a_id}&status=missed") == 2
+        assert count(f"employees={a_id}&status=not_reached") == 6
+        assert count("direction=outbound&status=missed") == 0
+
 
 class TestCallDetailAndDelete:
     def test_detail_includes_audio_urls(
@@ -222,3 +239,43 @@ class TestDashboard:
         )
         body = client.get("/api/web/v1/dashboard?period=today").json()
         assert [r["counterparty_number"] for r in body["unanswered_now"]] == [N4]
+
+    def test_missed_inbound_and_not_reached_kpis(self, client: APIClient, seeded: dict) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.calls.models import CallRecord
+
+        now = timezone.now()
+        for i, (op, call_type, number) in enumerate(
+            [
+                ("A", "inbound", N1),
+                ("A", "outbound", N4),
+                ("A", "outbound", N4),
+                ("B", "inbound", N4),
+            ]
+        ):
+            CallRecord.all_objects.create(
+                company=seeded[op].company,
+                operator=seeded[op],
+                call_id=f"kpi-{i}",
+                call_type=call_type,
+                call_status="no_answer",
+                from_number=number,
+                to_number="+998990000000",
+                counterparty_number=number,
+                duration=0,
+                start_time=now - timedelta(seconds=10 - i),
+            )
+        body = client.get("/api/web/v1/dashboard?period=today").json()
+        general = body["general"]
+        assert general["all"]["missed"] == 4
+        assert (general["all"]["missed_inbound"], general["all"]["not_reached"]) == (2, 2)
+        assert general["inbound"]["missed_inbound"] == 2 and general["outbound"]["not_reached"] == 2
+        rows = {r["user_name"]: r for r in body["per_operator"]}
+        assert (rows["op-a"]["missed"], rows["op-a"]["missed_inbound"]) == (3, 1)
+        assert rows["op-a"]["not_reached"] == 2
+        assert (rows["op-b"]["missed_inbound"], rows["op-b"]["not_reached"]) == (1, 0)
+        # Both clients called in and got no answer → both wait for a call-back.
+        assert {r["counterparty_number"] for r in body["unanswered_now"]} == {N1, N4}

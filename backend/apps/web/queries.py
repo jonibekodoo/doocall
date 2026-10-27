@@ -6,10 +6,11 @@ Python loops over full querysets (Phase-5 hard requirement).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from django.db.models import Count, Max, Q, QuerySet, Sum
+from django.db.models import Count, Exists, Max, OuterRef, Q, QuerySet, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.calls.models import CallRecord
@@ -19,10 +20,19 @@ ANSWERED = Q(call_status=CallRecord.CallStatus.ANSWERED)
 MISSED = Q(call_status=CallRecord.CallStatus.NO_ANSWER)
 INBOUND = Q(call_type=CallRecord.CallType.INBOUND)
 OUTBOUND = Q(call_type=CallRecord.CallType.OUTBOUND)
+# Product wording: "missed" (Пропущен / O'tkazib yuborilgan) = a CLIENT
+# called us and nobody answered; "not reached" (Не дозвонился / Javob
+# bermadi) = WE called the client and they didn't answer. MISSED (any
+# direction no_answer) stays for the legacy "missed" fields.
+MISSED_INBOUND = INBOUND & MISSED
+NOT_REACHED = OUTBOUND & MISSED
 # Same predicates spelled from a related model (OperatorProfile.call_records).
 ANSWERED_REL = Q(call_records__call_status=CallRecord.CallStatus.ANSWERED)
 MISSED_REL = Q(call_records__call_status=CallRecord.CallStatus.NO_ANSWER)
+MISSED_INBOUND_REL = MISSED_REL & Q(call_records__call_type=CallRecord.CallType.INBOUND)
+NOT_REACHED_REL = MISSED_REL & Q(call_records__call_type=CallRecord.CallType.OUTBOUND)
 
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 PERIODS = {"today": 0, "3d": 3, "7d": 7}
 
 
@@ -48,7 +58,11 @@ def scoped_calls(
 
 
 def direction_status_matrix(qs: QuerySet[CallRecord]) -> dict[str, Any]:
-    """all/in/out × total/answered/missed — one aggregate query."""
+    """all/in/out × total/answered/missed — one aggregate query.
+
+    Every block also carries ``missed_inbound`` (inbound no_answer) and
+    ``not_reached`` (outbound no_answer); ``missed`` keeps meaning any
+    direction no_answer for older clients."""
     agg = qs.aggregate(
         total=Count("id"),
         answered=Count("id", filter=ANSWERED),
@@ -66,16 +80,22 @@ def direction_status_matrix(qs: QuerySet[CallRecord]) -> dict[str, Any]:
             "total": agg["total"],
             "answered": agg["answered"],
             "missed": agg["missed"],
+            "missed_inbound": agg["in_missed"],
+            "not_reached": agg["out_missed"],
         },
         "inbound": {
             "total": agg["in_total"],
             "answered": agg["in_answered"],
             "missed": agg["in_missed"],
+            "missed_inbound": agg["in_missed"],
+            "not_reached": 0,
         },
         "outbound": {
             "total": agg["out_total"],
             "answered": agg["out_answered"],
             "missed": agg["out_missed"],
+            "missed_inbound": 0,
+            "not_reached": agg["out_missed"],
         },
         "total_duration_sec": agg["duration"] or 0,
     }
@@ -100,16 +120,34 @@ def latest_call_per_number(qs: QuerySet[CallRecord]) -> QuerySet[CallRecord]:
 
 
 def unanswered_now(qs: QuerySet[CallRecord]) -> QuerySet[CallRecord]:
-    """The §6.4 semantic: a number is 'unanswered' iff its LAST call is
-    no_answer — it drops off the list as soon as a successful call happens.
+    """Clients waiting for a call-back: a number is 'unanswered' iff its LAST
+    call is no_answer AND the client called us (INBOUND no_answer) since our
+    last answered call with them. It drops off as soon as a call is answered;
+    a failed call-back (outbound no_answer) keeps it on the list, while a
+    number we only called ourselves without reaching it never appears.
 
     Returns plain rows (no per-row subquery annotations — those blow the perf
     budget at 12k rows). Use :func:`unanswered_enrichment` on the bounded
     result page for last-success / attempt counts.
     """
+    number = OuterRef("counterparty_number")
+    last_answered = Subquery(
+        qs.filter(ANSWERED, counterparty_number=number)
+        .order_by("-start_time")
+        .values("start_time")[:1]
+    )
+    client_waiting = Exists(
+        qs.filter(
+            MISSED_INBOUND,
+            counterparty_number=number,
+            start_time__gt=OuterRef("last_answered_at"),
+        )
+    )
     return (
         latest_call_per_number(qs)
         .filter(call_status=CallRecord.CallStatus.NO_ANSWER)
+        .annotate(last_answered_at=Coalesce(last_answered, Value(EPOCH)))
+        .filter(client_waiting)
         .order_by("-start_time")
     )
 

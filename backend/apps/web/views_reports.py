@@ -51,6 +51,8 @@ class WeekdayMatrixView(CabinetView):
                 outbound=Count("id", filter=queries.OUTBOUND),
                 answered=Count("id", filter=queries.ANSWERED),
                 missed=Count("id", filter=queries.MISSED),
+                missed_inbound=Count("id", filter=queries.MISSED_INBOUND),
+                not_reached=Count("id", filter=queries.NOT_REACHED),
             )
             .order_by("weekday")
         )
@@ -72,6 +74,8 @@ class PeriodCountsView(CabinetView):
                 total=Count("counterparty_number", distinct=True) if unique else Count("id"),
                 answered=Count("id", filter=queries.ANSWERED),
                 missed=Count("id", filter=queries.MISSED),
+                missed_inbound=Count("id", filter=queries.MISSED_INBOUND),
+                not_reached=Count("id", filter=queries.NOT_REACHED),
             )
             .order_by("bucket")
         )
@@ -81,6 +85,8 @@ class PeriodCountsView(CabinetView):
                 "total": row["total"],
                 "answered": row["answered"],
                 "missed": row["missed"],
+                "missed_inbound": row["missed_inbound"],
+                "not_reached": row["not_reached"],
             }
             for row in qs
         ]
@@ -104,6 +110,8 @@ class PerEmployeeView(CabinetView):
                 outbound=Count("id", filter=queries.OUTBOUND),
                 answered=Count("id", filter=queries.ANSWERED),
                 missed=Count("id", filter=queries.MISSED),
+                missed_inbound=Count("id", filter=queries.MISSED_INBOUND),
+                not_reached=Count("id", filter=queries.NOT_REACHED),
                 duration_minutes=Round(Sum("duration") / 60.0, 1),
             )
             .order_by("-total")
@@ -123,6 +131,8 @@ class PerClientView(CabinetView):
                 total=Count("id"),
                 answered=Count("id", filter=queries.ANSWERED),
                 missed=Count("id", filter=queries.MISSED),
+                missed_inbound=Count("id", filter=queries.MISSED_INBOUND),
+                not_reached=Count("id", filter=queries.NOT_REACHED),
                 duration=Sum("duration"),
                 last_call=Max("start_time"),
             )
@@ -135,7 +145,9 @@ class PerClientView(CabinetView):
 
 
 class UnansweredReportView(CabinetView):
-    @extend_schema(summary="Unanswered clients — last call missed; drops off after a success")
+    @extend_schema(
+        summary="Unanswered clients — waiting for a call-back after an INBOUND missed call"
+    )
     def get(self, request: Request) -> Response:
         page_rows = list(queries.unanswered_now(base_qs(request))[:200])
         last_success, attempts = queries.unanswered_enrichment(page_rows)
