@@ -20,7 +20,12 @@ export interface RegisterResponse extends ApiEnvelope {
 export interface DirectionStats {
   total: number;
   answered: number;
+  /** All unanswered (legacy, kept by the backend). */
   missed: number;
+  /** Inbound unanswered — "O'tkazib yuborilgan" (new backend). */
+  missed_inbound?: number;
+  /** Outbound unanswered — "Javob bermadi" (new backend). */
+  not_reached?: number;
 }
 
 export interface DashboardResponse extends ApiEnvelope {
@@ -38,6 +43,8 @@ export interface DashboardResponse extends ApiEnvelope {
     total: number;
     answered: number;
     missed: number;
+    missed_inbound?: number;
+    not_reached?: number;
     duration: number;
   }>;
   latest_calls: CallRow[];

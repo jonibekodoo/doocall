@@ -75,7 +75,11 @@
     "detailTitle": "Qo'ng'iroq",
     "close": "Yopish",
     "notFound": "Qo'ng'iroq topilmadi",
-    "clearFilters": "Filtrni tozalash"
+    "clearFilters": "Filtrni tozalash",
+    "notReached": "Javob bermadi",
+    "statusMissedIn": "O'tkazib yuborilgan (kiruvchi)",
+    "statusNotReachedOut": "Javob bermadi (chiquvchi)",
+    "statusAllUnanswered": "Javobsiz (hammasi)"
   },
   "player": {
     "play": "Tinglash",
@@ -1246,7 +1250,9 @@
     "volume30": "Qo‘ng‘iroqlar hajmi (30 kun)",
     "answered": "Javob berilgan",
     "missed": "O‘tkazib yuborilgan",
-    "topOperators": "Eng faol operatorlar"
+    "topOperators": "Eng faol operatorlar",
+    "notReached": "Javob bermadi",
+    "answeredMissedNotReached": "{a} javob berilgan · {m} o‘tkazib yuborilgan · {n} javob bermadi"
   },
   "monitoring": {
     "badge": "Tez orada",
