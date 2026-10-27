@@ -28,7 +28,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { DirectionIcon } from "@/components/calls-shared";
+import { CallStatusBadge, DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import {
   CHART_COLORS,
@@ -51,6 +51,11 @@ import {
   fetchWeekdayMatrix,
   type ReportFilters,
 } from "@/lib/api/endpoints";
+import {
+  callOutcome,
+  splitByDirection,
+  splitUnanswered,
+} from "@/lib/call-status";
 import { formatDuration, formatPhone, humanizeAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -356,25 +361,30 @@ function GeneralView() {
     report.all.total > 0
       ? Math.round((report.all.answered / report.all.total) * 100)
       : 0;
+  // Inbound unanswered = missed, outbound unanswered = not reached.
+  const unanswered = splitByDirection(report);
   const donut = [
     { name: tCalls("answered"), value: report.all.answered },
-    { name: tCalls("missed"), value: report.all.missed },
+    { name: tCalls("missed"), value: unanswered.missed },
+    { name: tCalls("notReached"), value: unanswered.notReached },
   ];
   const directions = [
     {
       name: tCalls("inbound"),
       answered: report.inbound.answered,
       missed: report.inbound.missed,
+      notReached: 0,
     },
     {
       name: tCalls("outbound"),
       answered: report.outbound.answered,
-      missed: report.outbound.missed,
+      missed: 0,
+      notReached: report.outbound.missed,
     },
   ];
   return (
     <div data-testid="report-general" className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label={t("all")} value={report.all.total} />
         <StatCard
           label={tCalls("answered")}
@@ -384,8 +394,13 @@ function GeneralView() {
         />
         <StatCard
           label={tCalls("missed")}
-          value={report.all.missed}
+          value={unanswered.missed}
           tone="danger"
+        />
+        <StatCard
+          label={tCalls("notReached")}
+          value={unanswered.notReached}
+          tone="warning"
         />
         <StatCard
           label={tCalls("duration")}
@@ -409,6 +424,7 @@ function GeneralView() {
                 >
                   <Cell fill={CHART_COLORS.answered} />
                   <Cell fill={CHART_COLORS.missed} />
+                  <Cell fill={CHART_COLORS.notReached} />
                 </Pie>
               </PieChart>
             </ChartBox>
@@ -438,6 +454,12 @@ function GeneralView() {
                 name={tCalls("missed")}
                 radius={[6, 6, 0, 0]}
               />
+              <Bar
+                dataKey="notReached"
+                fill={CHART_COLORS.notReached}
+                name={tCalls("notReached")}
+                radius={[6, 6, 0, 0]}
+              />
             </BarChart>
           </ChartBox>
         </ReportCard>
@@ -457,11 +479,15 @@ function WeekdayView() {
   });
   if (isPending) return <Skeleton />;
   const labels = tReports("weekdaysShort").split(",");
-  const chartRows = (data?.report ?? []).map((row) => ({
-    name: labels[row.weekday - 1] ?? String(row.weekday),
-    answered: row.answered,
-    missed: row.missed,
-  }));
+  const chartRows = (data?.report ?? []).map((row) => {
+    const split = splitUnanswered(row);
+    return {
+      name: labels[row.weekday - 1] ?? String(row.weekday),
+      answered: row.answered,
+      missed: split.missed,
+      notReached: split.notReached ?? 0,
+    };
+  });
   return (
     <div className="space-y-4">
     <ReportCard title={<CardTitle>{tReports("weekdayMatrix")}</CardTitle>}>
@@ -482,6 +508,12 @@ function WeekdayView() {
             name={t("missed")}
             radius={[6, 6, 0, 0]}
           />
+          <Bar
+            dataKey="notReached"
+            fill={CHART_COLORS.notReached}
+            name={t("notReached")}
+            radius={[6, 6, 0, 0]}
+          />
         </BarChart>
       </ChartBox>
     </ReportCard>
@@ -497,6 +529,7 @@ function WeekdayView() {
           <th className="px-3 py-2 text-right">{t("outbound")}</th>
           <th className="px-3 py-2 text-right">{t("answered")}</th>
           <th className="px-3 py-2 text-right">{t("missed")}</th>
+          <th className="px-3 py-2 text-right">{t("notReached")}</th>
         </tr>
       </thead>
       <tbody>
@@ -512,7 +545,10 @@ function WeekdayView() {
               {row.answered}
             </td>
             <td className="tnum px-3 py-2 text-right text-danger">
-              {row.missed}
+              {splitUnanswered(row).missed}
+            </td>
+            <td className="tnum px-3 py-2 text-right text-warning">
+              {splitUnanswered(row).notReached ?? "—"}
             </td>
           </tr>
         ))}
@@ -650,7 +686,8 @@ function EmployeeView({ mode }: { mode: "distribution" | "am" | "duration" }) {
           data={rows.map((row) => ({
             name: row.full_name?.split(" ")[0] || row.user_name,
             answered: row.answered,
-            missed: row.missed,
+            missed: splitUnanswered(row).missed,
+            notReached: splitUnanswered(row).notReached ?? 0,
           }))}
         >
           <XAxis dataKey="name" {...chartAxisProps} interval={0} />
@@ -667,6 +704,12 @@ function EmployeeView({ mode }: { mode: "distribution" | "am" | "duration" }) {
             stackId="e"
             fill={CHART_COLORS.missed}
             name={tCalls("missed")}
+          />
+          <Bar
+            dataKey="notReached"
+            stackId="e"
+            fill={CHART_COLORS.notReached}
+            name={tCalls("notReached")}
           />
         </BarChart>
       </ChartContainer>
@@ -702,6 +745,7 @@ function EmployeeView({ mode }: { mode: "distribution" | "am" | "duration" }) {
 function ClientDistributionView() {
   const { filters, ready } = useReportFilters();
   const t = useTranslations("reports");
+  const tCalls = useTranslations("calls");
   const { data, isPending } = useQuery({
     queryKey: ["r-client", filters],
     queryFn: () => fetchPerClient(filters),
@@ -727,7 +771,12 @@ function ClientDistributionView() {
           <th className="px-3 py-2 text-left">Клиент</th>
           <th className="px-3 py-2 text-right">Все</th>
           <th className="px-3 py-2 text-right">✓</th>
-          <th className="px-3 py-2 text-right">✗</th>
+          <th className="px-3 py-2 text-right" title={tCalls("missed")}>
+            ✗ {tCalls("missed")}
+          </th>
+          <th className="px-3 py-2 text-right" title={tCalls("notReached")}>
+            ✗ {tCalls("notReached")}
+          </th>
           <th className="px-3 py-2 text-right">⏱</th>
         </tr>
       </thead>
@@ -746,7 +795,10 @@ function ClientDistributionView() {
               {row.answered}
             </td>
             <td className="tnum px-3 py-2 text-right text-danger">
-              {row.missed}
+              {splitUnanswered(row).missed}
+            </td>
+            <td className="tnum px-3 py-2 text-right text-warning">
+              {splitUnanswered(row).notReached ?? "—"}
             </td>
             <td className="tnum px-3 py-2 text-right">
               {formatDuration(row.duration)}
@@ -860,7 +912,10 @@ function LastContactView() {
           key={row.counterparty_number}
           className={cn(
             "flex items-center gap-2.5 px-4 py-2 text-sm",
-            row.status === "no_answer" && "bg-danger/5",
+            callOutcome(row.status, row.direction) === "missed" &&
+              "bg-danger/5",
+            callOutcome(row.status, row.direction) === "not_reached" &&
+              "bg-warning/5",
           )}
         >
           <DirectionIcon direction={row.direction} />
@@ -879,6 +934,7 @@ function LastContactView() {
               minute: "2-digit",
             })}
           </span>
+          <CallStatusBadge status={row.status} direction={row.direction} />
           <span className="tnum text-xs">{formatDuration(row.duration)}</span>
           {row.status === "answered" && (
             <CallAudioButton callId={row.call_record_id} />

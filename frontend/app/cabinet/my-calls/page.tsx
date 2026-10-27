@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { DirectionIcon } from "@/components/calls-shared";
+import { CallStatusBadge, DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pagination } from "@/components/ui/Pagination";
@@ -54,6 +54,13 @@ export default function MyCallsPage() {
         row.counterparty_name ?? (
           <span className="tnum">{formatPhone(row.counterparty_number)}</span>
         ),
+    },
+    {
+      key: "status",
+      header: t("status"),
+      cell: (row) => (
+        <CallStatusBadge status={row.status} direction={row.direction} />
+      ),
     },
     {
       key: "duration",

@@ -11,7 +11,11 @@ import { useState } from "react";
 import { Bar, BarChart, LabelList, Tooltip, XAxis, YAxis } from "recharts";
 
 import { CallAudioButton } from "@/components/CallAudioButton";
-import { DirectionIcon, directionBars } from "@/components/calls-shared";
+import {
+  CallStatusBadge,
+  DirectionIcon,
+  directionBars,
+} from "@/components/calls-shared";
 import {
   CHART_COLORS,
   ChartBox,
@@ -23,6 +27,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { fetchDashboard } from "@/lib/api/endpoints";
 import type { CallRow } from "@/lib/api/types";
 import { formatDuration, formatPhone } from "@/lib/format";
+import { splitByDirection, splitUnanswered } from "@/lib/call-status";
 import { cn } from "@/lib/utils";
 
 const PERIODS = ["today", "3d", "7d"] as const;
@@ -76,6 +81,11 @@ function CallsMiniTable({
                   minute: "2-digit",
                 })}
               </span>
+              <CallStatusBadge
+                status={call.status}
+                direction={call.direction}
+                className="shrink-0"
+              />
               <span className="tnum shrink-0 text-xs text-fg-muted">
                 {formatDuration(call.duration)}
               </span>
@@ -104,6 +114,7 @@ export default function CabinetHome() {
   });
 
   const bars = data ? directionBars(data.general) : [];
+  const unanswered = data ? splitByDirection(data.general) : null;
   const operators = data?.per_operator ?? [];
 
   return (
@@ -177,7 +188,7 @@ export default function CabinetHome() {
       ) : data ? (
         <>
           {/* KPI summary row */}
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <StatCard label={tDash("kTotal")} value={data.general.all.total} />
             <StatCard
               label={tCalls("answered")}
@@ -193,8 +204,13 @@ export default function CabinetHome() {
             />
             <StatCard
               label={tCalls("missed")}
-              value={data.general.all.missed}
+              value={unanswered?.missed ?? 0}
               tone="danger"
+            />
+            <StatCard
+              label={tCalls("notReached")}
+              value={unanswered?.notReached ?? 0}
+              tone="warning"
             />
             <StatCard
               label={tCalls("duration")}
@@ -232,6 +248,12 @@ export default function CabinetHome() {
                 stackId="a"
                 fill={CHART_COLORS.missed}
                 name={tCalls("missed")}
+              />
+              <Bar
+                dataKey="notReached"
+                stackId="a"
+                fill={CHART_COLORS.notReached}
+                name={tCalls("notReached")}
                 radius={[0, 6, 6, 0]}
               >
                 <LabelList
@@ -251,12 +273,16 @@ export default function CabinetHome() {
             <BarChart
               data={[...operators]
                 .sort((a, b) => b.total - a.total)
-                .map((op) => ({
-                  name: op.full_name?.split(" ")[0] || op.user_name,
-                  answered: op.answered,
-                  missed: op.missed,
-                  total: op.total,
-                }))}
+                .map((op) => {
+                  const split = splitUnanswered(op);
+                  return {
+                    name: op.full_name?.split(" ")[0] || op.user_name,
+                    answered: op.answered,
+                    missed: split.missed,
+                    notReached: split.notReached ?? 0,
+                    total: op.total,
+                  };
+                })}
               margin={{ top: 18 }}
             >
               <XAxis dataKey="name" {...chartAxisProps} interval={0} />
@@ -273,6 +299,12 @@ export default function CabinetHome() {
                 stackId="o"
                 fill={CHART_COLORS.missed}
                 name={tCalls("missed")}
+              />
+              <Bar
+                dataKey="notReached"
+                stackId="o"
+                fill={CHART_COLORS.notReached}
+                name={tCalls("notReached")}
                 radius={[6, 6, 0, 0]}
               >
                 <LabelList

@@ -31,12 +31,15 @@ import {
   chartAxisProps,
   chartTooltipStyle,
 } from "@/components/charts/theme";
+import { splitUnanswered } from "@/lib/call-status";
 import { formatDuration } from "@/lib/format";
 
 export interface CompanyStatsData {
   total_calls: number;
   answered: number;
   missed: number;
+  missed_inbound?: number;
+  not_reached?: number;
   answer_rate: number;
   inbound: number;
   outbound: number;
@@ -50,6 +53,8 @@ export interface CompanyStatsData {
     total: number;
     answered: number;
     missed: number;
+    missed_inbound?: number;
+    not_reached?: number;
   }>;
   top_operators?: Array<{
     id: number;
@@ -102,14 +107,28 @@ export function CompanyStats({ stats }: { stats: CompanyStatsData }) {
     );
   }
 
+  // Missed (inbound unanswered) vs not reached (outbound unanswered) when the
+  // backend sends the split; otherwise all unanswered show as missed.
+  const unanswered = splitUnanswered(stats);
   const series = stats.daily_series.map((d) => {
     const [, m, day] = d.date.split("-");
-    return { d: `${Number(m)}/${Number(day)}`, answered: d.answered, missed: d.missed };
+    const split = splitUnanswered(d);
+    return {
+      d: `${Number(m)}/${Number(day)}`,
+      answered: d.answered,
+      missed: split.missed,
+      notReached: split.notReached ?? 0,
+    };
   });
 
   const donut = [
     { name: t("answered"), value: stats.answered, color: CHART_COLORS.answered },
-    { name: t("missed"), value: stats.missed, color: CHART_COLORS.missed },
+    { name: t("missed"), value: unanswered.missed, color: CHART_COLORS.missed },
+    {
+      name: t("notReached"),
+      value: unanswered.notReached ?? 0,
+      color: CHART_COLORS.notReached,
+    },
   ].filter((s) => s.value > 0);
 
   const maxOp = Math.max(1, ...(stats.top_operators ?? []).map((o) => o.calls));
@@ -130,10 +149,18 @@ export function CompanyStats({ stats }: { stats: CompanyStatsData }) {
           icon={<PhoneMissed className="size-4" />}
           label={t("answerRate")}
           value={`${stats.answer_rate}%`}
-          sub={t("answeredMissed", {
-            a: stats.answered.toLocaleString(),
-            m: stats.missed.toLocaleString(),
-          })}
+          sub={
+            unanswered.notReached === null
+              ? t("answeredMissed", {
+                  a: stats.answered.toLocaleString(),
+                  m: unanswered.missed.toLocaleString(),
+                })
+              : t("answeredMissedNotReached", {
+                  a: stats.answered.toLocaleString(),
+                  m: unanswered.missed.toLocaleString(),
+                  n: unanswered.notReached.toLocaleString(),
+                })
+          }
           tone={stats.answer_rate < 50 ? "danger" : "accent"}
         />
         <Tile
@@ -245,6 +272,10 @@ export function CompanyStats({ stats }: { stats: CompanyStatsData }) {
                   <stop offset="0%" stopColor={CHART_COLORS.missed} stopOpacity={0.3} />
                   <stop offset="100%" stopColor={CHART_COLORS.missed} stopOpacity={0.02} />
                 </linearGradient>
+                <linearGradient id="csNotReached" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={CHART_COLORS.notReached} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={CHART_COLORS.notReached} stopOpacity={0.02} />
+                </linearGradient>
               </defs>
               <XAxis dataKey="d" {...chartAxisProps} interval={6} />
               <YAxis {...chartAxisProps} width={32} allowDecimals={false} />
@@ -269,6 +300,18 @@ export function CompanyStats({ stats }: { stats: CompanyStatsData }) {
                 fill="url(#csMissed)"
                 dot={false}
               />
+              {unanswered.notReached !== null && (
+                <Area
+                  type="monotone"
+                  stackId="1"
+                  dataKey="notReached"
+                  name={t("notReached")}
+                  stroke={CHART_COLORS.notReached}
+                  strokeWidth={2}
+                  fill="url(#csNotReached)"
+                  dot={false}
+                />
+              )}
             </AreaChart>
           </ChartBox>
         </ReportCard>

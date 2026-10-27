@@ -12,7 +12,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import { CallAiBadge } from "@/app/cabinet/ai/ai-shared";
 import { AudioPlayer } from "@/components/AudioPlayer";
-import { DirectionIcon } from "@/components/calls-shared";
+import { CallStatusBadge, DirectionIcon } from "@/components/calls-shared";
 import { RemoteDialButton } from "@/components/RemoteDialButton";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import { CallMapButton } from "@/components/CallMapButton";
@@ -179,7 +179,14 @@ function CallDrawer({
           </span>,
         ],
         [t("operator"), call.operator_name ?? "—"],
-        [t("status"), call.status === "answered" ? t("answered") : t("missed")],
+        [
+          t("status"),
+          <CallStatusBadge
+            key="s"
+            status={call.status}
+            direction={call.direction}
+          />,
+        ],
         [
           t("duration"),
           <span key="u" className="tnum">
@@ -461,15 +468,7 @@ function CallsInner() {
       key: "status",
       header: t("status"),
       cell: (row) => (
-        <span
-          className={
-            row.status === "answered"
-              ? "rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent"
-              : "rounded-full bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger"
-          }
-        >
-          {row.status === "answered" ? t("answered") : t("missed")}
-        </span>
+        <CallStatusBadge status={row.status} direction={row.direction} />
       ),
     },
     {
@@ -596,7 +595,9 @@ function CallsInner() {
             options={[
               { value: "", label: t("status") },
               { value: "answered", label: t("answered") },
-              { value: "no_answer", label: t("missed") },
+              { value: "missed", label: t("statusMissedIn") },
+              { value: "not_reached", label: t("statusNotReachedOut") },
+              { value: "no_answer", label: t("statusAllUnanswered") },
             ]}
           />
           <input

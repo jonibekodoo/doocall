@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import { DirectionIcon } from "@/components/calls-shared";
+import { CallStatusBadge, DirectionIcon } from "@/components/calls-shared";
 import { CallAudioButton } from "@/components/CallAudioButton";
 import { RemoteDialButton } from "@/components/RemoteDialButton";
 import { Pagination, usePagination } from "@/components/ui/Pagination";
@@ -75,6 +75,7 @@ export default function ContactCardPage() {
             <span className="tnum min-w-0 flex-1 truncate text-xs text-fg-muted">
               {new Date(call.start_time).toLocaleString("ru-RU")}
             </span>
+            <CallStatusBadge status={call.status} direction={call.direction} />
             <span className="tnum text-xs">
               {formatDuration(call.duration)}
             </span>
