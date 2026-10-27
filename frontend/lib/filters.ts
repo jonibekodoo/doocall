@@ -5,7 +5,9 @@ export interface CallFilters {
   dateFrom?: string; // YYYY-MM-DD
   dateTo?: string;
   direction?: "inbound" | "outbound";
-  status?: "answered" | "no_answer";
+  /** missed = inbound unanswered, not_reached = outbound unanswered,
+   * no_answer = every unanswered call. */
+  status?: "answered" | "missed" | "not_reached" | "no_answer";
   search?: string;
   minDuration?: number;
   simSlot?: number;

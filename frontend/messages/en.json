@@ -75,7 +75,11 @@
     "detailTitle": "Call",
     "close": "Close",
     "notFound": "Call not found",
-    "clearFilters": "Clear filters"
+    "clearFilters": "Clear filters",
+    "notReached": "No answer",
+    "statusMissedIn": "Missed (inbound)",
+    "statusNotReachedOut": "No answer (outbound)",
+    "statusAllUnanswered": "Unanswered (all)"
   },
   "player": {
     "play": "Play",
@@ -1246,7 +1250,9 @@
     "volume30": "Call volume (30 days)",
     "answered": "Answered",
     "missed": "Missed",
-    "topOperators": "Top operators"
+    "topOperators": "Top operators",
+    "notReached": "No answer",
+    "answeredMissedNotReached": "{a} answered · {m} missed · {n} no answer"
   },
   "monitoring": {
     "badge": "Coming soon",

@@ -44,26 +44,40 @@ describe("dashboard stat mapping (directionBars)", () => {
   it("maps the API payload to three stacked rows preserving totals", () => {
     const bars = directionBars(general);
     expect(bars).toHaveLength(3);
+    // Inbound unanswered = missed, outbound unanswered = not reached.
     expect(bars[0]).toEqual({
       key: "all",
       answered: 21,
-      missed: 19,
+      missed: 9,
+      notReached: 10,
       total: 40,
     });
     expect(bars[1]).toEqual({
       key: "inbound",
       answered: 10,
       missed: 9,
+      notReached: 0,
       total: 19,
     });
     expect(bars[2]).toEqual({
       key: "outbound",
       answered: 11,
-      missed: 10,
+      missed: 0,
+      notReached: 10,
       total: 21,
     });
-    // answered + missed must always reconstruct the total (stacked bars).
-    for (const bar of bars) expect(bar.answered + bar.missed).toBe(bar.total);
+    // answered + missed + notReached always reconstructs the total.
+    for (const bar of bars) {
+      expect(bar.answered + bar.missed + bar.notReached).toBe(bar.total);
+    }
+  });
+
+  it("uses the backend split (missed_inbound / not_reached) when present", () => {
+    const bars = directionBars({
+      ...general,
+      all: { ...general.all, missed_inbound: 8, not_reached: 11 },
+    });
+    expect(bars[0]).toMatchObject({ missed: 8, notReached: 11 });
   });
 });
 

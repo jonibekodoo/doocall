@@ -75,7 +75,11 @@
     "detailTitle": "Звонок",
     "close": "Закрыть",
     "notFound": "Звонок не найден",
-    "clearFilters": "Сбросить фильтры"
+    "clearFilters": "Сбросить фильтры",
+    "notReached": "Не дозвонился",
+    "statusMissedIn": "Пропущен (входящий)",
+    "statusNotReachedOut": "Не дозвонился (исходящий)",
+    "statusAllUnanswered": "Без ответа (все)"
   },
   "player": {
     "play": "Слушать",
@@ -1246,7 +1250,9 @@
     "volume30": "Объём звонков (30 дней)",
     "answered": "Отвечено",
     "missed": "Пропущено",
-    "topOperators": "Лучшие операторы"
+    "topOperators": "Лучшие операторы",
+    "notReached": "Не дозвонились",
+    "answeredMissedNotReached": "{a} отвечено · {m} пропущено · {n} не дозвонились"
   },
   "monitoring": {
     "badge": "Скоро",

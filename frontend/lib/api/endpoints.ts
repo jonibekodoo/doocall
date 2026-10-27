@@ -6,6 +6,7 @@ const patchJson = <T>(path: string, data: unknown) =>
   api<T>(path, { method: "PATCH", body: JSON.stringify(data) });
 import type {
   ApiEnvelope,
+  DirectionStats,
   DialCommandState,
   DialDevice,
   BillingStatusResponse,
@@ -117,9 +118,9 @@ export const reportQuery = (
 };
 
 export interface GeneralReport {
-  all: { total: number; answered: number; missed: number };
-  inbound: { total: number; answered: number; missed: number };
-  outbound: { total: number; answered: number; missed: number };
+  all: DirectionStats;
+  inbound: DirectionStats;
+  outbound: DirectionStats;
   total_duration_sec: number;
 }
 export const fetchGeneralReport = (filters: ReportFilters = {}) =>
@@ -134,6 +135,8 @@ export interface WeekdayRow {
   outbound: number;
   answered: number;
   missed: number;
+  missed_inbound?: number;
+  not_reached?: number;
 }
 export const fetchWeekdayMatrix = (filters: ReportFilters = {}) =>
   get<{ success: boolean; report: WeekdayRow[] }>(
@@ -145,6 +148,8 @@ export interface PeriodRow {
   total: number;
   answered: number;
   missed: number;
+  missed_inbound?: number;
+  not_reached?: number;
 }
 export const fetchPeriodCounts = (
   group: string,
@@ -164,6 +169,8 @@ export interface EmployeeRow {
   outbound: number;
   answered: number;
   missed: number;
+  missed_inbound?: number;
+  not_reached?: number;
   duration_minutes: number;
 }
 export const fetchPerEmployee = (filters: ReportFilters = {}) =>
@@ -177,6 +184,8 @@ export interface ClientRow {
   total: number;
   answered: number;
   missed: number;
+  missed_inbound?: number;
+  not_reached?: number;
   duration: number;
   last_call: string;
 }

@@ -9,7 +9,7 @@ export function StatCard({
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
-  tone?: "default" | "accent" | "danger";
+  tone?: "default" | "accent" | "danger" | "warning";
 }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-4 shadow-sm">
@@ -21,6 +21,7 @@ export function StatCard({
           "tnum mt-1 text-2xl font-semibold",
           tone === "accent" && "text-accent",
           tone === "danger" && "text-danger",
+          tone === "warning" && "text-warning",
         )}
       >
         {value}

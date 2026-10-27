@@ -8,6 +8,8 @@ import { ResponsiveContainer } from "recharts";
 export const CHART_COLORS = {
   answered: "var(--accent)",
   missed: "var(--danger-500)",
+  /** Outbound unanswered ("Javob bermadi") — amber, distinct from missed. */
+  notReached: "var(--warning)",
   inbound: "var(--accent-400)",
   outbound: "var(--accent-700)",
   grid: "var(--border)",
