@@ -6,6 +6,7 @@ const patchJson = <T>(path: string, data: unknown) =>
   api<T>(path, { method: "PATCH", body: JSON.stringify(data) });
 import type {
   ApiEnvelope,
+  WebhookDeliveryStatus,
   DirectionStats,
   DialCommandState,
   DialDevice,
@@ -520,9 +521,20 @@ export const rotateApiKey = () =>
   post<{ success: boolean; api_key: string }>("/settings/api-key");
 
 export const fetchWebhook = () =>
-  get<{ success: boolean; webhook_url: string | null; secret_set: boolean }>(
-    "/settings/webhook",
-  );
+  get<
+    {
+      success: boolean;
+      webhook_url: string | null;
+      secret_set: boolean;
+      /** Last 4 characters of the signing secret (the rest is never sent). */
+      secret_hint?: string | null;
+    } & Partial<WebhookDeliveryStatus>
+  >("/settings/webhook");
+
+/** New signing secret — returned once, never retrievable again. 429 when
+ * rotated too often. */
+export const rotateWebhookSecret = () =>
+  post<{ success: boolean; secret: string }>("/settings/webhook/rotate-secret");
 export const saveWebhook = (url: string) =>
   put<{ success: boolean; webhook_url: string | null; secret: string | null }>(
     "/settings/webhook",

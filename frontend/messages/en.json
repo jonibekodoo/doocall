@@ -321,7 +321,18 @@
     "webhookErr_error": "unknown error",
     "apiDial": "Allow Remote Dial via the API",
     "apiDialWarning": "When on, any system holding the API key (calls.dial) can start a call from an operator's phone — the operator confirms every call on the phone. Keep the API key secret and turn this off when you don't need it.",
-    "apiDialDocs": "Remote Dial API documentation"
+    "apiDialDocs": "Remote Dial API documentation",
+    "webhookSecretLabel": "Signing secret",
+    "webhookSecretNone": "not set",
+    "webhookSecretRotate": "Rotate secret",
+    "webhookSecretRotateConfirm": "The old secret stops working immediately — update it in the receiving system too",
+    "webhookSecretOnce": "This secret is shown only now — copy it and store it in the receiving system.",
+    "webhookSecretCopy": "Copy",
+    "webhookSecretCopied": "Secret copied",
+    "webhookSecretCopyFailed": "Couldn't copy — select the secret manually",
+    "webhookSecretRateLimited": "The secret is being rotated too often — please wait a moment and try again.",
+    "webhookSignatureHelp": "Signature: X-Doocall-Signature = HMAC-SHA256(secret, request body), hex.",
+    "webhookSignatureDocs": "Verification examples"
   },
   "ai": {
     "badge": "Artificial intelligence",

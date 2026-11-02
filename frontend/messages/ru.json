@@ -321,7 +321,18 @@
     "webhookErr_error": "неизвестная ошибка",
     "apiDial": "Разрешить удалённый звонок через API",
     "apiDialWarning": "Если включено, любая система с API-ключом (calls.dial) может начать звонок с телефона оператора — каждый звонок оператор подтверждает на телефоне. Храните API-ключ в секрете и выключайте опцию, если она не нужна.",
-    "apiDialDocs": "Документация API удалённого звонка"
+    "apiDialDocs": "Документация API удалённого звонка",
+    "webhookSecretLabel": "Ключ подписи",
+    "webhookSecretNone": "не задан",
+    "webhookSecretRotate": "Обновить ключ",
+    "webhookSecretRotateConfirm": "Старый ключ сразу перестанет работать — обновите ключ и в принимающей системе",
+    "webhookSecretOnce": "Ключ показывается только сейчас — скопируйте его и сохраните в принимающей системе.",
+    "webhookSecretCopy": "Копировать",
+    "webhookSecretCopied": "Ключ скопирован",
+    "webhookSecretCopyFailed": "Не удалось скопировать — выделите ключ вручную",
+    "webhookSecretRateLimited": "Ключ обновляется слишком часто — подождите немного и попробуйте снова.",
+    "webhookSignatureHelp": "Подпись: X-Doocall-Signature = HMAC-SHA256(ключ, тело запроса), hex.",
+    "webhookSignatureDocs": "Примеры проверки"
   },
   "ai": {
     "badge": "Искусственный интеллект",

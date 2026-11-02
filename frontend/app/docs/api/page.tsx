@@ -49,6 +49,12 @@ interface Strings {
   recordsBody: string;
   webhooksBody1: string;
   webhooksBody2: string;
+  sig: {
+    title: string;
+    intro: string;
+    steps: string[];
+    rotate: string;
+  };
   limits: string[];
   footer: string;
   responseComment: string;
@@ -199,6 +205,18 @@ const RU: Strings = {
     "Укажите URL приёмника в кабинете (Настройки → Интеграция → Webhook). При каждом новом звонке DooCall отправит POST-запрос:",
   webhooksBody2:
     "Секрет подписи выдаётся один раз при первом сохранении URL. Проверяйте заголовок X-Doocall-Signature — это HMAC-SHA256 от «сырого» тела запроса. Ожидается ответ 2xx; при ошибке доставка повторяется до 3 раз с нарастающей задержкой.",
+  sig: {
+    title: "Проверка подписи",
+    intro:
+      "Каждый запрос содержит заголовок X-Doocall-Signature — HMAC-SHA256 от «сырого» (неизменённого) тела запроса с вашим ключом подписи, в виде hex (без префикса).",
+    steps: [
+      "Считайте подпись по сырым байтам тела до разбора JSON — пересериализованный JSON даст другую подпись.",
+      "Сравнивайте подписи функцией с постоянным временем (compare_digest / hash_equals / timingSafeEqual).",
+      "Если подпись не совпала — верните 401 и не обрабатывайте запрос.",
+    ],
+    rotate:
+      "Ключ можно сменить в кабинете (Настройки → Интеграция → Webhook → «Обновить ключ»): новый ключ показывается один раз, старый сразу перестаёт действовать.",
+  },
   limits: [
     "До 120 запросов в минуту на аккаунт (HTTP 429 при превышении).",
     "limit в calls.list — не более 200.",
@@ -441,6 +459,18 @@ const UZ: Strings = {
     "Qabul qiluvchi URL'ni kabinetda ko'rsating (Sozlamalar → Integratsiya → Webhook). Har bir yangi qo'ng'iroqda DooCall POST so'rov yuboradi:",
   webhooksBody2:
     "Imzo siri URL birinchi marta saqlanganda bir marta beriladi. X-Doocall-Signature sarlavhasini tekshiring — bu so'rovning «xom» tanasidan olingan HMAC-SHA256. 2xx javob kutiladi; xatoda yetkazish ortib boruvchi kechikish bilan 3 martagacha takrorlanadi.",
+  sig: {
+    title: "Imzoni tekshirish",
+    intro:
+      "Har bir so'rovda X-Doocall-Signature sarlavhasi keladi — imzo kalitingiz bilan so'rovning xom (o'zgartirilmagan) tanasidan hisoblangan HMAC-SHA256, hex ko'rinishida (prefikssiz).",
+    steps: [
+      "Imzoni JSON'ni tahlil qilishdan oldin xom baytlar bo'yicha hisoblang — qayta seriyalangan JSON boshqa imzo beradi.",
+      "Imzolarni vaqtga bog'liq bo'lmagan funksiya bilan solishtiring (compare_digest / hash_equals / timingSafeEqual).",
+      "Imzo mos kelmasa — 401 qaytaring va so'rovni qayta ishlamang.",
+    ],
+    rotate:
+      "Kalitni kabinetda almashtirish mumkin (Sozlamalar → Integratsiya → Webhook → «Kalitni yangilash»): yangi kalit faqat bir marta ko'rsatiladi, eskisi darhol ishlamay qoladi.",
+  },
   limits: [
     "Akkaunt uchun daqiqasiga 120 tagacha so'rov (oshsa HTTP 429).",
     "calls.list dagi limit — ko'pi bilan 200.",
@@ -680,6 +710,18 @@ const EN: Strings = {
     "Set the receiver URL in the cabinet (Settings → Integration → Webhook). On every new call DooCall sends a POST request:",
   webhooksBody2:
     "The signing secret is shown once when the URL is first saved. Verify the X-Doocall-Signature header — an HMAC-SHA256 of the raw request body. A 2xx response is expected; on failure delivery retries up to 3 times with backoff.",
+  sig: {
+    title: "Verifying the signature",
+    intro:
+      "Every request carries the X-Doocall-Signature header — HMAC-SHA256 of the raw (unmodified) request body with your signing secret, hex-encoded (no prefix).",
+    steps: [
+      "Compute it over the raw body bytes before parsing JSON — re-serialised JSON produces a different signature.",
+      "Compare signatures with a constant-time function (compare_digest / hash_equals / timingSafeEqual).",
+      "If the signature doesn't match, answer 401 and don't process the request.",
+    ],
+    rotate:
+      "You can rotate the secret in the cabinet (Settings → Integration → Webhook → “Rotate secret”): the new secret is shown once and the old one stops working immediately.",
+  },
   limits: [
     "Up to 120 requests per minute per account (HTTP 429 above that).",
     "limit in calls.list — at most 200.",
@@ -1054,6 +1096,60 @@ X-Doocall-Signature: hmac_sha256(secret, raw_body)   // hex
   "received_at": "2026-09-01T12:43:02+00:00"
 }`}</Code>
           <p className="text-sm leading-relaxed">{l.webhooksBody2}</p>
+
+          <div id="webhook-signature" className="scroll-mt-20">
+            <SubTitle>{l.sig.title}</SubTitle>
+            <p className="text-sm leading-relaxed">{l.sig.intro}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+              {l.sig.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs font-semibold uppercase text-fg-muted">
+              Python
+            </p>
+            <Code>{`import hashlib
+import hmac
+
+
+def is_valid(secret: str, raw_body: bytes, signature: str) -> bool:
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature or "")
+
+# Django:  is_valid(SECRET, request.body, request.headers.get("X-Doocall-Signature", ""))
+# Flask:   is_valid(SECRET, request.get_data(), request.headers.get("X-Doocall-Signature", ""))`}</Code>
+            <p className="text-xs font-semibold uppercase text-fg-muted">PHP</p>
+            <Code>{`<?php
+$raw = file_get_contents('php://input');
+$signature = $_SERVER['HTTP_X_DOOCALL_SIGNATURE'] ?? '';
+$expected = hash_hmac('sha256', $raw, $secret);
+
+if (!hash_equals($expected, $signature)) {
+    http_response_code(401);
+    exit;
+}
+$event = json_decode($raw, true);`}</Code>
+            <p className="text-xs font-semibold uppercase text-fg-muted">
+              Node.js (Express)
+            </p>
+            <Code>{`const crypto = require("crypto");
+
+app.post("/hook", express.raw({ type: "application/json" }), (req, res) => {
+  const expected = crypto
+    .createHmac("sha256", SECRET)
+    .update(req.body) // raw Buffer, not parsed JSON
+    .digest("hex");
+  const got = req.get("X-Doocall-Signature") || "";
+  const ok =
+    got.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+  if (!ok) return res.sendStatus(401);
+
+  const event = JSON.parse(req.body.toString("utf8"));
+  res.sendStatus(200);
+});`}</Code>
+            <p className="text-sm text-fg-muted">{l.sig.rotate}</p>
+          </div>
         </Section>
 
         <Section id="remote-dial" title={l.toc["remote-dial"]}>

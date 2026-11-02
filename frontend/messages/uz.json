@@ -321,7 +321,18 @@
     "webhookErr_error": "noma'lum xato",
     "apiDial": "API orqali masofaviy qo'ng'iroqqa ruxsat",
     "apiDialWarning": "Yoqilsa, API kalitga ega har qanday tizim (calls.dial) operatorlar telefonidan qo'ng'iroq boshlashi mumkin — har bir qo'ng'iroqni operator telefonda tasdiqlaydi. API kalitni sir saqlang va kerak bo'lmasa o'chirib qo'ying.",
-    "apiDialDocs": "Masofaviy qo'ng'iroq API hujjati"
+    "apiDialDocs": "Masofaviy qo'ng'iroq API hujjati",
+    "webhookSecretLabel": "Imzo kaliti",
+    "webhookSecretNone": "o'rnatilmagan",
+    "webhookSecretRotate": "Kalitni yangilash",
+    "webhookSecretRotateConfirm": "Eski kalit darhol ishlamay qoladi — qabul qiluvchi tizimdagi kalitni ham yangilang",
+    "webhookSecretOnce": "Bu kalit faqat hozir ko'rsatiladi — nusxalab, qabul qiluvchi tizimga saqlang.",
+    "webhookSecretCopy": "Nusxa olish",
+    "webhookSecretCopied": "Kalit nusxalandi",
+    "webhookSecretCopyFailed": "Nusxa olib bo'lmadi — kalitni qo'lda belgilang",
+    "webhookSecretRateLimited": "Kalit juda tez-tez yangilanmoqda — biroz kutib, qayta urinib ko'ring.",
+    "webhookSignatureHelp": "Imzo: X-Doocall-Signature = HMAC-SHA256(kalit, so'rov tanasi), hex.",
+    "webhookSignatureDocs": "Tekshirish misollari"
   },
   "ai": {
     "badge": "Sun'iy intellekt",
