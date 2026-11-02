@@ -81,7 +81,8 @@ Performance guard (12k rows, local run): every endpoint 2–97ms, budget 300ms
 | `DELETE /settings/devices/<id>` | **[admin]** |
 | `GET/PUT /settings/account` | **[admin]** toggles: `contact_import_enabled`, `recording_enabled`, `pin_enabled` |
 | `GET/POST /settings/api-key` | **[admin]** company API key: masked view / generate+rotate (returned once) |
-| `GET/PUT /settings/webhook` | **[admin]** webhook URL; HMAC secret generated on first set (returned once) |
+| `GET/PUT /settings/webhook` | **[admin]** webhook URL; HMAC secret generated on first set (returned once). GET never returns the secret: `secret_set` (bool) + `secret_hint` (last 4 chars, or `null`) |
+| `POST /settings/webhook/rotate-secret` | **[admin]** new secret (`secrets.token_hex(32)`, 64 hex chars) → `{success: true, secret: "<new>"}` — the **only** time it is shown; the old secret stops working at once. 5 per company per hour (`429` after). Audited as `settings.webhook_secret_rotated` (no secret in the log). Works before a URL is set; a later first URL save then keeps it |
 | `POST /settings/webhook/test` | **[admin]** signed test delivery |
 | `GET /settings/license` | trial countdown OR period dates, live `seats × price = total_uzs`, payment history |
 
@@ -91,6 +92,58 @@ When `webhook_url` is set, every accepted mobile upload enqueues a signed
 POST (after DB commit): JSON body `{event: "call.received", call_id,
 server_id, …}` with header **`X-Doocall-Signature`** =
 HMAC-SHA256(webhook_secret, raw body). 3 retries with backoff.
+
+### Verifying `X-Doocall-Signature` (receiver side)
+
+The header is the **lowercase hex** HMAC-SHA256 of the **exact raw request
+body bytes**, keyed with the webhook secret (the 64-char string from
+`rotate-secret` or the first URL save, used as-is as UTF-8 text — not
+hex-decoded). No prefix, no timestamp. Compute it over the body *before*
+any JSON parsing (re-serialising changes the bytes) and compare in
+constant time. Lost the secret? Rotate it in the cabinet and update the
+receiver; `POST /settings/webhook/test` sends a signed `{"event": "test",
+…}` delivery to check the setup.
+
+Python (Django / Flask):
+
+```python
+import hashlib, hmac
+
+def doocall_signature_ok(secret: str, raw_body: bytes, header: str) -> bool:
+    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, (header or "").strip().lower())
+
+# Django: doocall_signature_ok(SECRET, request.body, request.headers.get("X-Doocall-Signature", ""))
+# Flask:  doocall_signature_ok(SECRET, request.get_data(), request.headers.get("X-Doocall-Signature", ""))
+```
+
+PHP:
+
+```php
+$raw = file_get_contents('php://input');
+$given = strtolower(trim($_SERVER['HTTP_X_DOOCALL_SIGNATURE'] ?? ''));
+$expected = hash_hmac('sha256', $raw, $secret);
+if (!hash_equals($expected, $given)) {
+    http_response_code(401);
+    exit;
+}
+$event = json_decode($raw, true);
+```
+
+Node.js (Express — keep the raw body):
+
+```js
+const crypto = require("crypto");
+app.post("/doocall", express.raw({ type: "application/json" }), (req, res) => {
+  const expected = crypto.createHmac("sha256", SECRET).update(req.body).digest("hex");
+  const given = String(req.get("X-Doocall-Signature") || "").trim().toLowerCase();
+  const ok = given.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expected));
+  if (!ok) return res.sendStatus(401);
+  const event = JSON.parse(req.body.toString("utf8"));
+  res.sendStatus(200);
+});
+```
 
 ## Remote Dial for integrations
 
