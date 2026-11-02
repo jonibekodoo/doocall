@@ -348,6 +348,7 @@ def test_settings_get_exposes_last_delivery(
         "success",
         "webhook_url",
         "secret_set",
+        "secret_hint",
         "last_status",
         "last_ok_at",
         "last_error_at",

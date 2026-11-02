@@ -79,6 +79,11 @@ urlpatterns = [
     path("settings/api-key", views_settings.ApiKeyView.as_view(), name="api-key"),
     path("settings/webhook", views_settings.WebhookSettingsView.as_view(), name="webhook"),
     path(
+        "settings/webhook/rotate-secret",
+        views_settings.WebhookRotateSecretView.as_view(),
+        name="webhook-rotate-secret",
+    ),
+    path(
         "settings/webhook/test",
         views_settings.WebhookTestView.as_view(),
         name="webhook-test",
