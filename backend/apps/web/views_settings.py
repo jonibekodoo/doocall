@@ -15,6 +15,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status as http
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from apps.accounts.models import Device, OperatorGroup, OperatorProfile, SimCard, User
 from apps.api.errors import ApiError, ErrorCode
@@ -411,6 +412,8 @@ class WebhookSettingsView(AdminCabinetView):
                 "success": True,
                 "webhook_url": company.webhook_url or None,
                 "secret_set": bool(company.webhook_secret),
+                # Last 4 chars only, so the admin can tell which secret is live.
+                "secret_hint": company.webhook_secret[-4:] if company.webhook_secret else None,
                 # Last call delivery (final outcome, after retries).
                 "last_status": company.webhook_last_status or None,
                 "last_ok_at": (
@@ -450,6 +453,36 @@ class WebhookSettingsView(AdminCabinetView):
                 "secret": company.webhook_secret if secret_created else None,
             }
         )
+
+
+class WebhookRotateThrottle(SimpleRateThrottle):
+    """5 rotations per company per hour (all admins share the budget)."""
+
+    scope = "webhook_rotate"
+    rate = "5/hour"
+
+    def get_cache_key(self, request: Request, view: Any) -> str | None:
+        company_id = getattr(request.user, "company_id", None)
+        if company_id is None:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": company_id}
+
+
+class WebhookRotateSecretView(AdminCabinetView):
+    throttle_classes = [WebhookRotateThrottle]
+
+    @extend_schema(summary="Rotate the webhook HMAC secret (new secret returned once)")
+    def post(self, request: Request) -> Response:
+        company = self.company
+        company.webhook_secret = secrets.token_hex(32)
+        company.save(update_fields=["webhook_secret", "updated_at"])
+        AuditLog.objects.create(  # never the secret itself
+            company=company,
+            actor=cast(User, request.user),
+            action="settings.webhook_secret_rotated",
+        )
+        # The only time the secret leaves the server; GET shows secret_hint only.
+        return Response({"success": True, "secret": company.webhook_secret})
 
 
 class WebhookTestView(AdminCabinetView):
