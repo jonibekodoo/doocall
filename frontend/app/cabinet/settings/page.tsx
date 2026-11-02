@@ -4,7 +4,14 @@
  * integration, account, license&payment. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, KeyRound, Power, Smartphone, Trash2 } from "lucide-react";
+import {
+  Copy,
+  CreditCard,
+  KeyRound,
+  Power,
+  Smartphone,
+  Trash2,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useState } from "react";
@@ -36,12 +43,14 @@ import {
   patchOperator,
   patchSim,
   rotateApiKey,
+  rotateWebhookSecret,
   saveAccountSettings,
   saveWebhook,
   submitManualPayment,
   testWebhook,
   type NewOperatorResponse,
 } from "@/lib/api/endpoints";
+import { ApiError } from "@/lib/api/client";
 import type { WebhookDeliveryStatus } from "@/lib/api/types";
 import { formatPhone, formatUzs, providerLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -790,6 +799,122 @@ function ApiDialToggle() {
   );
 }
 
+/** Webhook signing secret: masked hint, "Kalitni yangilash" (confirmed), and
+ * the new secret shown ONCE (also used for the secret issued on first save). */
+function WebhookSecretBlock({
+  hint,
+  secretSet,
+  freshSecret,
+  onFreshSecret,
+}: {
+  hint: string | null | undefined;
+  secretSet: boolean;
+  freshSecret: string | null;
+  onFreshSecret: (secret: string | null) => void;
+}) {
+  const t = useTranslations("settings");
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const rotateSecret = useMutation({
+    mutationFn: rotateWebhookSecret,
+    onSuccess: (body) => {
+      setError(null);
+      onFreshSecret(body.secret);
+      queryClient.invalidateQueries({ queryKey: ["s-webhook"] });
+    },
+    onError: (caught: Error) =>
+      setError(
+        caught instanceof ApiError && caught.status === 429
+          ? t("webhookSecretRateLimited")
+          : caught.message,
+      ),
+  });
+  const copy = async () => {
+    if (!freshSecret) return;
+    try {
+      await navigator.clipboard.writeText(freshSecret);
+      useToastStore
+        .getState()
+        .push({ kind: "success", text: t("webhookSecretCopied") });
+    } catch {
+      useToastStore
+        .getState()
+        .push({ kind: "error", text: t("webhookSecretCopyFailed") });
+    }
+  };
+
+  return (
+    <div data-testid="webhook-secret" className="mt-3 space-y-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-fg-muted">{t("webhookSecretLabel")}:</span>
+        <span data-testid="webhook-secret-hint" className="tnum font-mono">
+          {secretSet ? `••••${hint ?? ""}` : t("webhookSecretNone")}
+        </span>
+        {secretSet && (
+          <button
+            type="button"
+            data-testid="webhook-secret-rotate"
+            disabled={rotateSecret.isPending}
+            onClick={async () =>
+              (await confirmDialog(t("webhookSecretRotateConfirm"), {
+                danger: true,
+                confirmLabel: t("webhookSecretRotate"),
+              })) && rotateSecret.mutate()
+            }
+            className="inline-flex items-center gap-1 font-semibold text-accent hover:underline disabled:opacity-50"
+          >
+            <KeyRound className="size-3" /> {t("webhookSecretRotate")}
+          </button>
+        )}
+      </div>
+      {error && (
+        <p
+          role="alert"
+          data-testid="webhook-secret-error"
+          className="text-danger"
+        >
+          {error}
+        </p>
+      )}
+      {freshSecret && (
+        <div
+          data-testid="webhook-secret-fresh"
+          className="space-y-1.5 rounded-md border border-warning/40 bg-warning/10 p-2"
+        >
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={freshSecret}
+              data-testid="webhook-secret-value"
+              onFocus={(event) => event.currentTarget.select()}
+              className="tnum min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1 font-mono text-xs"
+            />
+            <button
+              type="button"
+              data-testid="webhook-secret-copy"
+              onClick={copy}
+              className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1 hover:bg-surface-2"
+            >
+              <Copy className="size-3" /> {t("webhookSecretCopy")}
+            </button>
+          </div>
+          <p className="font-medium text-warning">{t("webhookSecretOnce")}</p>
+        </div>
+      )}
+      <p className="leading-relaxed text-fg-faint">
+        {t("webhookSignatureHelp")}{" "}
+        <a
+          href="/docs/api#webhook-signature"
+          target="_blank"
+          className="font-semibold text-accent hover:underline"
+        >
+          {t("webhookSignatureDocs")}
+        </a>
+      </p>
+    </div>
+  );
+}
+
 function IntegrationTab() {
   const t = useTranslations("settings");
   const queryClient = useQueryClient();
@@ -802,9 +927,7 @@ function IntegrationTab() {
     queryFn: fetchWebhook,
   });
   // The settings endpoint also reports the last delivery outcome.
-  const webhook = webhookData as
-    | (NonNullable<typeof webhookData> & Partial<WebhookDeliveryStatus>)
-    | undefined;
+  const webhook = webhookData;
   const webhookStatus: WebhookDeliveryStatus = {
     last_status: webhook?.last_status ?? null,
     last_ok_at: webhook?.last_ok_at ?? null,
@@ -999,10 +1122,13 @@ function IntegrationTab() {
             {webhook && (webhook.webhook_url || webhookStatus.last_status) && (
               <WebhookStatusLine info={webhookStatus} />
             )}
-            {secret && (
-              <p className="tnum mt-2 break-all rounded-md bg-warning/10 p-2 font-mono text-xs">
-                secret: {secret}
-              </p>
+            {webhook && (webhook.webhook_url || secret) && (
+              <WebhookSecretBlock
+                hint={webhook.secret_hint}
+                secretSet={Boolean(webhook.secret_set || secret)}
+                freshSecret={secret}
+                onFreshSecret={setSecret}
+              />
             )}
             <div className="mt-2 flex gap-2">
               <button
