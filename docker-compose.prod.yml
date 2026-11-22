@@ -131,6 +131,8 @@ services:
 
   celery-worker:
     <<: *backend-base
+    # Celery PID 1 bo'lib, o'z bolalarini (ffmpeg va h.k.) yig'maydi -> zombie; tini yig'adi.
+    init: true
     command: celery -A doocall worker --loglevel=warning --concurrency=${CELERY_CONCURRENCY:-4}
     depends_on:
       redis:
